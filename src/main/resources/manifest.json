@@ -1,0 +1,19 @@
+{
+    "Group": "Hearthbound",
+    "Name": "Hearthbound",
+    "Version": "0.1.0",
+    "Description": "Build a multi-racial village with unique NPC races, happiness system, and narrative quests",
+    "Authors": [
+        {
+            "Name": "nonme",
+            "Url": ""
+        }
+    ],
+    "Website": "",
+    "DisabledByDefault": false,
+    "IncludesAssetPack": false,
+    "Dependencies": {},
+    "OptionalDependencies": {},
+    "ServerVersion": "2026.02.19-1a311a592",
+    "Main": "dev.hearthbound.HearthboundPlugin"
+}

@@ -1,0 +1,29 @@
+{
+  "TranslationProperties": { "Name": "server.items.Hearthbound_Ghost_Fence.name" },
+  "MaxStack": 1, "Quality": "Technical", "PlayerAnimationsId": "Block",
+  "BlockType": {
+    "Material": "Empty", "DrawType": "Model", "Opacity": "Transparent",
+    "CustomModel": "Blocks/Structures/Fences/Dev_Fence.blockymodel",
+    "CustomModelTexture": [{ "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png", "Weight": 1 }],
+    "HitboxType": "Fence", "VariantRotation": "Wall",
+    "BlockParticleSetId": "Dust", "ParticleColor": "#e7eaeb", "BlockSoundSetId": "Soft",
+    "State": {
+      "Definitions": {
+        "Corner": {
+          "CustomModel": "Blocks/Structures/Fences/Dev_Fence_Corner.blockymodel",
+          "CustomModelTexture": [{ "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png", "Weight": 1 }],
+          "HitboxType": "Fence_Corner_Thin", "FlipType": "Orthogonal"
+        }
+      }
+    },
+    "ConnectedBlockRuleSet": {
+      "Type": "CustomTemplate",
+      "TemplateShapeAssetId": "WallConnectedBlockTemplate",
+      "TemplateShapeBlockPatterns": {
+        "Straight": "Hearthbound_Ghost_Fence",
+        "Corner": "*Hearthbound_Ghost_Fence_State_Definitions_Corner"
+      }
+    }
+  },
+  "Tags": { "Family": ["Hearthbound"] }
+}

@@ -1,0 +1,13 @@
+{
+  "TaskSets": [
+    {
+      "Tasks": [
+        {
+          "Type": "UseEntity",
+          "TaskId": "Rescue_Victim",
+          "Count": 1
+        }
+      ]
+    }
+  ]
+}

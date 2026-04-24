@@ -1,0 +1,110 @@
+@ChoiceBtnStyle = TextButtonStyle(
+  Default:  (Background: #1e2a35, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8fa8b8, FontSize: 14)),
+  Hovered:  (Background: #2a3f52, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d8eaf5, FontSize: 14)),
+  Pressed:  (Background: #162028, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8fa8b8, FontSize: 14))
+);
+
+@PrimaryBtnStyle = TextButtonStyle(
+  Default:  (Background: #2d4a30, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #b8d4bc, FontSize: 14, RenderBold: true)),
+  Hovered:  (Background: #3d6440, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e8f5ea, FontSize: 14, RenderBold: true)),
+  Pressed:  (Background: #1e3221, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #b8d4bc, FontSize: 14, RenderBold: true))
+);
+
+Group {
+  LayoutMode: Middle;
+  Background: #0a0c10(0.75);
+
+  Group {
+    Anchor: (Width: 560, Height: 376);
+    Background: #141a22;
+    OutlineColor: #2a3a4a;
+    OutlineSize: 1;
+    LayoutMode: Top;
+
+    // Header
+    Group {
+      Anchor: (Height: 48);
+      Background: #0e1318;
+      LayoutMode: Full;
+
+      Label #SpeakerName {
+        Anchor: (Left: 48, Right: 48, Top: 0, Bottom: 0);
+        Style: (
+          HorizontalAlignment: Center,
+          VerticalAlignment: Center,
+          TextColor: #c8a84a,
+          FontSize: 17,
+          RenderBold: true,
+          LetterSpacing: 1
+        );
+      }
+
+      TextButton #BtnClose {
+        Anchor: (Top: 10, Right: 12, Width: 28, Height: 28);
+        Style: (
+          Default: (Background: #1a1418, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #6a5050, FontSize: 11)),
+          Hovered: (Background: #2a1e20, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11)),
+          Pressed: (Background: #100c10, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #6a5050, FontSize: 11))
+        );
+        Text: "X";
+      }
+    }
+
+    Group {
+      Anchor: (Height: 1);
+      Background: #c8a84a(0.3);
+    }
+
+    // Text area
+    Group {
+      FlexWeight: 1;
+      Padding: (Top: 20, Bottom: 16, Left: 24, Right: 24);
+
+      Label #DialogText {
+        Anchor: (Full: 0);
+        Style: (FontSize: 14, Wrap: true, TextColor: #b8c8d4);
+      }
+    }
+
+    Group {
+      Anchor: (Height: 1);
+      Background: #1e2a35;
+    }
+
+    // Choice buttons
+    Group #ChoiceContainer {
+      Anchor: (Height: 132);
+      LayoutMode: Top;
+      Padding: (Horizontal: 16, Top: 12, Bottom: 10);
+
+      TextButton #BtnChoice1 {
+        Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+      }
+
+      TextButton #BtnChoice2 {
+        Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+      }
+
+      TextButton #BtnChoice3 {
+        Anchor: (Height: 32);
+        Style: (
+          Default:  (Background: #141820, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4a6070, FontSize: 14)),
+          Hovered:  (Background: #1e2530, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #7a9aaa, FontSize: 14)),
+          Pressed:  (Background: #0e1218, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4a6070, FontSize: 14))
+        );
+        Text: "";
+      }
+    }
+
+    // Primary button
+    TextButton #BtnPrimary {
+      Anchor: (Height: 42);
+      Style: @PrimaryBtnStyle;
+      Text: "";
+    }
+  }
+}

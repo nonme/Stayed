@@ -1,0 +1,45 @@
+Group {
+  LayoutMode: Middle;
+  Background: #131417(0.8);
+
+  Group {
+    Anchor: (Width: 400, Height: 250);
+    Background: #1f2734;
+    LayoutMode: Top;
+    Padding: (Vertical: 20, Horizontal: 20);
+
+    Label #Title {
+      Style: (Alignment: Center, TextColor: #d3dee3, FontSize: 24, RenderBold: true);
+    }
+
+    Label #Message {
+      Anchor: (Top: 10);
+      Style: (Alignment: Center, FontSize: 16, Wrap: true, TextColor: #a0aeb3);
+    }
+
+    Group {
+      LayoutMode: Center;
+      Anchor: (Top: 20, Height: 40);
+
+      TextButton #CloseButton {
+        Anchor: (Width: 150, Height: 36);
+        Padding: (Horizontal: 10);
+        Style: (
+          Default: (
+            Background: #3a4a5a,
+            LabelStyle: (Alignment: Center, TextColor: #d3dee3, FontSize: 16, RenderBold: true),
+          ),
+          Hovered: (
+            Background: #4a5a6a,
+            LabelStyle: (Alignment: Center, TextColor: #ffffff, FontSize: 16, RenderBold: true),
+          ),
+          Pressed: (
+            Background: #2a3a4a,
+            LabelStyle: (Alignment: Center, TextColor: #d3dee3, FontSize: 16, RenderBold: true),
+          ),
+        );
+        Text: "Close";
+      }
+    }
+  }
+}

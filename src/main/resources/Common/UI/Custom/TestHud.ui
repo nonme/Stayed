@@ -1,0 +1,15 @@
+Group #HudRoot {
+  Anchor: (Left: 10, Top: 10, Width: 250, Height: 60);
+  Background: #1f2734(0.7);
+  LayoutMode: Top;
+  Padding: (Vertical: 8, Horizontal: 12);
+
+  Label #HudTitle {
+    Style: (TextColor: #e4b456, FontSize: 14, RenderBold: true);
+  }
+
+  Label #HudText {
+    Anchor: (Top: 4);
+    Style: (TextColor: #a0aeb3, FontSize: 12);
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "$Comment": "Elf sage while actively building. Wanders a small radius (rest/walk cycle, radius 4) so he doesn't get buried when the floor is placed under him. Has NO HeadMotion so our lookAtBlock packet can steer his head toward each placed block without the behavior tree overwriting it.",
+  "Type": "Generic",
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Elf_Sage.name",
+      "Description": "Translation key for NPC name display"
+    }
+  },
+  "StartState": "Idle",
+  "DefaultNPCAttitude": "Ignore",
+  "DefaultPlayerAttitude": "Neutral",
+  "Appearance": "Outlander",
+  "MaxHealth": 100,
+  "DisableDamageGroups": ["Self"],
+  "BusyStates": ["$Interaction"],
+  "KnockbackScale": 0.5,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 2,
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 180,
+      "Acceleration": 4,
+      "RunThreshold": 0.9
+    }
+  ],
+  "Instructions": [
+    {
+      "Instructions": [
+        {
+          "Sensor": { "Type": "State", "State": "Idle" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Any" },
+              "BodyMotion": {
+                "Type": "Sequence",
+                "Looped": true,
+                "Motions": [
+                  {
+                    "Type": "Timer",
+                    "Time": [4, 8],
+                    "Motion": { "Type": "Nothing" }
+                  },
+                  {
+                    "Type": "Timer",
+                    "Time": [2, 4],
+                    "Motion": {
+                      "Type": "Wander",
+                      "Radius": 4,
+                      "RelativeSpeed": 0.35,
+                      "MaxHeadingChange": 90
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "Sensor": { "Type": "State", "State": "$Interaction" },
+          "Instructions": [
+            {
+              "Continue": true,
+              "Sensor": { "Type": "Target", "Range": 10 },
+              "HeadMotion": { "Type": "Watch" }
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "Actions": [
+                {
+                  "Type": "Timeout",
+                  "Delay": [1, 1],
+                  "Action": {
+                    "Type": "Sequence",
+                    "Actions": [
+                      { "Type": "ReleaseTarget" },
+                      { "Type": "State", "State": "Idle" }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "InteractionInstruction": {
+    "Instructions": [
+      {
+        "Sensor": {
+          "Type": "Not",
+          "Sensor": { "Type": "CanInteract", "ViewSector": 180 }
+        },
+        "Actions": [
+          { "Type": "SetInteractable", "Interactable": false }
+        ]
+      },
+      {
+        "Continue": true,
+        "Sensor": { "Type": "Any" },
+        "Actions": [
+          {
+            "Type": "SetInteractable",
+            "Interactable": true,
+            "Hint": "server.interactionHints.talk"
+          }
+        ]
+      },
+      {
+        "Sensor": { "Type": "HasInteracted" },
+        "Instructions": [
+          {
+            "Sensor": {
+              "Type": "Not",
+              "Sensor": { "Type": "State", "State": "$Interaction" }
+            },
+            "Actions": [
+              { "Type": "LockOnInteractionTarget" },
+              { "Type": "State", "State": "$Interaction" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "NameTranslationKey": {
+    "Compute": "NameTranslationKey"
+  }
+}

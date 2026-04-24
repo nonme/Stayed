@@ -1,0 +1,12 @@
+{
+  "TaskSets": [
+    {
+      "Tasks": [
+        {
+          "Type": "ReachLocation",
+          "TargetLocation": "Village_Return_Marker"
+        }
+      ]
+    }
+  ]
+}

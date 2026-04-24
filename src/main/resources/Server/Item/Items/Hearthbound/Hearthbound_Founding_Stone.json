@@ -1,0 +1,44 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Founding_Stone.name"
+  },
+  "PlayerAnimationsId": "Block",
+  "Categories": ["Blocks.Structural"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "CustomModel": "Blocks/Decorative_Sets/Village/Statue.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Texture": "Blocks/Decorative_Sets/Village/Statue_Texture.png",
+        "Weight": 1
+      }
+    ],
+    "HitboxType": "Statue_Full",
+    "Opacity": "Transparent",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "BlockParticleSetId": "Stone",
+    "BlockSoundSetId": "Stone",
+    "ParticleColor": "#9f9e81",
+    "InteractionHint": "server.interactionHints.talk",
+    "Interactions": {
+      "Use": "Open_Container"
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Rocks",
+        "ItemId": "Hearthbound_Founding_Stone"
+      }
+    }
+  },
+  "Icon": "Icons/ItemsGenerated/Furniture_Village_Statue.png",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Hearthbound"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Stone"
+}

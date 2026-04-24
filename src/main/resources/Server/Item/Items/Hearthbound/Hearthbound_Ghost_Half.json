@@ -1,0 +1,10 @@
+{
+  "TranslationProperties": { "Name": "server.items.Hearthbound_Ghost_Half.name" },
+  "MaxStack": 1, "Quality": "Technical", "PlayerAnimationsId": "Block",
+  "BlockType": {
+    "Material": "Empty", "DrawType": "Cube",
+    "Textures": [{ "All": "BlockTextures/Dev_White_Top.png" }],
+    "BlockParticleSetId": "Dust", "ParticleColor": "#c0c0c0", "BlockSoundSetId": "Soft"
+  },
+  "Tags": { "Family": ["Hearthbound"] }
+}

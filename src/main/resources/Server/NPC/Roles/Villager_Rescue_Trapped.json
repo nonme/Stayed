@@ -1,0 +1,51 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Villager_Rescue_Trapped.name",
+      "Description": "Translation key for NPC name display"
+    }
+  },
+  "StartState": "Idle",
+  "DefaultNPCAttitude": "Ignore",
+  "DefaultPlayerAttitude": "Neutral",
+  "Appearance": "Outlander",
+  "MaxHealth": 60,
+  "Invulnerable": true,
+  "DisableDamageGroups": ["Self"],
+  "KnockbackScale": 0.5,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 4,
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 360,
+      "Acceleration": 8,
+      "RunThreshold": 0.3
+    }
+  ],
+  "Instructions": [
+    {
+      "Instructions": [
+        {
+          "Sensor": { "Type": "State", "State": "Idle" },
+          "Instructions": [
+            {
+              "Sensor": { "Type": "Player", "Range": 20 },
+              "HeadMotion": { "Type": "Watch" },
+              "BodyMotion": { "Type": "Nothing" }
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "BodyMotion": { "Type": "Nothing" }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "NameTranslationKey": {
+    "Compute": "NameTranslationKey"
+  }
+}

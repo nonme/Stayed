@@ -1,0 +1,20 @@
+Group #Root {
+  Anchor: (Left: 10, Top: 10, Width: 220, Height: 80);
+  Background: #1f2734(0.7);
+  LayoutMode: Top;
+  Padding: (Vertical: 8, Horizontal: 12);
+
+  Label #VillageName {
+    Style: (TextColor: #e4b456, FontSize: 14, RenderBold: true);
+  }
+
+  Label #VillagerCount {
+    Anchor: (Top: 4);
+    Style: (TextColor: #a0aeb3, FontSize: 11);
+  }
+
+  Label #BuildingStatus {
+    Anchor: (Top: 4);
+    Style: (TextColor: #96dc96, FontSize: 11);
+  }
+}

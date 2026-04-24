@@ -1,0 +1,7 @@
+{
+  "$Comment": "Interaction for opening Hearthbound NPC dialog UI",
+  "Type": "OpenCustomUI",
+  "Page": {
+    "Id": "hearthbound_dialog"
+  }
+}

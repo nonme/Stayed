@@ -460,7 +460,7 @@ public final class CosmeticPools {
     // Face accessories (glasses — Citizen only, mostly)
     // ---------------------------------------------------------------
 
-    public static final String FACE_ACC_WHEAT = "MouthWheat";
+    public static final String FACE_ACC_WHEAT = "MouthWheat.Green";
 
     public static final List<String> FACE_ACC_CITIZEN = List.of(
             "Glasses",
@@ -471,7 +471,7 @@ public final class CosmeticPools {
             "LargeGlasses"
     );
 
-    public static final String FACE_ACC_EYEPATCH = "EyePatch";
+    public static final String FACE_ACC_EYEPATCH = "EyePatch.Black";
 
     // ---------------------------------------------------------------
     // Ear accessories (Citizen only)

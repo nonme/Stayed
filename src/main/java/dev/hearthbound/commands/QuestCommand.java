@@ -32,9 +32,12 @@ import com.hypixel.hytale.server.core.universe.world.WorldConfig;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.quest.RescueQuest1;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class QuestCommand extends AbstractCommandCollection {
@@ -131,20 +134,31 @@ public class QuestCommand extends AbstractCommandCollection {
                     "Loading chunk for marker at (%.0f, %.0f, %.0f), distance %.0f blocks...",
                     markerX, markerY, markerZ, distance)));
 
-            // Force-load the target chunk first — otherwise the ECS snaps the entity
-            // back into the nearest loaded chunk and the marker ends up next to the player.
-            long chunkIndex = ChunkUtil.indexChunkFromBlock(markerX, markerZ);
-            world.getChunkAsync(chunkIndex).thenAccept(chunk -> world.execute(() -> {
+            // Force-load all chunks the trap footprint may touch.
+            // Prefab is 7×7 centered, guard is +8 X from center — the whole footprint
+            // fits within a 3×3 chunk square around center. We iterate chunk coords
+            // (not block offsets) so the set is exact regardless of center alignment.
+            int blockX = (int) Math.floor(markerX);
+            int blockZ = (int) Math.floor(markerZ);
+            int centerChunkX = ChunkUtil.chunkCoordinate(blockX);
+            int centerChunkZ = ChunkUtil.chunkCoordinate(blockZ);
+            List<CompletableFuture<?>> loads = new ArrayList<>();
+            for (int cx = centerChunkX - 1; cx <= centerChunkX + 1; cx++) {
+                for (int cz = centerChunkZ - 1; cz <= centerChunkZ + 1; cz++) {
+                    loads.add(world.getChunkAsync(ChunkUtil.indexChunk(cx, cz)));
+                }
+            }
+            long centerChunkIndex = ChunkUtil.indexChunk(centerChunkX, centerChunkZ);
+            CompletableFuture.allOf(loads.toArray(new CompletableFuture[0])).thenAccept(v -> world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
 
-                // Use the chunk's heightmap to place the trap on the actual surface rather
-                // than at the player's Y (which would drop the prefab in mid-air or inside
-                // a mountain depending on terrain).
-                int blockX = (int) Math.floor(markerX);
-                int blockZ = (int) Math.floor(markerZ);
+                // Use the center chunk's heightmap for the trap anchor Y.
+                var centerChunk = world.getChunk(centerChunkIndex);
                 int chunkLocalX = blockX & 15;
                 int chunkLocalZ = blockZ & 15;
-                int groundY = chunk.getHeight(chunkLocalX, chunkLocalZ);
+                int groundY = (centerChunk != null)
+                        ? centerChunk.getHeight(chunkLocalX, chunkLocalZ)
+                        : (int) Math.floor(markerY);
 
                 RescueQuest1.Spawned spawned = RescueQuest1.spawn(world, liveStore, blockX, groundY, blockZ);
                 if (spawned == null) {

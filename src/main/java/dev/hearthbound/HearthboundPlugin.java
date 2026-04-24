@@ -12,6 +12,7 @@ import dev.hearthbound.events.FoundingStoneHandler;
 import dev.hearthbound.events.PlayerJoinHandler;
 import dev.hearthbound.events.VillageTickHandler;
 import dev.hearthbound.ui.ElfDialogPage;
+import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
@@ -60,6 +61,13 @@ public class HearthboundPlugin extends JavaPlugin {
                 this, HearthboundPlugin.class, "hearthbound_dialog",
                 (ref, accessor, playerRef, context) ->
                         new ElfDialogPage(playerRef)
+        );
+
+        // Register rescue victim interaction → Rescue dialog page
+        OpenCustomUIInteraction.registerCustomPageSupplier(
+                this, HearthboundPlugin.class, "hearthbound_rescue_dialog",
+                (ref, accessor, playerRef, context) ->
+                        new RescueDialogPage(playerRef)
         );
 
         // Register events

@@ -9,7 +9,7 @@
   "StartState": "Idle",
   "DefaultNPCAttitude": "Ignore",
   "DefaultPlayerAttitude": "Neutral",
-  "Appearance": "Outlander",
+  "Appearance": "Player",
   "MaxHealth": 60,
   "Invulnerable": true,
   "DisableDamageGroups": ["Self"],

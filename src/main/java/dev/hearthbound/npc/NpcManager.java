@@ -87,6 +87,25 @@ public class NpcManager {
     }
 
     /**
+     * Assigns the HearthboundRescue RootInteraction to a rescue victim NPC so that
+     * pressing F opens the rescue dialog UI (not the elf dialog).
+     */
+    public static void assignRescueInteraction(Store<EntityStore> store, Ref<EntityStore> npcRef) {
+        Interactable interactable = store.getComponent(npcRef, Interactable.getComponentType());
+        if (interactable == null) {
+            store.putComponent(npcRef, Interactable.getComponentType(), Interactable.INSTANCE);
+        }
+        Interactions interactions = store.getComponent(npcRef, Interactions.getComponentType());
+        if (interactions == null) {
+            interactions = new Interactions();
+        }
+        interactions.setInteractionId(InteractionType.Use, "HearthboundRescue");
+        interactions.setInteractionHint("server.interactionHints.talk");
+        store.putComponent(npcRef, Interactions.getComponentType(), interactions);
+        LOGGER.fine("Assigned HearthboundRescue interaction to entity " + npcRef);
+    }
+
+    /**
      * Assigns the Hearthbound RootInteraction to an NPC entity so that
      * pressing F triggers the OpenCustomUI interaction.
      */

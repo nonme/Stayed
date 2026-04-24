@@ -78,6 +78,7 @@ public final class RescueQuest1 {
             LOGGER.warning("Failed to spawn rescue victim");
         } else {
             applyVictimAppearance(victim.first(), store);
+            NpcManager.assignRescueInteraction(store, victim.first());
         }
 
         // Guard on the surface near the pit.

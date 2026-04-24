@@ -1,0 +1,7 @@
+{
+  "$Comment": "Interaction for opening the rescue victim dialog UI",
+  "Type": "OpenCustomUI",
+  "Page": {
+    "Id": "hearthbound_rescue_dialog"
+  }
+}

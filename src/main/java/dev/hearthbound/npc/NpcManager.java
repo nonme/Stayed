@@ -2,43 +2,30 @@ package dev.hearthbound.npc;
 
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
-import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.asset.type.model.config.Model;
-import com.hypixel.hytale.server.core.modules.entity.component.Interactable;
 import com.hypixel.hytale.server.core.modules.entity.component.PersistentModel;
-import com.hypixel.hytale.server.core.modules.interaction.Interactions;
 import com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
+import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import it.unimi.dsi.fastutil.Pair;
 
+import java.util.UUID;
 import java.util.logging.Logger;
 
 public class NpcManager {
 
     private static final Logger LOGGER = Logger.getLogger(NpcManager.class.getName());
-    private static final String ROOT_INTERACTION = "Hearthbound";
 
+    /**
+     * Spawns an NPC and fixes the PersistentModel scale=0 engine bug.
+     * Does NOT register in NpcRegistry — caller is responsible because only the
+     * caller knows the skin seed, interaction type, and other restore data.
+     */
     public static Pair<Ref<EntityStore>, INonPlayerCharacter> spawnNpc(
-            Store<EntityStore> store, Vector3d position, Vector3f rotation, String roleName) {
-        Pair<Ref<EntityStore>, INonPlayerCharacter> result =
-                NPCPlugin.get().spawnNPC(store, roleName, null, position, rotation);
-
-        if (result != null) {
-            assignInteraction(store, result.first());
-            fixPersistentModelScale(store, result.first());
-        }
-
-        return result;
-    }
-
-    /** Same as {@link #spawnNpc} but does not attach the Hearthbound RootInteraction.
-     *  Use for NPCs whose interaction is handled entirely by their role's JSON
-     *  InteractionInstruction — e.g. rescue victims that complete an objective task
-     *  on F, or hostile mobs that shouldn't be talked to at all. */
-    public static Pair<Ref<EntityStore>, INonPlayerCharacter> spawnNpcNoInteraction(
             Store<EntityStore> store, Vector3d position, Vector3f rotation, String roleName) {
         Pair<Ref<EntityStore>, INonPlayerCharacter> result =
                 NPCPlugin.get().spawnNPC(store, roleName, null, position, rotation);
@@ -55,7 +42,7 @@ public class NpcManager {
      * sometimes writes scale=0 into PersistentModel, which causes "Scale must be > 0"
      * crash on next chunk load, making the NPC non-persistent.
      */
-    private static void fixPersistentModelScale(Store<EntityStore> store, Ref<EntityStore> npcRef) {
+    public static void fixPersistentModelScale(Store<EntityStore> store, Ref<EntityStore> npcRef) {
         try {
             PersistentModel pm = store.getComponent(npcRef, PersistentModel.getComponentType());
             if (pm == null) return;
@@ -72,58 +59,18 @@ public class NpcManager {
         }
     }
 
-    /** Spawns a rescue victim NPC: no pre-attached interaction, the caller is
-     *  expected to call {@link #assignRescueInteraction} after placing VillagerData
-     *  and applying the appearance. Keeping the two steps separate avoids the F-key
-     *  hint appearing before the victim looks like a villager. */
-    public static Pair<Ref<EntityStore>, INonPlayerCharacter> spawnRescueVictim(
-            Store<EntityStore> store, Vector3d position, Vector3f rotation, String roleName) {
-        Pair<Ref<EntityStore>, INonPlayerCharacter> result =
-                NPCPlugin.get().spawnNPC(store, roleName, null, position, rotation);
-        if (result != null) {
-            fixPersistentModelScale(store, result.first());
-        }
-        return result;
+    /**
+     * Extracts the UUID from a freshly spawned NPC entity.
+     */
+    public static UUID extractUuid(Store<EntityStore> store, Ref<EntityStore> npcRef) {
+        UUIDComponent uc = store.getComponent(npcRef, UUIDComponent.getComponentType());
+        return uc != null ? uc.getUuid() : null;
     }
 
     /**
-     * Assigns the HearthboundRescue RootInteraction to a rescue victim NPC so that
-     * pressing F opens the rescue dialog UI (not the elf dialog).
+     * Computes the chunk index for a world position.
      */
-    public static void assignRescueInteraction(Store<EntityStore> store, Ref<EntityStore> npcRef) {
-        Interactable interactable = store.getComponent(npcRef, Interactable.getComponentType());
-        if (interactable == null) {
-            store.putComponent(npcRef, Interactable.getComponentType(), Interactable.INSTANCE);
-        }
-        Interactions interactions = store.getComponent(npcRef, Interactions.getComponentType());
-        if (interactions == null) {
-            interactions = new Interactions();
-        }
-        interactions.setInteractionId(InteractionType.Use, "HearthboundRescue");
-        interactions.setInteractionHint("server.interactionHints.talk");
-        store.putComponent(npcRef, Interactions.getComponentType(), interactions);
-        LOGGER.fine("Assigned HearthboundRescue interaction to entity " + npcRef);
-    }
-
-    /**
-     * Assigns the Hearthbound RootInteraction to an NPC entity so that
-     * pressing F triggers the OpenCustomUI interaction.
-     */
-    public static void assignInteraction(Store<EntityStore> store, Ref<EntityStore> npcRef) {
-        // Ensure Interactable marker component exists (required for F-key hint to show)
-        Interactable interactable = store.getComponent(npcRef, Interactable.getComponentType());
-        if (interactable == null) {
-            store.putComponent(npcRef, Interactable.getComponentType(), Interactable.INSTANCE);
-        }
-
-        // Set the RootInteraction and hint
-        Interactions interactions = store.getComponent(npcRef, Interactions.getComponentType());
-        if (interactions == null) {
-            interactions = new Interactions();
-        }
-        interactions.setInteractionId(InteractionType.Use, ROOT_INTERACTION);
-        interactions.setInteractionHint("server.interactionHints.talk");
-        store.putComponent(npcRef, Interactions.getComponentType(), interactions);
-        LOGGER.fine("Assigned RootInteraction '" + ROOT_INTERACTION + "' to entity " + npcRef);
+    public static long chunkIndexFor(Vector3d position) {
+        return ChunkUtil.indexChunkFromBlock((int) position.getX(), (int) position.getZ());
     }
 }

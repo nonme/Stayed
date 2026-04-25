@@ -324,41 +324,23 @@ public class BuildingSystem {
                 return;
             }
 
-            // Remove old wanderer elf
-            UUID oldElfId = village.getElfId();
-            if (oldElfId != null) {
-                Entity oldElf = world.getEntity(oldElfId);
-                if (oldElf != null) {
-                    oldElf.remove();
-                    LOGGER.info("Wanderer elf removed: " + oldElfId);
-                }
-            }
-
-            // Spawn elf near door
+            // Spawn elf near door via respawnAs so NpcRegistry is updated correctly.
             int[] doorOffset = BuildingType.getDoorOffset(BuildingType.TOWN_HALL, rotation);
             Vector3d elfPos = new Vector3d(
                     anchorX + doorOffset[0],
                     anchorY + 1,
                     anchorZ + doorOffset[1]
             );
-            // Face elf toward the building center (opposite of door direction)
             float elfYaw = switch (rotation) {
-                case 0 -> 180f; // door -Z, face +Z
-                case 1 -> 270f; // door +X, face -X
-                case 2 -> 0f;   // door +Z, face -Z
-                case 3 -> 90f;  // door -X, face +X
+                case 0 -> 180f;
+                case 1 -> 270f;
+                case 2 -> 0f;
+                case 3 -> 90f;
                 default -> 0f;
             };
-            var result = NpcManager.spawnNpc(worldStore, elfPos, new Vector3f(0, elfYaw, 0), ElfSage.ROLE_WANDERER);
-            if (result != null && result.second() instanceof Entity entity) {
-                UUID newElfId = entity.getUuid();
-                village.setElfId(newElfId);
-                VillageManager.get().save(worldStore, playerRef, village);
-                ElfSage.applySageAppearance(result.first(), worldStore);
-                LOGGER.info("Village elf spawned near door: " + elfPos + " (UUID: " + newElfId + ")");
-            } else {
-                LOGGER.warning("Failed to spawn village elf");
-            }
+            ElfSage.respawnAs(worldStore, playerRef, world,
+                    ElfSage.ROLE_WANDERER, elfPos, new Vector3f(0, elfYaw, 0));
+            LOGGER.info("Village elf respawned near door: " + elfPos);
         });
     }
 

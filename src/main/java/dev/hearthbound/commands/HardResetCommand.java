@@ -13,6 +13,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.npc.ElfSage;
+import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.village.VillageData;
 
 import java.util.UUID;
@@ -44,8 +45,15 @@ public class HardResetCommand extends AbstractPlayerCommand {
         VillageData oldData = store.getComponent(playerRef, VillageData.getComponentType());
         if (oldData != null && oldData.getElfId() != null) {
             UUID elfUuid = oldData.getElfId();
+            NpcRegistry.NpcRecord oldRecord = NpcRegistry.get().getRecord(elfUuid);
+            long oldChunkIndex = oldRecord != null ? oldRecord.chunkIndex : 0L;
             Entity elf = world.getEntity(elfUuid);
-            if (elf != null) elf.remove();
+            if (elf != null) {
+                elf.remove();
+            } else {
+                // Elf is in an unloaded chunk — defer removal to NpcChunkLoadHandler.
+                NpcRegistry.get().markForRemoval(elfUuid, oldChunkIndex);
+            }
         }
 
         // Wipe every Elf_Sage NPC near the spawn point — catches orphans from prior
@@ -54,6 +62,10 @@ public class HardResetCommand extends AbstractPlayerCommand {
         if (spawn != null) {
             ElfSage.purgeOrphanedElfSages(store, world, spawn, 8.0, null);
         }
+
+        // Clear only NPC records — pending removals must survive to delete unloaded entities.
+        NpcRegistry.get().clearRecords();
+        dev.hearthbound.npc.HearthboundDataStore.get().save();
 
         // Fresh village data — all flags (metElf, foundingStoneGiven, etc.) default back to
         // their initial state so the opening dialogue plays again.

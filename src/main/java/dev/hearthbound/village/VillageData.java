@@ -45,6 +45,7 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("ConstructionStarted", Codec.BOOLEAN), VillageData::setConstructionStarted, VillageData::isConstructionStarted).add()
             .append(new KeyedCodec<>("MetElf", Codec.BOOLEAN), VillageData::setMetElf, VillageData::isMetElf).add()
             .append(new KeyedCodec<>("FoundingStoneGiven", Codec.BOOLEAN), VillageData::setFoundingStoneGiven, VillageData::isFoundingStoneGiven).add()
+            .append(new KeyedCodec<>("RescueQuestStarted", Codec.BOOLEAN), VillageData::setRescueQuestStarted, VillageData::isRescueQuestStarted).add()
             .append(new KeyedCodec<>("PendingGhostSnapshot", GHOST_SNAPSHOT_CODEC),
                     VillageData::setPendingGhostSnapshot, VillageData::getPendingGhostSnapshotForCodec).add()
             .build();
@@ -77,6 +78,7 @@ public class VillageData implements Component<EntityStore> {
     private boolean constructionStarted = false;
     private boolean metElf = false;
     private boolean foundingStoneGiven = false;
+    private boolean rescueQuestStarted = false;
     /**
      * Snapshot of blocks overwritten by the active ghost preview, keyed by "x,y,z" → original
      * block id ("Empty" for empty cells). Persisted so a server restart doesn't orphan the
@@ -154,6 +156,10 @@ public class VillageData implements Component<EntityStore> {
     public boolean isFoundingStoneGiven() { return foundingStoneGiven; }
     public void setFoundingStoneGiven(boolean given) { this.foundingStoneGiven = given; }
 
+    // --- Rescue quest ---
+    public boolean isRescueQuestStarted() { return rescueQuestStarted; }
+    public void setRescueQuestStarted(boolean started) { this.rescueQuestStarted = started; }
+
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
     public Map<String, String> getPendingGhostSnapshot() { return pendingGhostSnapshot; }
     public void setPendingGhostSnapshot(Map<String, String> snapshot) {
@@ -190,6 +196,7 @@ public class VillageData implements Component<EntityStore> {
         copy.constructionStarted = this.constructionStarted;
         copy.metElf = this.metElf;
         copy.foundingStoneGiven = this.foundingStoneGiven;
+        copy.rescueQuestStarted = this.rescueQuestStarted;
         copy.pendingGhostSnapshot = new HashMap<>(this.pendingGhostSnapshot);
         return copy;
     }

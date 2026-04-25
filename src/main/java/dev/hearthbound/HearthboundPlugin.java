@@ -49,9 +49,15 @@ public class HearthboundPlugin extends JavaPlugin {
         VillageManager.init();
         BuildingSystem.init();
 
+        // Load persisted NPC records from disk and populate NpcRegistry.
+        // Must happen before any player joins so ChunkPreLoadProcessEvent
+        // can find records for NPC chunks that load near the spawn.
+        dev.hearthbound.npc.HearthboundDataStore.get().loadAndPopulateRegistry();
+
         // Register ECS components
         VillageData.register(this.getEntityStoreRegistry());
         VillagerData.register(this.getEntityStoreRegistry());
+        dev.hearthbound.npc.ElfNpcComponent.register(this.getEntityStoreRegistry());
 
         // Register ECS event systems
         this.getEntityStoreRegistry().registerSystem(new BlockPlaceHandler());

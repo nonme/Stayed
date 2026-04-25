@@ -4,30 +4,37 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
+import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
+import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
  * Dialog with the elf sage Aelin.
  *
  * Screens:
- *   INTRO_1..3  — first-meeting linear intro (3 slides)
- *   NAME_CONFIRM — elf reacts to player's nick
- *   MENU        — choice menu (repeatable)
- *   ANSWER_ELF  — "Tell me about yourself" answer
- *   ANSWER_STONE — "How to found a settlement" + give stone
+ *   INTRO_1..3    — first-meeting linear intro (3 slides)
+ *   NAME_CONFIRM  — elf reacts to player's nick
+ *   MENU          — choice menu (repeatable)
+ *   ANSWER_ELF    — "Tell me about yourself" answer
+ *   ANSWER_STONE  — "How to found a settlement" + give stone
  *   ANSWER_REMIND — "Remind me about the stone" (after stone given)
- *   POST_FOUNDED — comment after village founded
+ *   POST_FOUNDED  — comment after village founded (pre-Town Hall)
+ *   QUEST_RESCUE  — elf proposes scouting for survivors (stage >= TOWN_HALL, quest not started)
+ *   QUEST_ACTIVE  — read-only: quest is already in progress
  */
 public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
@@ -46,6 +53,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String ANSWER_REMIND       = "answer_remind";
     private static final String ANSWER_REMIND_LOST  = "answer_remind_lost";
     private static final String POST_FOUNDED        = "post_founded";
+    private static final String QUEST_RESCUE        = "quest_rescue";
+    private static final String QUEST_ACTIVE        = "quest_active";
 
     private String screen;
     private String playerName;
@@ -54,7 +63,15 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean metElf;
     private boolean stoneGiven;
     private boolean founded;
+    private boolean townHallBuilt;
+    private boolean rescueQuestStarted;
     private boolean hasStoneInInventory;
+
+    // Cached for quest launch (captured at build time)
+    private Ref<EntityStore> cachedPlayerRef;
+    private Player cachedPlayer;
+    private UUID cachedPlayerUuid;
+    private World cachedWorld;
 
     @SuppressWarnings("removal")
     public ElfDialogPage(PlayerRef playerRef) {
@@ -69,24 +86,33 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     public void build(Ref<EntityStore> ref, UICommandBuilder builder, UIEventBuilder events,
                       Store<EntityStore> store) {
 
-        // Read player name and village state
         Player player = store.getComponent(ref, Player.getComponentType());
         playerName = (player != null) ? player.getDisplayName() : "Stranger";
 
-        VillageData village = VillageManager.get().getVillageData(store, playerRef(ref, store));
-        metElf    = village != null && village.isMetElf();
-        stoneGiven = village != null && village.isFoundingStoneGiven();
-        founded   = village != null && village.isFounded();
+        VillageData village = VillageManager.get().getVillageData(store, ref);
+        metElf             = village != null && village.isMetElf();
+        stoneGiven         = village != null && village.isFoundingStoneGiven();
+        founded            = village != null && village.isFounded();
+        townHallBuilt      = village != null && village.getStage() >= VillageData.STAGE_TOWN_HALL;
+        rescueQuestStarted = village != null && village.isRescueQuestStarted();
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
                 .countItemStacks(s -> FOUNDING_STONE_ID.equals(s.getItemId())) > 0;
 
+        // Cache for async quest launch
+        cachedPlayerRef  = ref;
+        cachedPlayer     = player;
+        cachedWorld      = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore)
+                store.getExternalData()).getWorld();
+        UUIDComponent uuidComp = store.getComponent(ref, UUIDComponent.getComponentType());
+        cachedPlayerUuid = (uuidComp != null) ? uuidComp.getUuid() : null;
+
         // Choose starting screen
-        if (founded) {
-            screen = POST_FOUNDED;
-        } else if (!metElf) {
-            screen = INTRO_1;
-        } else {
+        if (!founded) {
+            screen = !metElf ? INTRO_1 : MENU;
+        } else if (townHallBuilt) {
             screen = MENU;
+        } else {
+            screen = POST_FOUNDED;
         }
 
         builder.append("ElfDialog.ui");
@@ -157,7 +183,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "What's your story?");
                 b.set("#BtnChoice1.Visible", true);
-                if (!stoneGiven) {
+                if (townHallBuilt) {
+                    if (!rescueQuestStarted) {
+                        b.set("#BtnChoice2.Text", "We need settlers.");
+                    } else {
+                        b.set("#BtnChoice2.Text", "Any news on the survivors?");
+                    }
+                } else if (!stoneGiven) {
                     b.set("#BtnChoice2.Text", "I want to start a settlement.");
                 } else {
                     b.set("#BtnChoice2.Text", "About the Founding Stone...");
@@ -245,8 +277,36 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             }
             case POST_FOUNDED -> {
                 b.set("#SpeakerName.Text", "Aelin");
-                b.set("#DialogText.Text", postFoundedText(founded));
+                b.set("#DialogText.Text",
+                        "Stone is down. That is the easy part.\n" +
+                        "Bring what we need to the stone — wood, rock, the rest — and put it inside. " +
+                        "Once it is all there, I will start on the Town Hall.");
                 b.set("#BtnPrimary.Text", "On my way.");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_RESCUE -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "There are people in these woods who lost everything in the Sundering — " +
+                        "villages burned, families scattered. Some of them are still out there, " +
+                        "trying to survive alone.\n" +
+                        "A settlement like ours needs people. " +
+                        "Go find one of those survivors. Offer them a place here.\n" +
+                        "I can feel something to the east — movement, a small fire. " +
+                        "I would start there.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "I'll go look.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not right now.");
+                b.set("#BtnChoice2.Visible", true);
+            }
+            case QUEST_ACTIVE -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Still searching? " +
+                        "Follow the marker — that is where I felt the presence.\n" +
+                        "Come back once you've found them.");
+                b.set("#BtnPrimary.Text", "Understood.");
                 b.set("#BtnPrimary.Visible", true);
             }
         }
@@ -260,7 +320,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     public void handleDataEvent(Ref<EntityStore> ref, Store<EntityStore> store, DialogEventData data) {
         String action = data.getAction();
         if ("close".equals(action)) { close(); return; }
-        String next = screen; // default: stay
+        String next = screen;
 
         switch (screen) {
             case INTRO_1 -> {
@@ -275,7 +335,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case MENU -> {
                 switch (action) {
                     case "choice1" -> next = ANSWER_ELF;
-                    case "choice2" -> next = stoneGiven ? ANSWER_REMIND : ANSWER_STONE;
+                    case "choice2" -> {
+                        if (townHallBuilt) {
+                            next = rescueQuestStarted ? QUEST_ACTIVE : QUEST_RESCUE;
+                        } else {
+                            next = stoneGiven ? ANSWER_REMIND : ANSWER_STONE;
+                        }
+                    }
                     case "choice3" -> { close(); return; }
                 }
             }
@@ -308,7 +374,19 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 }
             }
 
-            case POST_FOUNDED  -> { if ("primary".equals(action)) { close(); return; } }
+            case POST_FOUNDED -> { if ("primary".equals(action)) { close(); return; } }
+
+            case QUEST_RESCUE -> {
+                if ("choice1".equals(action)) {
+                    launchRescueQuest(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    next = MENU;
+                }
+            }
+
+            case QUEST_ACTIVE -> { if ("primary".equals(action)) { close(); return; } }
         }
 
         // Persist metElf on first conversation reaching MENU
@@ -326,6 +404,34 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private void launchRescueQuest(Ref<EntityStore> ref, Store<EntityStore> store) {
+        if (cachedWorld == null || cachedPlayerUuid == null) {
+            LOGGER.warning("launchRescueQuest: missing cached world or UUID");
+            return;
+        }
+
+        // Mark quest as started immediately so repeated dialog opens show QUEST_ACTIVE
+        rescueQuestStarted = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setRescueQuestStarted(true);
+        VillageManager.get().save(store, ref, village);
+
+        TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
+        if (transform == null) {
+            LOGGER.warning("launchRescueQuest: player has no TransformComponent");
+            return;
+        }
+
+        RescueQuest1.startForPlayer(
+                cachedWorld, store, ref, cachedPlayer, cachedPlayerUuid,
+                transform.getPosition(),
+                spawned -> {
+                    if (spawned == null) {
+                        LOGGER.warning("launchRescueQuest: startForPlayer failed");
+                    }
+                });
+    }
 
     private void giveFoundingStone(Ref<EntityStore> ref, Store<EntityStore> store) {
         try {
@@ -359,11 +465,6 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         }
     }
 
-    /** PlayerRef from store — used for VillageManager calls that need entityRef. */
-    private Ref<EntityStore> playerRef(Ref<EntityStore> ref, Store<EntityStore> store) {
-        return ref; // ref IS the player entity ref in this context
-    }
-
     private String nameReaction(String name) {
         char first = Character.toLowerCase(name.isEmpty() ? 'a' : name.charAt(0));
         if ("aeiou".indexOf(first) >= 0) {
@@ -377,11 +478,5 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                    "than the conversation that follows. Yours will do fine.\n" +
                    "This land does not have a name yet. That part is yours to fix, if you want it.";
         }
-    }
-
-    private String postFoundedText(boolean founded) {
-        return "Stone is down. That is the easy part.\n" +
-               "Bring what we need to the stone — wood, rock, the rest — and put it inside. " +
-               "Once it is all there, I will start on the Town Hall.";
     }
 }

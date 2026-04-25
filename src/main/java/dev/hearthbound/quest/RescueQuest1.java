@@ -285,12 +285,23 @@ public final class RescueQuest1 {
 
     private static void spawnMarker(Store<EntityStore> store, Vector3d pos,
                                     Ref<EntityStore> playerRef) {
+        spawnNamedMarker(store, pos, playerRef, "RescueTrap_Marker");
+    }
+
+    /** Spawns the return-to-village marker at {@code pos} so ReachLocation task can complete. */
+    public static void spawnReturnMarker(Store<EntityStore> store, Vector3d pos,
+                                         Ref<EntityStore> playerRef) {
+        spawnNamedMarker(store, pos, playerRef, "Village_Return_Marker");
+    }
+
+    private static void spawnNamedMarker(Store<EntityStore> store, Vector3d pos,
+                                         Ref<EntityStore> playerRef, String markerName) {
         TransformComponent playerTransform = store.getComponent(playerRef, TransformComponent.getComponentType());
         var rotation = playerTransform != null ? playerTransform.getRotation() : new Vector3f(0, 0, 0);
 
         Holder<EntityStore> holder = EntityStore.REGISTRY.newHolder();
         holder.addComponent(ReachLocationMarker.getComponentType(),
-                new ReachLocationMarker("RescueTrap_Marker"));
+                new ReachLocationMarker(markerName));
         var model = ObjectivePlugin.get().getObjectiveLocationMarkerModel();
         holder.addComponent(ModelComponent.getComponentType(), new ModelComponent(model));
         holder.addComponent(PersistentModel.getComponentType(), new PersistentModel(model.toReference()));

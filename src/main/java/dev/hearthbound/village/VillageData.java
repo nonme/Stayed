@@ -27,6 +27,9 @@ public class VillageData implements Component<EntityStore> {
     private static final ArrayCodec<BuildingRecord> BUILDINGS_ARRAY_CODEC =
             ArrayCodec.ofBuilderCodec(BuildingRecord.CODEC, BuildingRecord[]::new);
 
+    private static final ArrayCodec<VillagerSummary> VILLAGERS_ARRAY_CODEC =
+            ArrayCodec.ofBuilderCodec(VillagerSummary.CODEC, VillagerSummary[]::new);
+
     private static final ObjectMapCodec<String, String, HashMap<String, String>> GHOST_SNAPSHOT_CODEC =
             new ObjectMapCodec<>(Codec.STRING, HashMap::new, Function.identity(), Function.identity(), false);
 
@@ -40,7 +43,7 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("ElfId", Codec.UUID_STRING), VillageData::setElfId, VillageData::getElfId).add()
             .append(new KeyedCodec<>("ElfName", Codec.STRING), VillageData::setElfName, VillageData::getElfName).add()
             .append(new KeyedCodec<>("Buildings", BUILDINGS_ARRAY_CODEC), VillageData::setBuildingsArray, VillageData::getBuildingsArray).add()
-            .append(new KeyedCodec<>("VillagerCount", Codec.INTEGER), VillageData::setVillagerCount, VillageData::getVillagerCount).add()
+            .append(new KeyedCodec<>("Villagers", VILLAGERS_ARRAY_CODEC), VillageData::setVillagersArray, VillageData::getVillagersArray).add()
             .append(new KeyedCodec<>("Rotation", Codec.INTEGER), VillageData::setRotation, VillageData::getRotation).add()
             .append(new KeyedCodec<>("ConstructionStarted", Codec.BOOLEAN), VillageData::setConstructionStarted, VillageData::isConstructionStarted).add()
             .append(new KeyedCodec<>("MetElf", Codec.BOOLEAN), VillageData::setMetElf, VillageData::isMetElf).add()
@@ -73,7 +76,7 @@ public class VillageData implements Component<EntityStore> {
     private UUID elfId;
     private String elfName;
     private List<BuildingRecord> buildings = new ArrayList<>();
-    private int villagerCount = 0;
+    private List<VillagerSummary> villagers = new ArrayList<>();
     private int rotation = 0; // 0=N, 1=E, 2=S, 3=W (matches VariantRotation NESW index)
     private boolean constructionStarted = false;
     private boolean metElf = false;
@@ -136,9 +139,18 @@ public class VillageData implements Component<EntityStore> {
         buildings.add(building);
     }
 
-    // --- Villager count ---
-    public int getVillagerCount() { return villagerCount; }
-    public void setVillagerCount(int count) { this.villagerCount = count; }
+    // --- Villagers ---
+    public List<VillagerSummary> getVillagers() { return villagers; }
+
+    public void addVillager(VillagerSummary summary) { villagers.add(summary); }
+
+    public int getVillagerCount() { return villagers.size(); }
+
+    private VillagerSummary[] getVillagersArray() { return villagers.toArray(new VillagerSummary[0]); }
+
+    private void setVillagersArray(VillagerSummary[] arr) {
+        this.villagers = arr != null ? new ArrayList<>(Arrays.asList(arr)) : new ArrayList<>();
+    }
 
     // --- Rotation ---
     public int getRotation() { return rotation; }
@@ -191,7 +203,7 @@ public class VillageData implements Component<EntityStore> {
         copy.foundedAtTick = this.foundedAtTick;
         copy.elfId = this.elfId;
         copy.buildings = new ArrayList<>(this.buildings);
-        copy.villagerCount = this.villagerCount;
+        copy.villagers = new ArrayList<>(this.villagers);
         copy.rotation = this.rotation;
         copy.constructionStarted = this.constructionStarted;
         copy.metElf = this.metElf;

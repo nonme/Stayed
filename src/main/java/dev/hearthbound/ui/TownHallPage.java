@@ -172,7 +172,9 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         int total = village.getVillagerCount() + (hasElf ? 1 : 0);
         StringBuilder pop = new StringBuilder("Total: " + total);
         if (hasElf) pop.append("\n").append(getElfName(village));
-        for (int i = 0; i < village.getVillagerCount(); i++) pop.append("\nSettler");
+        for (dev.hearthbound.village.VillagerSummary v : village.getVillagers()) {
+            pop.append("\n").append(v.getFullName());
+        }
         builder.set("#PopulationInfo.Text", pop.toString());
         builder.set("#ContainerHint.Text", "Use the Construction tab to deposit and manage resources.");
 

@@ -19,6 +19,8 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.quest.RescueQuest1;
+import dev.hearthbound.village.VillageData;
+import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
 
 import java.util.Set;
@@ -40,6 +42,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final Logger LOGGER = Logger.getLogger(RescueDialogPage.class.getName());
 
     static final String OBJECTIVE_ID = "Objective_RescueTrap_Rescue";
+    public static final String OBJECTIVE_RETURN_ID = "Objective_RescueTrap_Return";
 
     private static final String INTRO         = "intro";
     private static final String INTRO_2       = "intro_2";
@@ -196,6 +199,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private void spawnFollowerAndAdvanceObjective(Ref<EntityStore> playerRef, Store<EntityStore> store) {
         try {
             advanceRescueObjective(playerRef, store);
+            spawnReturnMarker(playerRef, store);
 
             // Switch role in-place: Trapped → Follower. RoleChangeSystem preserves all
             // components not owned by the behavior tree (VillagerData, PlayerSkinComponent,
@@ -232,6 +236,20 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         } catch (Exception e) {
             LOGGER.warning("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());
         }
+    }
+
+    private void spawnReturnMarker(Ref<EntityStore> playerRef, Store<EntityStore> store) {
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null || !village.isFounded()) {
+            LOGGER.warning("spawnReturnMarker: no founded village, skipping marker");
+            return;
+        }
+        var pos = new com.hypixel.hytale.math.vector.Vector3d(
+                village.getFoundingStoneX() + 0.5,
+                village.getFoundingStoneY() + 1.0,
+                village.getFoundingStoneZ() + 0.5);
+        RescueQuest1.spawnReturnMarker(store, pos, playerRef);
+        LOGGER.info("Spawned Village_Return_Marker at founding stone " + pos);
     }
 
     private void advanceRescueObjective(Ref<EntityStore> playerRef, Store<EntityStore> store) {

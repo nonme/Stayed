@@ -63,14 +63,6 @@ public final class NpcRegistry {
          */
         public volatile boolean restorePending = false;
 
-        /**
-         * Epoch ms when this record was first created (i.e. when the NPC was spawned).
-         * Timestamp set at spawn — used to skip ChunkPreLoadProcessEvent
-         * restore for the first 10s after spawn so the initial polling loop finishes cleanly
-         * without a duplicate restore race.
-         */
-        public final long createdAt = System.currentTimeMillis();
-
         public NpcRecord(UUID entityUuid, String roleName, InteractionType interaction,
                          long skinSeed, long chunkIndex) {
             this.entityUuid = entityUuid;

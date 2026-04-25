@@ -106,14 +106,9 @@ public class NpcChunkLoadHandler {
         LOGGER.info("NpcChunkLoadHandler: chunk " + chunkIndex
                 + " loaded, scheduling restore for " + toRestore.size() + " NPC(s)");
 
-        long now = System.currentTimeMillis();
         for (UUID uuid : toRestore) {
             NpcRegistry.NpcRecord record = registry.getRecord(uuid);
             if (record == null) continue;
-            // Grace period: skip restore for 10s after spawn —
-            // shouldProcessCitizen() createdAt check. Prevents a duplicate restore
-            // race while the initial scheduleRestoreOne() polling loop is still running.
-            if (now - record.createdAt < 10_000L) continue;
             registry.scheduleRestoreOne(record, world);
         }
     }

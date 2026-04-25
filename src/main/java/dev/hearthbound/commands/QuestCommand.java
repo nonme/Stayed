@@ -119,6 +119,7 @@ public class QuestCommand extends AbstractCommandCollection {
 
             cancelAllObjectives(store, ref);
             removeAllReachLocationMarkers(store);
+            RescueQuest1.cleanup(store);
 
             Vector3d playerPos = playerTransform.getPosition();
             ThreadLocalRandom rng = ThreadLocalRandom.current();

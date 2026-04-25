@@ -1,0 +1,84 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Villager_Rescue_Follower.name",
+      "Description": "Translation key for NPC name display"
+    }
+  },
+  "StartState": "Follow",
+  "DefaultNPCAttitude": "Ignore",
+  "DefaultPlayerAttitude": "Friendly",
+  "Appearance": "Player",
+  "MaxHealth": 60,
+  "Invulnerable": true,
+  "DisableDamageGroups": ["Self", "Player"],
+  "KnockbackScale": 0.0,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 5,
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 360,
+      "Acceleration": 10,
+      "RunThreshold": 0.3
+    }
+  ],
+  "Instructions": [
+    {
+      "Instructions": [
+        {
+          "Sensor": { "Type": "State", "State": "Follow" },
+          "Instructions": [
+            {
+              "$Comment": "Lock onto the nearest player on first tick",
+              "Sensor": {
+                "Type": "And",
+                "Sensors": [
+                  { "Type": "Not", "Sensor": { "Type": "Target", "TargetSlot": "LockedTarget" } },
+                  { "Type": "Player", "Range": 80, "LockOnTarget": true }
+                ]
+              },
+              "Actions": [{ "Type": "State", "State": "Follow" }]
+            },
+            {
+              "$Comment": "Watch player when close",
+              "Sensor": { "Type": "Target", "TargetSlot": "LockedTarget", "Range": 4 },
+              "HeadMotion": { "Type": "Watch" }
+            },
+            {
+              "$Comment": "Walk toward player when within 40 blocks",
+              "Sensor": { "Type": "Target", "TargetSlot": "LockedTarget", "Range": 40 },
+              "HeadMotion": { "Type": "Watch" },
+              "BodyMotion": {
+                "Type": "Seek",
+                "SlowDownDistance": 5,
+                "StopDistance": 2.5,
+                "UsePathfinder": true
+              }
+            },
+            {
+              "$Comment": "Teleport if player gets too far",
+              "Sensor": {
+                "Type": "And",
+                "Sensors": [
+                  { "Type": "Target", "TargetSlot": "LockedTarget" },
+                  { "Type": "Not", "Sensor": { "Type": "Target", "TargetSlot": "LockedTarget", "Range": 40 } }
+                ]
+              },
+              "BodyMotion": {
+                "Type": "Teleport",
+                "OffsetRange": [2, 2],
+                "MaxYOffset": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "NameTranslationKey": {
+    "Compute": "NameTranslationKey"
+  }
+}

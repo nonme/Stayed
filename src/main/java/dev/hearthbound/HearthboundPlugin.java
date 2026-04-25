@@ -64,10 +64,14 @@ public class HearthboundPlugin extends JavaPlugin {
         );
 
         // Register rescue victim interaction → Rescue dialog page
+        // context.getTargetEntity() is the NPC the player pressed F on; ref is the player entity.
         OpenCustomUIInteraction.registerCustomPageSupplier(
                 this, HearthboundPlugin.class, "hearthbound_rescue_dialog",
-                (ref, accessor, playerRef, context) ->
-                        new RescueDialogPage(playerRef)
+                (ref, accessor, playerRef, context) -> {
+                    var npcRef = context.getTargetEntity();
+                    if (npcRef == null) return null;
+                    return new RescueDialogPage(playerRef, npcRef);
+                }
         );
 
         // Register events

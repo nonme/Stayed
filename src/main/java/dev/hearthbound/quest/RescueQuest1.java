@@ -1,6 +1,7 @@
 package dev.hearthbound.quest;
 
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
@@ -16,6 +17,8 @@ import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.village.VillagerData;
 import it.unimi.dsi.fastutil.Pair;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
@@ -45,6 +48,29 @@ public final class RescueQuest1 {
      *  footprint (x,z in -3..3) that the goblin's wander is unlikely to drop it in. */
     private static final int GUARD_DX = 8;
     private static final int GUARD_DZ = 0;
+
+    /** All quest NPC refs (victim, guard, follower). Cleared on cleanup so /hb quest start
+     *  can remove leftovers from the previous run before spawning a new encounter. */
+    private static final List<Ref<EntityStore>> activeNpcRefs = new ArrayList<>();
+
+    /** Registers a follower ref spawned by RescueDialogPage so cleanup can remove it. */
+    public static void registerFollower(Ref<EntityStore> ref) {
+        activeNpcRefs.add(ref);
+    }
+
+    /** Removes all tracked quest NPCs. Call before spawning a new encounter. */
+    public static void cleanup(Store<EntityStore> store) {
+        for (Ref<EntityStore> ref : activeNpcRefs) {
+            try {
+                if (ref.isValid()) {
+                    store.removeEntity(ref, RemoveReason.REMOVE);
+                }
+            } catch (Exception e) {
+                LOGGER.warning("cleanup: failed to remove NPC ref: " + e.getMessage());
+            }
+        }
+        activeNpcRefs.clear();
+    }
 
     private RescueQuest1() {}
 
@@ -79,6 +105,7 @@ public final class RescueQuest1 {
         } else {
             applyVictimAppearance(victim.first(), store);
             NpcManager.assignRescueInteraction(store, victim.first());
+            activeNpcRefs.add(victim.first());
         }
 
         // Guard on the surface near the pit.
@@ -89,6 +116,8 @@ public final class RescueQuest1 {
         var guard = NpcManager.spawnNpcNoInteraction(store, guardPos, new Vector3f(0, 0, 0), GUARD_ROLE);
         if (guard == null) {
             LOGGER.warning("Failed to spawn rescue guard");
+        } else {
+            activeNpcRefs.add(guard.first());
         }
 
         return new Spawned(victimPos, guardPos);

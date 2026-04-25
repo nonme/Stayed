@@ -12,6 +12,7 @@ import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
 import com.hypixel.hytale.server.core.modules.entity.component.PersistentModel;
 import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import dev.hearthbound.npc.appearance.BodyArchetype;
 import dev.hearthbound.npc.appearance.CosmeticPools;
 import dev.hearthbound.npc.appearance.StyleArchetype;
@@ -65,26 +66,43 @@ public final class VillagerAppearance {
                 return;
             }
 
-            PlayerSkin skin = createHumanSkin(seed, villagerIndex);
-            if (skin == null) return;
+            UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
+            String entityId = (uuidComp != null) ? uuidComp.getUuid().toString().substring(0, 8) : "no-uuid";
 
-            Model model = safeCreateModel(cosmetics, skin);
-            if (model == null) {
-                // Whitelist lookup produced an ID the engine rejects. Before nuking
-                // the whole outfit, find which field is bad and repair just that one
-                // from a random-but-valid donor skin. Logs the culprit so we can
-                // reconcile the whitelist.
-                model = tryRepairSkin(cosmetics, skin, seed, villagerIndex);
-            }
-            if (model == null) {
-                LOGGER.warning("Villager skin fallback also failed — leaving default appearance");
+            LOGGER.info("[skin] apply start — entity=" + entityId + " seed=" + seed + " idx=" + villagerIndex);
+
+            PlayerSkin skin = createHumanSkin(seed, villagerIndex);
+            if (skin == null) {
+                LOGGER.warning("[skin] createHumanSkin returned null — entity=" + entityId);
                 return;
             }
 
-            store.putComponent(npcRef, PlayerSkinComponent.getComponentType(), new PlayerSkinComponent(skin));
-            store.putComponent(npcRef, ModelComponent.getComponentType(), new ModelComponent(model));
+            Model model = safeCreateModel(cosmetics, skin);
+            if (model == null) {
+                LOGGER.warning("[skin] createModel failed, attempting repair — entity=" + entityId);
+                model = tryRepairSkin(cosmetics, skin, seed, villagerIndex);
+            }
+            if (model == null) {
+                LOGGER.warning("[skin] fallback also failed — entity=" + entityId + " leaving default appearance");
+                return;
+            }
 
+            LOGGER.info("[skin] putComponent PlayerSkinComponent — entity=" + entityId
+                    + " haircut=" + skin.haircut + " undertop=" + skin.undertop + " pants=" + skin.pants);
+            store.putComponent(npcRef, PlayerSkinComponent.getComponentType(), new PlayerSkinComponent(skin));
+
+            // Verify the component is actually present immediately after writing.
+            PlayerSkinComponent check = store.getComponent(npcRef, PlayerSkinComponent.getComponentType());
+            if (check == null) {
+                LOGGER.warning("[skin] PlayerSkinComponent missing immediately after putComponent! entity=" + entityId);
+            } else {
+                LOGGER.info("[skin] putComponent verified OK — entity=" + entityId);
+            }
+
+            store.putComponent(npcRef, ModelComponent.getComponentType(), new ModelComponent(model));
             fixPersistentModelScale(npcRef, store, model);
+
+            LOGGER.info("[skin] apply done — entity=" + entityId);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to apply villager appearance", e);
         }

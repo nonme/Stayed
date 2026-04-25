@@ -89,4 +89,13 @@ public class HearthboundPlugin extends JavaPlugin {
         // Register commands
         this.getCommandRegistry().registerCommand(new HearthboundCommand());
     }
+
+    @Override
+    protected void shutdown() {
+        // Save any in-flight NPC state and cancel all scheduled tasks.
+        dev.hearthbound.npc.HearthboundDataStore.get().save();
+        dev.hearthbound.npc.NpcRegistry.get().stopReconcileTask();
+        dev.hearthbound.util.TickScheduler.shutdown();
+        LOGGER.info("HearthboundPlugin shutdown complete");
+    }
 }

@@ -18,12 +18,13 @@ import dev.hearthbound.util.TickScheduler;
 /**
  * In-memory registry of all Hearthbound NPCs, independent of BSON.
  *
- * In-memory registry of all Hearthbound NPCs.
- * NPC state needed for restoration is stored HERE, not inside the NPC entity's BSON.
- * On ChunkPreLoadProcessEvent we know which NPCs belong to which chunk from this registry,
- * so we can start polling world.getEntityRef(uuid) without waiting for BSON deserialization.
- *
- * Every NPC spawn must call register(). Every NPC despawn must call unregister().
+ * In-memory registry of all Hearthbound NPCs, independent of BSON.
+ * - NPC state stored here, not in BSON
+ * - ChunkPreLoadProcessEvent triggers restore polling via scheduleRestoreOne()
+ * - reconcileTask() runs every 1s and re-restores any NPC whose ref became invalid
+ *   reconcileTask() re-restores any NPC whose ref became invalid — fix for
+ *   getEntityRef() timeout when player is far from the NPC chunk at chunk load time
+ * - pendingRemovals: deferred deletion for NPCs in unloaded chunks
  */
 public final class NpcRegistry {
 
@@ -36,8 +37,11 @@ public final class NpcRegistry {
     }
 
     private static final long POLL_INTERVAL_MS = 200;
-    private static final long POLL_INTERVAL_MS = 200;
-    private static final long POLL_TIMEOUT_MS = 12_000;
+    private static final long POLL_INTERVAL_MS  = 200;
+    private static final long POLL_TIMEOUT_MS   = 12_000;
+
+    private static final long RECONCILE_INTERVAL_MS = 1_000;
+    private static final long RECONCILE_INTERVAL_MS = 1_000;
 
     public enum InteractionType { ELF, RESCUE, NONE }
 
@@ -51,16 +55,29 @@ public final class NpcRegistry {
         public final InteractionType interaction;
         /** Non-zero for villagers/rescue victims that need a skin applied. */
         public final long skinSeed;
-        /** Chunk index where this NPC was spawned (used for ChunkPreLoad matching). */
+        /** Chunk index where this NPC was last seen. Updated on successful restore. */
         public volatile long chunkIndex;
+        /**
+         * True while scheduleRestoreOne() is actively polling for this entity.
+         * Prevents reconcileTask from launching a duplicate polling loop.
+         */
+        public volatile boolean restorePending = false;
+
+        /**
+         * Epoch ms when this record was first created (i.e. when the NPC was spawned).
+         * Timestamp set at spawn — used to skip ChunkPreLoadProcessEvent
+         * restore for the first 10s after spawn so the initial polling loop finishes cleanly
+         * without a duplicate restore race.
+         */
+        public final long createdAt = System.currentTimeMillis();
 
         public NpcRecord(UUID entityUuid, String roleName, InteractionType interaction,
                          long skinSeed, long chunkIndex) {
-            this.entityUuid    = entityUuid;
-            this.roleName      = roleName;
-            this.interaction   = interaction;
-            this.skinSeed      = skinSeed;
-            this.chunkIndex    = chunkIndex;
+            this.entityUuid = entityUuid;
+            this.roleName   = roleName;
+            this.interaction = interaction;
+            this.skinSeed   = skinSeed;
+            this.chunkIndex = chunkIndex;
         }
     }
 
@@ -68,9 +85,13 @@ public final class NpcRegistry {
     private final ConcurrentHashMap<UUID, NpcRecord> records = new ConcurrentHashMap<>();
 
     // uuid → chunkIndex: NPCs that must be deleted when their chunk next loads.
-    // Storing chunkIndex allows matching on ChunkPreLoadProcessEvent
-    // by chunk without needing a physical entity scan.
+    // uuid → chunkIndex: stores chunkIndex for O(1) chunk matching on ChunkPreLoadProcessEvent.
     private final ConcurrentHashMap<UUID, Long> pendingRemovals = new ConcurrentHashMap<>();
+
+    // World reference for reconcile task — set when first scheduleRestoreOne is called.
+    // All our NPCs are in the same world so one reference is sufficient.
+    private volatile World reconcileWorld = null;
+    private ScheduledFuture<?> reconcileTask = null;
 
     private NpcRegistry() {}
 
@@ -99,11 +120,6 @@ public final class NpcRegistry {
         LOGGER.info("NpcRegistry records cleared");
     }
 
-    /**
-     * Marks a UUID for deletion when its chunk next loads.
-     * Use when the entity's chunk is not currently loaded so world.getEntity() returns null.
-     * uuid → chunkIndex: stores chunkIndex for O(1) chunk matching on ChunkPreLoadProcessEvent.
-     */
     public void markForRemoval(UUID uuid, long chunkIndex) {
         pendingRemovals.put(uuid, chunkIndex);
         LOGGER.fine("NpcRegistry: marked for deferred removal uuid=" + uuid);
@@ -113,7 +129,6 @@ public final class NpcRegistry {
         return pendingRemovals.containsKey(uuid);
     }
 
-    /** Returns uuid → chunkIndex snapshot of all pending removals. */
     public Map<UUID, Long> getPendingRemovals() {
         return Collections.unmodifiableMap(pendingRemovals);
     }
@@ -122,17 +137,14 @@ public final class NpcRegistry {
         pendingRemovals.remove(uuid);
     }
 
-    /** Returns the record for the given UUID, or null if not registered. */
     public NpcRecord getRecord(UUID uuid) {
         return records.get(uuid);
     }
 
-    /** Returns a snapshot of all registered records. */
     public java.util.Collection<NpcRecord> allRecords() {
         return new ArrayList<>(records.values());
     }
 
-    /** Returns all records whose last-known chunk matches the given index. */
     public List<NpcRecord> getForChunk(long chunkIndex) {
         List<NpcRecord> result = new ArrayList<>();
         for (NpcRecord r : records.values()) {
@@ -141,27 +153,28 @@ public final class NpcRegistry {
         return result;
     }
 
-    /**
-     * For a freshly loaded chunk: for each registered NPC that belongs to this chunk,
-     * poll world.getEntityRef(uuid) every 200ms until the entity appears (or 12s timeout),
-     * then restore skin + interaction on the world thread.
-     *
-     * Polls world.getEntityRef(uuid) every 200ms until entity appears,
-     * then restores skin and interaction on the world thread.
-     */
     public void scheduleRestoreForChunk(long chunkIndex, World world) {
         List<NpcRecord> forChunk = getForChunk(chunkIndex);
         if (forChunk.isEmpty()) return;
-
-        LOGGER.info("NpcRegistry: chunk " + chunkIndex + " loaded, scheduling restore for "
-                + forChunk.size() + " NPC(s)");
-
         for (NpcRecord record : forChunk) {
             scheduleRestoreOne(record, world);
         }
     }
 
+    /**
+     * Polls world.getEntityRef(uuid) every 200ms until entity appears (or 12s timeout),
+     * then restores skin + interaction on the world thread.
+     *
+     * On timeout: does NOT give up — reconcileTask() will retry every 1s until entity
+     * is found. This handles the case where the player is far from the NPC chunk when
+     * the chunk loads, so getEntityRef() returns null during the initial polling window.
+     * Polls world.getEntityRef(uuid) every 200ms until entity appears (or 12s timeout),
+     */
     public void scheduleRestoreOne(NpcRecord record, World world) {
+        if (record.restorePending) return; // already polling
+        record.restorePending = true;
+        ensureReconcileTask(world);
+
         long startTime = System.currentTimeMillis();
         boolean[] done = {false};
         ScheduledFuture<?>[] taskRef = {null};
@@ -173,8 +186,10 @@ public final class NpcRegistry {
             if (elapsed >= POLL_TIMEOUT_MS) {
                 done[0] = true;
                 if (taskRef[0] != null) taskRef[0].cancel(false);
-                LOGGER.warning("NpcRegistry: timeout restoring " + record.roleName
-                        + " uuid=" + record.entityUuid + " after " + elapsed + "ms");
+                // Mark as not pending so reconcileTask can retry when player approaches.
+                record.restorePending = false;
+                LOGGER.fine("NpcRegistry: initial poll timed out for " + record.roleName
+                        + " uuid=" + record.entityUuid + " — reconcileTask will retry");
                 return;
             }
 
@@ -182,7 +197,7 @@ public final class NpcRegistry {
                 if (done[0]) return;
 
                 var ref = world.getEntityRef(record.entityUuid);
-                if (ref == null || !ref.isValid()) return; // not in registry yet — keep polling
+                if (ref == null || !ref.isValid()) return;
 
                 done[0] = true;
                 if (taskRef[0] != null) taskRef[0].cancel(false);
@@ -191,17 +206,77 @@ public final class NpcRegistry {
                         + " uuid=" + record.entityUuid
                         + " after " + (System.currentTimeMillis() - startTime) + "ms");
 
-                var store = world.getEntityStore().getStore();
-                NpcRestorer.restore(ref, store, world, record);
+                applyRestoreAndUpdateChunk(ref, world, record);
             });
 
         }, 0L, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
 
     /**
-     * Updates the stored chunk index for an NPC that has moved to a different chunk.
-     * Call this whenever an NPC teleports or is respawned at a new position.
+     * Background task that runs every 1s and re-restores any registered NPC whose
+     * ref is not currently valid and is not already being polled.
+     *
+     * Background task that runs every 1s and re-restores any registered NPC —
+     * makes NPCs recover even when their chunk was loaded while the player was far away
+     * (causing the initial 12s poll to time out without finding the entity).
      */
+    private void ensureReconcileTask(World world) {
+        reconcileWorld = world;
+        if (reconcileTask != null) return;
+        reconcileTask = TickScheduler.getExecutor().scheduleAtFixedRate(() -> {
+            World w = reconcileWorld;
+            if (w == null) return;
+
+            List<NpcRecord> unresolved = new ArrayList<>();
+            for (NpcRecord r : records.values()) {
+                if (!r.restorePending) unresolved.add(r);
+            }
+            if (unresolved.isEmpty()) return;
+
+            w.execute(() -> {
+                for (NpcRecord record : unresolved) {
+                    if (records.get(record.entityUuid) == null) continue; // unregistered
+                    if (record.restorePending) continue; // race: just started polling
+
+                    var ref = w.getEntityRef(record.entityUuid);
+                    if (ref == null || !ref.isValid()) continue; // chunk not loaded yet
+
+                    // Entity is in an active chunk — restore it.
+                    LOGGER.info("NpcRegistry: reconcile restoring " + record.roleName
+                            + " uuid=" + record.entityUuid);
+                    applyRestoreAndUpdateChunk(ref, w, record);
+                }
+            });
+        }, RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void applyRestoreAndUpdateChunk(
+            com.hypixel.hytale.component.Ref<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> ref,
+            World world, NpcRecord record) {
+        record.restorePending = false;
+        var store = world.getEntityStore().getStore();
+
+        // Update chunkIndex to entity's actual current position.
+        try {
+            var tc = store.getComponent(ref,
+                    com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
+            if (tc != null && tc.getPosition() != null) {
+                var pos = tc.getPosition();
+                record.chunkIndex = ChunkUtil.indexChunkFromBlock((int) pos.x, (int) pos.z);
+            }
+        } catch (Exception ignored) {}
+
+        NpcRestorer.restore(ref, store, world, record);
+    }
+
+    public void stopReconcileTask() {
+        if (reconcileTask != null) {
+            reconcileTask.cancel(false);
+            reconcileTask = null;
+        }
+        reconcileWorld = null;
+    }
+
     public void updateChunk(UUID uuid, long newChunkIndex) {
         NpcRecord r = records.get(uuid);
         if (r != null) r.chunkIndex = newChunkIndex;

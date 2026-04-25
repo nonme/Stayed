@@ -92,14 +92,22 @@ public final class RescueQuest1 {
         activeNpcRefs.remove(ref);
     }
 
-    /** Removes all tracked quest NPCs. Call before spawning a new encounter. */
+    /** Removes all tracked quest NPCs. Call before spawning a new encounter or on hardreset.
+     *  NPCs in unloaded chunks are deferred via NpcRegistry.markForRemoval(). */
     public static void cleanup(Store<EntityStore> store) {
         for (Ref<EntityStore> ref : activeNpcRefs) {
             try {
                 UUID uuid = NpcManager.extractUuid(store, ref);
-                if (uuid != null) NpcRegistry.get().unregister(uuid);
-                if (ref.isValid()) {
-                    store.removeEntity(ref, RemoveReason.REMOVE);
+                if (uuid != null) {
+                    NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
+                    long chunkIndex = record != null ? record.chunkIndex : 0L;
+                    NpcRegistry.get().unregister(uuid);
+                    if (ref.isValid()) {
+                        store.removeEntity(ref, RemoveReason.REMOVE);
+                    } else {
+                        // NPC is in an unloaded chunk — defer deletion to NpcChunkLoadHandler.
+                        NpcRegistry.get().markForRemoval(uuid, chunkIndex);
+                    }
                 }
             } catch (Exception e) {
                 LOGGER.warning("cleanup: failed to remove NPC ref: " + e.getMessage());

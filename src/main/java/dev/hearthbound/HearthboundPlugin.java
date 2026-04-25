@@ -4,11 +4,13 @@ import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.server.OpenCustomUIInteraction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import com.hypixel.hytale.server.core.universe.world.events.ChunkPreLoadProcessEvent;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.commands.HearthboundCommand;
 import dev.hearthbound.events.BlockBreakHandler;
 import dev.hearthbound.events.BlockPlaceHandler;
 import dev.hearthbound.events.FoundingStoneHandler;
+import dev.hearthbound.events.NpcChunkLoadHandler;
 import dev.hearthbound.events.PlayerJoinHandler;
 import dev.hearthbound.events.VillageTickHandler;
 import dev.hearthbound.ui.ElfDialogPage;
@@ -76,6 +78,7 @@ public class HearthboundPlugin extends JavaPlugin {
 
         // Register events
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, PlayerJoinHandler::onPlayerReady);
+        this.getEventRegistry().registerGlobal(ChunkPreLoadProcessEvent.class, NpcChunkLoadHandler::onChunkLoad);
 
         // Register commands
         this.getCommandRegistry().registerCommand(new HearthboundCommand());

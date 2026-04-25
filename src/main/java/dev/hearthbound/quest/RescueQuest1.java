@@ -103,9 +103,19 @@ public final class RescueQuest1 {
         if (victim == null) {
             LOGGER.warning("Failed to spawn rescue victim");
         } else {
-            applyVictimAppearance(victim.first(), store);
-            NpcManager.assignRescueInteraction(store, victim.first());
-            activeNpcRefs.add(victim.first());
+            final Ref<EntityStore> victimRef = victim.first();
+            activeNpcRefs.add(victimRef);
+            // Interaction must be assigned in the same tick as spawn so the engine
+            // includes it in the initial entity snapshot sent to clients.
+            NpcManager.assignRescueInteraction(store, victimRef);
+            // Defer skin apply to the next tick so the engine sends the spawn packet
+            // to clients before we write PlayerSkinComponent. Without the delay, the
+            // client occasionally receives the entity snapshot with an empty skin slot
+            // and never re-syncs — the NPC appears naked.
+            world.execute(() -> {
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                applyVictimAppearance(victimRef, liveStore);
+            });
         }
 
         // Guard on the surface near the pit.

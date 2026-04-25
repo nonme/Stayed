@@ -3,28 +3,23 @@ package dev.hearthbound.ui;
 import com.hypixel.hytale.builtin.adventure.objectives.Objective;
 import com.hypixel.hytale.builtin.adventure.objectives.ObjectivePlugin;
 import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.data.PlayerConfigData;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
-import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
-import com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import dev.hearthbound.npc.NpcManager;
-import dev.hearthbound.npc.VillagerAppearance;
-import dev.hearthbound.quest.RescueQuest1;
+import com.hypixel.hytale.server.npc.NPCPlugin;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
+import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
 import dev.hearthbound.npc.VillagerNames;
+import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.village.VillagerData;
-import it.unimi.dsi.fastutil.Pair;
 
 import java.util.Set;
 import java.util.UUID;
@@ -200,33 +195,39 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private void spawnFollowerAndAdvanceObjective(Ref<EntityStore> playerRef, Store<EntityStore> store) {
         try {
-            // Read trapped NPC position and VillagerData before despawning.
-            TransformComponent npcTransform = store.getComponent(npcRef, TransformComponent.getComponentType());
-            Vector3d spawnPos = (npcTransform != null) ? npcTransform.getPosition() : null;
-
-            VillagerData victimData = store.getComponent(npcRef, VillagerData.getComponentType());
-            long skinSeed = (victimData != null) ? victimData.getSkinSeed() : 0L;
-
-            // Advance objective BEFORE despawning — playerRef must still be valid.
             advanceRescueObjective(playerRef, store);
 
-            // Despawn the trapped villager directly by ref (avoids UUID lookup which can match the player).
-            store.removeEntity(npcRef, RemoveReason.REMOVE);
-
-            // Spawn follower at the same position (slightly above to clear pit spikes).
-            if (spawnPos != null) {
-                Vector3d followerPos = new Vector3d(spawnPos.getX(), spawnPos.getY() + 0.1, spawnPos.getZ());
-                Pair<Ref<EntityStore>, INonPlayerCharacter> follower = NpcManager.spawnNpcNoInteraction(
-                        store, followerPos, new Vector3f(0, 0, 0), "Villager_Rescue_Follower");
-
-                if (follower != null) {
-                    VillagerAppearance.apply(follower.first(), store, skinSeed, 0);
-                    RescueQuest1.registerFollower(follower.first());
-                    LOGGER.info("Spawned rescue follower NPC");
-                } else {
-                    LOGGER.warning("Failed to spawn rescue follower NPC");
-                }
+            // Switch role in-place: Trapped → Follower. RoleChangeSystem preserves all
+            // components not owned by the behavior tree (VillagerData, PlayerSkinComponent,
+            // ModelComponent), so the NPC keeps its skin and position.
+            NPCEntity npcEntity = store.getComponent(npcRef, NPCEntity.getComponentType());
+            if (npcEntity == null) {
+                LOGGER.warning("NPCEntity component missing on npcRef — cannot change role");
+                return;
             }
+            int followerRoleIndex = NPCPlugin.get().getIndex("Villager_Rescue_Follower");
+            if (followerRoleIndex < 0) {
+                LOGGER.warning("Role 'Villager_Rescue_Follower' not found");
+                return;
+            }
+            // changeAppearance=false — keep the PlayerSkin we applied at spawn time.
+            RoleChangeSystem.requestRoleChange(npcRef, npcEntity.getRole(), followerRoleIndex, false, store);
+            RescueQuest1.registerFollower(npcRef);
+            LOGGER.info("Role change queued: Trapped → Follower");
+
+            // RoleChangeSystem processes the queue next tick. After that, remove the
+            // rescue interaction (F-key hint) since followers don't have a dialog yet.
+            var world = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore)
+                    store.getExternalData()).getWorld();
+            world.execute(() -> {
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                if (npcRef.isValid()) {
+                    liveStore.tryRemoveComponent(npcRef,
+                            com.hypixel.hytale.server.core.modules.interaction.Interactions.getComponentType());
+                    liveStore.tryRemoveComponent(npcRef,
+                            com.hypixel.hytale.server.core.modules.entity.component.Interactable.getComponentType());
+                }
+            });
 
         } catch (Exception e) {
             LOGGER.warning("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());

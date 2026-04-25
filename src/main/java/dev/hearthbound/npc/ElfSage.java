@@ -2,6 +2,7 @@ package dev.hearthbound.npc;
 
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
@@ -49,50 +50,47 @@ public class ElfSage {
      * Spawns the elf sage near the world spawn point.
      * Only spawns if the village doesn't already have an elf.
      */
+    /**
+     * Called on player join. If the elf's chunk is already loaded, reattach immediately.
+     * If not, register a pending flag so NpcChunkLoadHandler picks it up on ChunkPreLoadProcessEvent.
+     * Never retries in a loop — chunk load event is the correct hook for deferred work.
+     */
     public static void spawnIfNeeded(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
         VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
 
-        // Already has an elf — ensure interaction is assigned (retry if chunk not loaded yet)
         if (village.getElfId() != null) {
-            LOGGER.fine("Elf already exists: " + village.getElfId());
-            restoreInteractionWithRetry(store, playerRef, world, village.getElfId(), 3);
+            UUID elfId = village.getElfId();
+            Vector3d spawnPos = getElfSpawnPosition(world);
+            long chunkIndex = spawnPos != null
+                    ? ChunkUtil.indexChunkFromBlock((int) spawnPos.getX(), (int) spawnPos.getZ())
+                    : -1;
+
+            Ref<EntityStore> elfRef = world.getEntityRef(elfId);
+            if (elfRef != null && elfRef.isValid()) {
+                // Chunk already loaded — reattach now.
+                reattach(elfRef, store, world);
+                LOGGER.info("Elf reattached on join (UUID: " + elfId + ")");
+            } else {
+                // Chunk not loaded yet — NpcChunkLoadHandler will handle it.
+                LOGGER.info("Elf chunk not loaded on join, pending for chunk " + chunkIndex + " (UUID: " + elfId + ")");
+            }
             return;
         }
 
+        // No elf yet — spawn one. Chunk must be loaded first.
         Vector3d spawnPos = getElfSpawnPosition(world);
         if (spawnPos == null) {
             LOGGER.warning("Could not determine world spawn position for elf placement");
             return;
         }
 
-        // Remove any orphaned Elf_Sage NPCs from prior sessions/hardresets before spawning
-        // a fresh one. Without this, every hardreset stacks another elf at the same spot,
-        // and legacy ones (no appearance applied) show as generic Outlander skins.
-        purgeOrphanedElfSages(store, world, spawnPos, 8.0, village.getElfId());
-
-        // Drop the wanderer's tent first so we can align the elf with its campfire.
-        Vector3d anchorPos = placeWandererTent(world, store, spawnPos);
-        if (anchorPos != null) {
-            spawnPos = anchorPos;
-        }
-
-        Pair<Ref<EntityStore>, INonPlayerCharacter> result = NpcManager.spawnNpc(
-                store, spawnPos, new Vector3f(0, 0, 0), ROLE_WANDERER);
-
-        if (result != null) {
-            Ref<EntityStore> elfRef = result.first();
-            INonPlayerCharacter npc = result.second();
-            if (npc instanceof Entity entity) {
-                UUID elfUuid = entity.getUuid();
-                village.setElfId(elfUuid);
-                VillageManager.get().save(store, playerRef, village);
-                applySageAppearance(elfRef, store);
-                LOGGER.info("Elf sage spawned at " + spawnPos + " (UUID: " + elfUuid + ")");
-            } else {
-                LOGGER.warning("Spawned elf NPC is not an Entity, cannot get UUID");
-            }
+        long chunkIndex = ChunkUtil.indexChunkFromBlock((int) spawnPos.getX(), (int) spawnPos.getZ());
+        if (world.getChunkIfLoaded(chunkIndex) != null) {
+            // Chunk already loaded — spawn synchronously on world thread.
+            doSpawn(store, playerRef, world, spawnPos);
         } else {
-            LOGGER.warning("Failed to spawn elf sage");
+            // Chunk not loaded — NpcChunkLoadHandler will call spawnIfNeeded again when it loads.
+            LOGGER.info("Elf spawn deferred — chunk " + chunkIndex + " not loaded yet");
         }
     }
 
@@ -254,30 +252,74 @@ public class ElfSage {
     }
 
     /**
-     * Restores the Interactions component on an existing NPC after world reload.
-     * Retries up to maxRetries times with a 3-second delay if the chunk isn't loaded yet.
-     * On final failure, clears the stale UUID and respawns.
+     * Reattaches skin and interaction to an already-loaded elf entity.
+     * Called when the chunk is confirmed loaded (on join or ChunkPreLoadProcessEvent).
+     * Skin is applied with a 600ms delay — same timing as KyuubiSoft — so the
+     * client receives the spawn/entity snapshot before PlayerSkinComponent is written.
      */
-    private static void restoreInteractionWithRetry(Store<EntityStore> store, Ref<EntityStore> playerRef,
-                                                     World world, UUID elfUuid, int retriesLeft) {
-        Ref<EntityStore> elfRef = world.getEntityRef(elfUuid);
-        if (elfRef != null && elfRef.isValid()) {
-            NpcManager.assignInteraction(store, elfRef);
-            applySageAppearance(elfRef, store);
-            LOGGER.info("Restored interaction and appearance for elf sage (UUID: " + elfUuid + ")");
-        } else if (retriesLeft > 0) {
-            LOGGER.fine("Elf chunk not loaded yet, retrying in 3s (retries left: " + retriesLeft + ")");
-            dev.hearthbound.util.TickScheduler.runLater(world, 3000, () -> {
-                Store<EntityStore> liveStore = world.getEntityStore().getStore();
-                restoreInteractionWithRetry(liveStore, playerRef, world, elfUuid, retriesLeft - 1);
-            });
-        } else {
-            LOGGER.warning("Elf sage entity not found after retries: " + elfUuid + " — clearing UUID and respawning");
-            VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
-            village.setElfId(null);
-            VillageManager.get().save(store, playerRef, village);
-            spawnIfNeeded(store, playerRef, world);
-        }
+    public static void reattach(Ref<EntityStore> elfRef, Store<EntityStore> store, World world) {
+        NpcManager.assignInteraction(store, elfRef);
+        dev.hearthbound.util.TickScheduler.runLater(world, 600, () -> {
+            Store<EntityStore> liveStore = world.getEntityStore().getStore();
+            if (elfRef.isValid()) {
+                applySageAppearance(elfRef, liveStore);
+            }
+        });
+    }
+
+    /**
+     * Spawns a fresh elf sage, force-loading the chunk first via getChunkAsync.
+     * getChunkAsync guarantees the chunk is fully ready for NPC spawning,
+     * unlike getChunkIfLoaded which only means the chunk data is in memory.
+     * Re-checks elfId inside the callback to guard against concurrent calls.
+     */
+    public static void doSpawn(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                World world, Vector3d spawnPos) {
+        long chunkIndex = ChunkUtil.indexChunkFromBlock((int) spawnPos.getX(), (int) spawnPos.getZ());
+        world.getChunkAsync(chunkIndex).thenAccept(chunk -> world.execute(() -> {
+            Store<EntityStore> liveStore = world.getEntityStore().getStore();
+
+            // Re-check: another call may have already spawned the elf.
+            VillageData liveVillage = VillageManager.get().getOrCreateVillageData(liveStore, playerRef);
+            if (liveVillage.getElfId() != null) {
+                Ref<EntityStore> existing = world.getEntityRef(liveVillage.getElfId());
+                if (existing != null && existing.isValid()) {
+                    LOGGER.fine("doSpawn: elf already exists (" + liveVillage.getElfId() + "), skipping");
+                    return;
+                }
+            }
+
+            purgeOrphanedElfSages(liveStore, world, spawnPos, 8.0, null);
+
+            Vector3d finalPos = spawnPos;
+            Vector3d anchorPos = placeWandererTent(world, liveStore, spawnPos);
+            if (anchorPos != null) finalPos = anchorPos;
+
+            Pair<Ref<EntityStore>, INonPlayerCharacter> result = NpcManager.spawnNpc(
+                    liveStore, finalPos, new Vector3f(0, 0, 0), ROLE_WANDERER);
+            if (result == null) {
+                LOGGER.warning("doSpawn: failed to spawn elf sage");
+                return;
+            }
+
+            Ref<EntityStore> elfRef = result.first();
+            INonPlayerCharacter npc = result.second();
+            if (!(npc instanceof Entity entity)) {
+                LOGGER.warning("doSpawn: spawned NPC is not an Entity");
+                return;
+            }
+
+            @SuppressWarnings("removal")
+            UUID elfUuid = entity.getUuid();
+            liveVillage.setElfId(elfUuid);
+            VillageManager.get().save(liveStore, playerRef, liveVillage);
+
+            NpcManager.assignInteraction(liveStore, elfRef);
+            LOGGER.info("Elf sage spawned at " + finalPos + " (UUID: " + elfUuid + ")");
+
+            dev.hearthbound.util.TickScheduler.runLater(world, 600, () ->
+                    applySageAppearance(elfRef, world.getEntityStore().getStore()));
+        }));
     }
 
     private static final String ELF_NAME_KEY = "server.npcRoles.Elf_Sage.name";

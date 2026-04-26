@@ -57,9 +57,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String QUEST_ACTIVE        = "quest_active";
     private static final String QUEST_HOUSE         = "quest_house";
     private static final String QUEST_HOUSE_OFFER   = "quest_house_offer";
+    private static final String QUEST_FARM          = "quest_farm";
+    private static final String QUEST_FARM_OFFER    = "quest_farm_offer";
     private static final String BUILD_MENU          = "build_menu";
 
-    private static final String BRAZIER_ITEM_ID = "Hearthbound_Brazier";
+    private static final String BRAZIER_ITEM_ID   = "Hearthbound_Brazier";
+    private static final String SCARECROW_ITEM_ID = "Hearthbound_Scarecrow";
 
     private String screen;
     private String playerName;
@@ -73,6 +76,9 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean hasStoneInInventory;
     private boolean houseQuestOffered;
     private boolean houseBrazierGiven;
+    private boolean farmQuestOffered;
+    private boolean farmScarecrowGiven;
+    private boolean houseBuilt;
     private int villagerCount;
 
     // Cached for quest launch (captured at build time)
@@ -105,7 +111,10 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         rescueQuestStarted = village != null && village.isRescueQuestStarted();
         houseQuestOffered  = village != null && village.isHouseQuestOffered();
         houseBrazierGiven  = village != null && village.isHouseBrazierGiven();
+        farmQuestOffered   = village != null && village.isFarmQuestOffered();
+        farmScarecrowGiven = village != null && village.isFarmScarecrowGiven();
         villagerCount      = village != null ? village.getVillagerCount() : 0;
+        houseBuilt         = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.HOUSE_HUMAN) != null;
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
                 .countItemStacks(s -> FOUNDING_STONE_ID.equals(s.getItemId())) > 0;
 
@@ -121,8 +130,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         if (!founded) {
             screen = !metElf ? INTRO_1 : MENU;
         } else if (townHallBuilt) {
-            // Auto-show house quest offer if villager arrived and it hasn't been offered yet
-            screen = (villagerCount >= 1 && !houseQuestOffered) ? QUEST_HOUSE : MENU;
+            if (villagerCount >= 1 && !houseQuestOffered) {
+                screen = QUEST_HOUSE;
+            } else if (houseBuilt && !farmQuestOffered) {
+                screen = QUEST_FARM;
+            } else {
+                screen = MENU;
+            }
         } else {
             screen = POST_FOUNDED;
         }
@@ -204,16 +218,20 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     } else {
                         b.set("#BtnChoice2.Text", "Any news on the survivors?");
                     }
-                    b.set("#BtnChoice4.Text", "I want to build something.");
+                    b.set("#BtnChoice3.Text", "I want to build something.");
+                    b.set("#BtnChoice3.Visible", true);
+                    b.set("#BtnChoice4.Text", "That's all for now.");
                     b.set("#BtnChoice4.Visible", true);
                 } else if (!stoneGiven) {
                     b.set("#BtnChoice2.Text", "I want to start a settlement.");
+                    b.set("#BtnChoice3.Text", "That's all for now.");
+                    b.set("#BtnChoice3.Visible", true);
                 } else {
                     b.set("#BtnChoice2.Text", "About the Founding Stone...");
+                    b.set("#BtnChoice3.Text", "That's all for now.");
+                    b.set("#BtnChoice3.Visible", true);
                 }
                 b.set("#BtnChoice2.Visible", true);
-                b.set("#BtnChoice3.Text", "That's all for now.");
-                b.set("#BtnChoice3.Visible", true);
             }
             case BUILD_MENU -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -223,8 +241,15 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "A house for a settler.");
                 b.set("#BtnChoice1.Visible", true);
-                b.set("#BtnChoice2.Text", "Never mind.");
-                b.set("#BtnChoice2.Visible", true);
+                if (houseBuilt) {
+                    b.set("#BtnChoice2.Text", "A farm for food production.");
+                    b.set("#BtnChoice2.Visible", true);
+                    b.set("#BtnChoice3.Text", "Never mind.");
+                    b.set("#BtnChoice3.Visible", true);
+                } else {
+                    b.set("#BtnChoice2.Text", "Never mind.");
+                    b.set("#BtnChoice2.Visible", true);
+                }
             }
             case ANSWER_ELF -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -360,6 +385,28 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#BtnChoice2.Text", "Not now.");
                 b.set("#BtnChoice2.Visible", true);
             }
+            case QUEST_FARM -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "The house is done. Good.\n" +
+                        "A settler with a roof is better than one without — but a settler who cannot " +
+                        "eat is only slightly better off.\n" +
+                        "We need a farm. Crops, soil, something to last through a bad season.");
+                b.set("#BtnPrimary.Text", "How do we set it up?");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_FARM_OFFER -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Same as before — find a flat patch of ground near water if you can manage it.\n" +
+                        "Place the scarecrow to mark the center of the farm. I will lay out the rest " +
+                        "around it. Use the scarecrow to manage construction once the site is set.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "Got it.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not now.");
+                b.set("#BtnChoice2.Visible", true);
+            }
         }
     }
 
@@ -393,8 +440,11 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                             next = stoneGiven ? ANSWER_REMIND : ANSWER_STONE;
                         }
                     }
-                    case "choice3" -> { close(); return; }
-                    case "choice4" -> next = BUILD_MENU;
+                    case "choice3" -> {
+                        if (townHallBuilt) next = BUILD_MENU;
+                        else { close(); return; }
+                    }
+                    case "choice4" -> { close(); return; }
                 }
             }
 
@@ -404,6 +454,14 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     close();
                     return;
                 } else if ("choice2".equals(action)) {
+                    if (houseBuilt) {
+                        giveScarecrow(ref, store);
+                        close();
+                        return;
+                    } else {
+                        next = MENU;
+                    }
+                } else if ("choice3".equals(action)) {
                     next = MENU;
                 }
             }
@@ -460,6 +518,20 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 } else if ("choice2".equals(action)) {
                     // Mark offered anyway so auto-open doesn't re-trigger next visit
                     markHouseQuestOffered(ref, store);
+                    next = MENU;
+                }
+            }
+
+            case QUEST_FARM -> { if ("primary".equals(action)) next = QUEST_FARM_OFFER; }
+
+            case QUEST_FARM_OFFER -> {
+                if ("choice1".equals(action)) {
+                    giveScarecrow(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    // Mark offered so auto-open doesn't re-trigger next visit
+                    markFarmQuestOffered(ref, store);
                     next = MENU;
                 }
             }
@@ -556,6 +628,35 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         houseQuestOffered = true;
         VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
         village.setHouseQuestOffered(true);
+        VillageManager.get().save(store, ref, village);
+    }
+
+    private void giveScarecrow(Ref<EntityStore> ref, Store<EntityStore> store) {
+        try {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) return;
+            var tx = player.getInventory().getCombinedHotbarFirst()
+                    .addItemStack(new ItemStack(SCARECROW_ITEM_ID, 1));
+            if (tx.succeeded()) {
+                farmScarecrowGiven = true;
+                farmQuestOffered = true;
+                VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+                village.setFarmScarecrowGiven(true);
+                village.setFarmQuestOffered(true);
+                VillageManager.get().save(store, ref, village);
+                LOGGER.info("Gave Scarecrow to " + playerName);
+            } else {
+                LOGGER.warning("Could not give Scarecrow to " + playerName + " — inventory full?");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to give Scarecrow: " + e.getMessage());
+        }
+    }
+
+    private void markFarmQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
+        farmQuestOffered = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setFarmQuestOffered(true);
         VillageManager.get().save(store, ref, village);
     }
 

@@ -83,12 +83,74 @@ public class PrefabLoader {
         return load(prefabName, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, 0);
     }
 
+    /**
+     * Returns world-coordinate positions of Empty cells that are strictly below the anchor
+     * Y level (ly < 0). Used by the ghost preview to clear terrain under the building footprint.
+     */
+    public static List<BlockPlacer.BlockEntry> loadBelowAnchorEmpty(
+            String prefabName, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int worldRotation) {
+        try {
+            BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
+            int prefabRotation = readAnchorRotation(selection, anchorBlockId, anchorPrefabY);
+            int rotationSteps = (worldRotation - prefabRotation + 4) % 4;
+            return extractBelowAnchorEmpty(selection, anchorBlockId, anchorPrefabY,
+                    worldX, worldY, worldZ, rotationSteps);
+        } catch (Exception e) {
+            LOGGER.warning("Failed to load prefab '" + prefabName + "' for below-anchor empty: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static List<BlockPlacer.BlockEntry> extractBelowAnchorEmpty(
+            BlockSelection selection, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int rotationSteps) {
+
+        var assetMap = BlockType.getAssetMap();
+
+        int prefabOriginX = selection.getX();
+        int prefabOriginY = selection.getY();
+        int prefabOriginZ = selection.getZ();
+
+        int[] anchorLocal = findAnchorLocal(selection, anchorBlockId, anchorPrefabY,
+                prefabOriginX, prefabOriginY, prefabOriginZ);
+        int anchorLX = anchorLocal[0];
+        int anchorLZ = anchorLocal[1];
+
+        List<BlockPlacer.BlockEntry> result = new ArrayList<>();
+
+        selection.forEachBlock((bx, by, bz, holder) -> {
+            if (holder.filler() != 0) return;
+
+            int ly = (by - prefabOriginY) - anchorPrefabY;
+            if (ly >= 0) return;
+
+            BlockType blockType = assetMap.getAsset(holder.blockId());
+            String id = blockType != null ? blockType.getId() : "Empty";
+            if (!id.equals("Empty") && !id.equals("Editor_Empty")) return;
+
+            int lx = (bx - prefabOriginX) - anchorLX;
+            int lz = (bz - prefabOriginZ) - anchorLZ;
+
+            for (int i = 0; i < rotationSteps; i++) {
+                int tmp = lx;
+                lx = lz;
+                lz = -tmp;
+            }
+
+            result.add(new BlockPlacer.BlockEntry(worldX + lx, worldY + ly, worldZ + lz, "Empty", 0));
+        });
+
+        return result;
+    }
+
     /** Returns the anchor block's local [lx, lz] relative to the selection corner. */
     private static int[] findAnchorLocal(BlockSelection selection, String anchorBlockId, int anchorPrefabY,
                                           int prefabOriginX, int prefabOriginY, int prefabOriginZ) {
         var assetMap = BlockType.getAssetMap();
         int[] found = {0, 0};
         selection.forEachBlock((bx, by, bz, holder) -> {
+            if (holder.filler() != 0) return;
             BlockType bt = assetMap.getAsset(holder.blockId());
             if (bt == null) return;
             if (bt.getId().equals(anchorBlockId) && by - prefabOriginY == anchorPrefabY) {
@@ -105,6 +167,7 @@ public class PrefabLoader {
         int[] found = {0};
         selection.forEachBlock((bx, by, bz, holder) -> {
             if (found[0] != 0) return;
+            if (holder.filler() != 0) return;
             BlockType bt = assetMap.getAsset(holder.blockId());
             if (bt == null) return;
             if (bt.getId().equals(anchorBlockId) && by - selection.getY() == anchorPrefabY) {

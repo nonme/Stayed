@@ -40,9 +40,8 @@ public class BlockBreakHandler extends EntityEventSystem<EntityStore, BreakBlock
                        Store<EntityStore> store, CommandBuffer<EntityStore> commandBuffer,
                        BreakBlockEvent event) {
         String blockId = event.getBlockType().getId();
+        if (!BuildingType.isAnchorBlock(blockId)) return;
         boolean isFoundingStone = BuildingType.FOUNDING_STONE_BLOCK.equals(blockId);
-        boolean isBrazier = BuildingType.BRAZIER_BLOCK.equals(blockId);
-        if (!isFoundingStone && !isBrazier) return;
 
         Vector3i pos = event.getTargetBlock();
         Ref<EntityStore> playerRef = chunk.getReferenceTo(entityIndex);

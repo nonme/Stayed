@@ -300,6 +300,7 @@ public class ResourceBlockPlacer {
     /** Blocks that are placed for free — no player deposit needed. */
     static boolean isFreeBlock(String normalizedId) {
         return normalizedId.startsWith("Plant_")
-                || normalizedId.startsWith("Ingredient_");
+                || normalizedId.startsWith("Ingredient_")
+                || "Soil_Dirt_Tilled".equals(normalizedId);
     }
 }

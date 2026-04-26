@@ -44,11 +44,7 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
 
         String itemId = item.getItemId();
 
-        String buildingType = switch (itemId) {
-            case BuildingType.FOUNDING_STONE_BLOCK -> BuildingType.TOWN_HALL;
-            case BuildingType.BRAZIER_BLOCK -> BuildingType.HOUSE_HUMAN;
-            default -> null;
-        };
+        String buildingType = BuildingType.getBuildingTypeForAnchor(itemId);
         if (buildingType == null) return;
 
         Ref<EntityStore> playerRef = chunk.getReferenceTo(entityIndex);

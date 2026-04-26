@@ -11,21 +11,38 @@ public final class BuildingType {
     public static final String HOUSE_HUMAN = "house_human";
     public static final String HOUSE_KWEEBEC = "house_kweebec";
     public static final String HOUSE_TRORK = "house_trork";
+    public static final String FARM = "farm";
 
     // Anchor block IDs (custom Hearthbound blocks)
     public static final String FOUNDING_STONE_BLOCK = "Hearthbound_Founding_Stone";
     public static final String BRAZIER_BLOCK = "Hearthbound_Brazier";
+    public static final String SCARECROW_BLOCK = "Hearthbound_Scarecrow";
 
     // Ghost preview block (transparent, no collision)
     public static final String GHOST_BLOCK = "Hearthbound_Ghost";
 
     private BuildingType() {}
 
+    /** Returns the building type for the given anchor block ID, or null if not an anchor. */
+    public static String getBuildingTypeForAnchor(String blockId) {
+        return switch (blockId) {
+            case FOUNDING_STONE_BLOCK -> TOWN_HALL;
+            case BRAZIER_BLOCK -> HOUSE_HUMAN;
+            case SCARECROW_BLOCK -> FARM;
+            default -> null;
+        };
+    }
+
+    public static boolean isAnchorBlock(String blockId) {
+        return getBuildingTypeForAnchor(blockId) != null;
+    }
+
     /** Prefab filename without extension, or null if using programmatic generation. */
     public static String getPrefabName(String type) {
         return switch (type) {
             case TOWN_HALL -> "Townhall_lvl1_v1";
             case HOUSE_HUMAN -> "VillagerHouse_lvl1_v1";
+            case FARM -> "Farm_lvl1_v1";
             default -> null;
         };
     }
@@ -38,6 +55,7 @@ public final class BuildingType {
         return switch (type) {
             case TOWN_HALL -> FOUNDING_STONE_BLOCK;
             case HOUSE_HUMAN -> BRAZIER_BLOCK;
+            case FARM -> SCARECROW_BLOCK;
             default -> FOUNDING_STONE_BLOCK;
         };
     }
@@ -52,6 +70,7 @@ public final class BuildingType {
         return switch (type) {
             case TOWN_HALL -> 2;
             case HOUSE_HUMAN -> 1;
+            case FARM -> 2;
             default -> 0;
         };
     }
@@ -73,6 +92,9 @@ public final class BuildingType {
             case HOUSE_HUMAN -> { dx = -1; dz = -3; anchorPrefabRotation = 2; }
             case TOWN_HALL   -> { dx =  0; dz = -4; anchorPrefabRotation = 0; }
             case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
+            // Farm: scarecrow anchor at prefab (0,2,4), gate at (0,1,-4) → dz = -4-4 = -8.
+            // Stand just outside the gate (one block in front) → dz = -9.
+            case FARM        -> { dx =  0; dz = -9; anchorPrefabRotation = 2; }
             default          -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
         }
         int steps = (recordRotation - anchorPrefabRotation + 4) % 4;
@@ -95,6 +117,7 @@ public final class BuildingType {
             case HOUSE_HUMAN -> "Human House";
             case HOUSE_KWEEBEC -> "Kweebec House";
             case HOUSE_TRORK -> "Trork House";
+            case FARM -> "Farm";
             default -> type;
         };
     }

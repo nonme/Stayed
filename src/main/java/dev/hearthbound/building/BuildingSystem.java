@@ -92,26 +92,50 @@ public class BuildingSystem {
         activeBuildPlan = plan;
         activeRotation = rotation;
 
+        // Collect Empty cells that sit below the anchor level and need terrain clearing.
+        List<BlockPlacer.BlockEntry> belowEmpty = loadBelowAnchorEmptyCells(buildingType,
+                anchorX, anchorY, anchorZ, rotation);
+
         // Snapshot every cell we're about to overwrite so we can restore terrain when the ghost
         // is cleared (including after a server restart — the snapshot is persisted on VillageData).
         ghostSnapshot = new HashMap<>();
         int placed = 0;
         int yMin = Integer.MAX_VALUE, yMax = Integer.MIN_VALUE;
+
+        // Snapshot + clear below-anchor Empty cells first.
+        for (BlockPlacer.BlockEntry entry : belowEmpty) {
+            var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
+            String existingId = (existing != null) ? existing.getId() : "Empty";
+            // Only clear if something is actually there — no point touching truly empty air.
+            if (existingId.equals("Empty") || existingId.equals("Editor_Empty")) continue;
+            ghostSnapshot.put(entry.x() + "," + entry.y() + "," + entry.z(), existingId);
+            BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
+            placed++;
+            if (entry.y() < yMin) yMin = entry.y();
+            if (entry.y() > yMax) yMax = entry.y();
+        }
+
         for (BlockPlacer.BlockEntry entry : plan) {
             if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
             var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
             String existingId = (existing != null) ? existing.getId() : "Empty";
             ghostSnapshot.put(entry.x() + "," + entry.y() + "," + entry.z(), existingId);
-            String ghostId = toGhostBlock(entry.blockType());
-            BlockPlacer.placeBlock(world, new BlockPlacer.BlockEntry(
-                    entry.x(), entry.y(), entry.z(), ghostId, entry.rotation()));
+            if (isPlantBlock(entry.blockType())) {
+                BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
+            } else {
+                String ghostId = toGhostBlock(entry.blockType());
+                BlockPlacer.placeBlock(world, new BlockPlacer.BlockEntry(
+                        entry.x(), entry.y(), entry.z(), ghostId, entry.rotation()));
+            }
             placed++;
             if (entry.y() < yMin) yMin = entry.y();
             if (entry.y() > yMax) yMax = entry.y();
         }
         // Second pass: connected-block update so fences/walls/roofs orient against neighbors.
+        // Plant cells were cleared to Empty — skip them here.
         for (BlockPlacer.BlockEntry entry : plan) {
             if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
+            if (isPlantBlock(entry.blockType())) continue;
             String ghostId = toGhostBlock(entry.blockType());
             BlockPlacer.updateConnectedBlock(world, entry.x(), entry.y(), entry.z(), ghostId, entry.rotation());
         }
@@ -171,7 +195,10 @@ public class BuildingSystem {
             int x = xyz[0], y = xyz[1], z = xyz[2];
             String original = e.getValue();
             var bt = world.getBlockType(x, y, z);
-            if (bt != null && isGhostBlockId(bt.getId())) {
+            String currentId = (bt != null) ? bt.getId() : "Empty";
+            boolean isEmptyNow = currentId.equals("Empty") || currentId.equals("Editor_Empty");
+            boolean hadRealBlock = original != null && !original.equals("Empty") && !original.equals("Editor_Empty");
+            if (isGhostBlockId(currentId) || (isEmptyNow && hadRealBlock)) {
                 if (original == null || original.equals("Empty") || original.equals("Editor_Empty")) {
                     BlockPlacer.silentRemoveBlock(world, x, y, z);
                 } else {
@@ -522,7 +549,13 @@ public class BuildingSystem {
                 LOGGER.warning("replaceWithPrefab: anchor block not found in rotated prefab, skipping final swap");
                 return;
             }
-            rotated.setAnchor(anchorLocal[0], anchorLocal[1], anchorLocal[2]);
+            LOGGER.info("replaceWithPrefab DEBUG:"
+                    + " selection.xyz=(" + rotated.getX() + "," + rotated.getY() + "," + rotated.getZ() + ")"
+                    + " anchorBlock_abs=(" + anchorLocal[0] + "," + anchorLocal[1] + "," + anchorLocal[2] + ")"
+                    + " anchorBlock_rel=(" + (anchorLocal[0]-rotated.getX()) + "," + (anchorLocal[1]-rotated.getY()) + "," + (anchorLocal[2]-rotated.getZ()) + ")"
+                    + " worldTarget=(" + record.getPosX() + "," + record.getPosY() + "," + record.getPosZ() + ")"
+                    + " angle=" + angleDeg);
+            rotated.setAnchorAtWorldPos(anchorLocal[0], anchorLocal[1], anchorLocal[2]);
 
             com.hypixel.hytale.math.vector.Vector3i stonePos =
                     new com.hypixel.hytale.math.vector.Vector3i(
@@ -542,6 +575,7 @@ public class BuildingSystem {
         int[] found = {0};
         selection.forEachBlock((bx, by, bz, holder) -> {
             if (found[0] != 0) return;
+            if (holder.filler() != 0) return;
             var bt = assetMap.getAsset(holder.blockId());
             if (bt == null) return;
             if (bt.getId().equals(anchorBlockId) && by - selection.getY() == anchorPrefabY) {
@@ -559,6 +593,7 @@ public class BuildingSystem {
         int[] found = {Integer.MIN_VALUE, 0, 0};
         selection.forEachBlock((bx, by, bz, holder) -> {
             if (found[0] != Integer.MIN_VALUE) return;
+            if (holder.filler() != 0) return;
             var bt = assetMap.getAsset(holder.blockId());
             if (bt == null) return;
             // Match by id plus Y offset — multiple statues at different heights would otherwise
@@ -580,7 +615,12 @@ public class BuildingSystem {
     private static boolean isDecorBlock(String blockType) {
         String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
         if (base.equals("Furniture_Village_Planter")) return false;
-        return base.startsWith("Deco_") || base.startsWith("Furniture_") || base.startsWith("Plant_");
+        return base.startsWith("Deco_") || base.startsWith("Furniture_");
+    }
+
+    private static boolean isPlantBlock(String blockType) {
+        String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
+        return base.startsWith("Plant_");
     }
 
     /** Maps a real block ID to its no-collision ghost equivalent based on shape. */
@@ -618,6 +658,16 @@ public class BuildingSystem {
     }
 
     // ========== Build Plan ==========
+
+    private List<BlockPlacer.BlockEntry> loadBelowAnchorEmptyCells(
+            String type, int anchorX, int anchorY, int anchorZ, int rotation) {
+        String prefabName = BuildingType.getPrefabName(type);
+        if (prefabName == null) return List.of();
+        String anchorBlockId = BuildingType.getAnchorBlockId(type);
+        int anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+        return PrefabLoader.loadBelowAnchorEmpty(prefabName, anchorBlockId, anchorPrefabY,
+                anchorX, anchorY, anchorZ, rotation);
+    }
 
     /**
      * Loads the build plan for a building type. Uses prefab if one is defined,

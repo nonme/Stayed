@@ -51,6 +51,8 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("RescueQuestStarted", Codec.BOOLEAN), VillageData::setRescueQuestStarted, VillageData::isRescueQuestStarted).add()
             .append(new KeyedCodec<>("HouseBrazierGiven", Codec.BOOLEAN), VillageData::setHouseBrazierGiven, VillageData::isHouseBrazierGiven).add()
             .append(new KeyedCodec<>("HouseQuestOffered", Codec.BOOLEAN), VillageData::setHouseQuestOffered, VillageData::isHouseQuestOffered).add()
+            .append(new KeyedCodec<>("FarmScarecrowGiven", Codec.BOOLEAN), VillageData::setFarmScarecrowGiven, VillageData::isFarmScarecrowGiven).add()
+            .append(new KeyedCodec<>("FarmQuestOffered", Codec.BOOLEAN), VillageData::setFarmQuestOffered, VillageData::isFarmQuestOffered).add()
             .append(new KeyedCodec<>("PendingGhostSnapshot", GHOST_SNAPSHOT_CODEC),
                     VillageData::setPendingGhostSnapshot, VillageData::getPendingGhostSnapshotForCodec).add()
             .build();
@@ -86,6 +88,8 @@ public class VillageData implements Component<EntityStore> {
     private boolean rescueQuestStarted = false;
     private boolean houseBrazierGiven = false;
     private boolean houseQuestOffered = false;
+    private boolean farmScarecrowGiven = false;
+    private boolean farmQuestOffered = false;
     /**
      * Snapshot of blocks overwritten by the active ghost preview, keyed by "x,y,z" → original
      * block id ("Empty" for empty cells). Persisted so a server restart doesn't orphan the
@@ -182,6 +186,12 @@ public class VillageData implements Component<EntityStore> {
     public boolean isHouseQuestOffered() { return houseQuestOffered; }
     public void setHouseQuestOffered(boolean offered) { this.houseQuestOffered = offered; }
 
+    // --- Farm quest ---
+    public boolean isFarmScarecrowGiven() { return farmScarecrowGiven; }
+    public void setFarmScarecrowGiven(boolean given) { this.farmScarecrowGiven = given; }
+    public boolean isFarmQuestOffered() { return farmQuestOffered; }
+    public void setFarmQuestOffered(boolean offered) { this.farmQuestOffered = offered; }
+
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
     public Map<String, String> getPendingGhostSnapshot() { return pendingGhostSnapshot; }
     public void setPendingGhostSnapshot(Map<String, String> snapshot) {
@@ -221,6 +231,8 @@ public class VillageData implements Component<EntityStore> {
         copy.rescueQuestStarted = this.rescueQuestStarted;
         copy.houseBrazierGiven = this.houseBrazierGiven;
         copy.houseQuestOffered = this.houseQuestOffered;
+        copy.farmScarecrowGiven = this.farmScarecrowGiven;
+        copy.farmQuestOffered = this.farmQuestOffered;
         copy.pendingGhostSnapshot = new HashMap<>(this.pendingGhostSnapshot);
         return copy;
     }

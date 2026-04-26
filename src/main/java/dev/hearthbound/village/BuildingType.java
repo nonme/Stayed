@@ -17,6 +17,7 @@ public final class BuildingType {
     public static final String FOUNDING_STONE_BLOCK = "Hearthbound_Founding_Stone";
     public static final String BRAZIER_BLOCK = "Hearthbound_Brazier";
     public static final String SCARECROW_BLOCK = "Hearthbound_Scarecrow";
+    public static final String COUNTER_BLOCK = "Hearthbound_Counter";
 
     // Ghost preview block (transparent, no collision)
     public static final String GHOST_BLOCK = "Hearthbound_Ghost";
@@ -29,6 +30,7 @@ public final class BuildingType {
             case FOUNDING_STONE_BLOCK -> TOWN_HALL;
             case BRAZIER_BLOCK -> HOUSE_HUMAN;
             case SCARECROW_BLOCK -> FARM;
+            case COUNTER_BLOCK -> WAREHOUSE;
             default -> null;
         };
     }
@@ -43,6 +45,7 @@ public final class BuildingType {
             case TOWN_HALL -> "Townhall_lvl1_v1";
             case HOUSE_HUMAN -> "VillagerHouse_lvl1_v1";
             case FARM -> "Farm_lvl1_v1";
+            case WAREHOUSE -> "Warehouse_lvl1_v1";
             default -> null;
         };
     }
@@ -56,6 +59,7 @@ public final class BuildingType {
             case TOWN_HALL -> FOUNDING_STONE_BLOCK;
             case HOUSE_HUMAN -> BRAZIER_BLOCK;
             case FARM -> SCARECROW_BLOCK;
+            case WAREHOUSE -> COUNTER_BLOCK;
             default -> FOUNDING_STONE_BLOCK;
         };
     }
@@ -71,6 +75,7 @@ public final class BuildingType {
             case TOWN_HALL -> 2;
             case HOUSE_HUMAN -> 1;
             case FARM -> 2;
+            case WAREHOUSE -> 1;
             default -> 0;
         };
     }

@@ -57,12 +57,15 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String QUEST_ACTIVE        = "quest_active";
     private static final String QUEST_HOUSE         = "quest_house";
     private static final String QUEST_HOUSE_OFFER   = "quest_house_offer";
-    private static final String QUEST_FARM          = "quest_farm";
-    private static final String QUEST_FARM_OFFER    = "quest_farm_offer";
-    private static final String BUILD_MENU          = "build_menu";
+    private static final String QUEST_FARM              = "quest_farm";
+    private static final String QUEST_FARM_OFFER        = "quest_farm_offer";
+    private static final String QUEST_WAREHOUSE         = "quest_warehouse";
+    private static final String QUEST_WAREHOUSE_OFFER   = "quest_warehouse_offer";
+    private static final String BUILD_MENU              = "build_menu";
 
     private static final String BRAZIER_ITEM_ID   = "Hearthbound_Brazier";
     private static final String SCARECROW_ITEM_ID = "Hearthbound_Scarecrow";
+    private static final String COUNTER_ITEM_ID   = "Hearthbound_Counter";
 
     private String screen;
     private String playerName;
@@ -78,7 +81,10 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean houseBrazierGiven;
     private boolean farmQuestOffered;
     private boolean farmScarecrowGiven;
+    private boolean warehouseQuestOffered;
+    private boolean warehouseCounterGiven;
     private boolean houseBuilt;
+    private boolean farmBuilt;
     private int villagerCount;
 
     // Cached for quest launch (captured at build time)
@@ -111,10 +117,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         rescueQuestStarted = village != null && village.isRescueQuestStarted();
         houseQuestOffered  = village != null && village.isHouseQuestOffered();
         houseBrazierGiven  = village != null && village.isHouseBrazierGiven();
-        farmQuestOffered   = village != null && village.isFarmQuestOffered();
-        farmScarecrowGiven = village != null && village.isFarmScarecrowGiven();
-        villagerCount      = village != null ? village.getVillagerCount() : 0;
-        houseBuilt         = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.HOUSE_HUMAN) != null;
+        farmQuestOffered        = village != null && village.isFarmQuestOffered();
+        farmScarecrowGiven      = village != null && village.isFarmScarecrowGiven();
+        warehouseQuestOffered   = village != null && village.isWarehouseQuestOffered();
+        warehouseCounterGiven   = village != null && village.isWarehouseCounterGiven();
+        villagerCount           = village != null ? village.getVillagerCount() : 0;
+        houseBuilt              = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.HOUSE_HUMAN) != null;
+        farmBuilt               = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.FARM) != null;
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
                 .countItemStacks(s -> FOUNDING_STONE_ID.equals(s.getItemId())) > 0;
 
@@ -134,6 +143,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 screen = QUEST_HOUSE;
             } else if (houseBuilt && !farmQuestOffered) {
                 screen = QUEST_FARM;
+            } else if (farmBuilt && !warehouseQuestOffered) {
+                screen = QUEST_WAREHOUSE;
             } else {
                 screen = MENU;
             }
@@ -241,7 +252,14 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "A house for a settler.");
                 b.set("#BtnChoice1.Visible", true);
-                if (houseBuilt) {
+                if (houseBuilt && farmBuilt) {
+                    b.set("#BtnChoice2.Text", "A farm for food production.");
+                    b.set("#BtnChoice2.Visible", true);
+                    b.set("#BtnChoice3.Text", "A warehouse for storage.");
+                    b.set("#BtnChoice3.Visible", true);
+                    b.set("#BtnChoice4.Text", "Never mind.");
+                    b.set("#BtnChoice4.Visible", true);
+                } else if (houseBuilt) {
                     b.set("#BtnChoice2.Text", "A farm for food production.");
                     b.set("#BtnChoice2.Visible", true);
                     b.set("#BtnChoice3.Text", "Never mind.");
@@ -250,6 +268,29 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     b.set("#BtnChoice2.Text", "Never mind.");
                     b.set("#BtnChoice2.Visible", true);
                 }
+            }
+            case QUEST_WAREHOUSE -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "The farm is producing now. Good.\n" +
+                        "But food sitting on the ground or scattered across chests is food that rots, " +
+                        "gets stolen, or simply gets lost.\n" +
+                        "Your farmer needs somewhere to put it. We should build a warehouse.");
+                b.set("#BtnPrimary.Text", "What will that take?");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_WAREHOUSE_OFFER -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Same process as before — pick a spot near the farm if you can.\n" +
+                        "Place the counter to mark where the front desk goes. " +
+                        "That is where I will anchor the building. " +
+                        "Use it to manage construction once the site is set.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "Got it.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not now.");
+                b.set("#BtnChoice2.Visible", true);
             }
             case ANSWER_ELF -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -462,6 +503,27 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         next = MENU;
                     }
                 } else if ("choice3".equals(action)) {
+                    if (houseBuilt && farmBuilt) {
+                        giveCounter(ref, store);
+                        close();
+                        return;
+                    } else {
+                        next = MENU;
+                    }
+                } else if ("choice4".equals(action)) {
+                    next = MENU;
+                }
+            }
+
+            case QUEST_WAREHOUSE -> { if ("primary".equals(action)) next = QUEST_WAREHOUSE_OFFER; }
+
+            case QUEST_WAREHOUSE_OFFER -> {
+                if ("choice1".equals(action)) {
+                    giveCounter(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    markWarehouseQuestOffered(ref, store);
                     next = MENU;
                 }
             }
@@ -657,6 +719,35 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         farmQuestOffered = true;
         VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
         village.setFarmQuestOffered(true);
+        VillageManager.get().save(store, ref, village);
+    }
+
+    private void giveCounter(Ref<EntityStore> ref, Store<EntityStore> store) {
+        try {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) return;
+            var tx = player.getInventory().getCombinedHotbarFirst()
+                    .addItemStack(new ItemStack(COUNTER_ITEM_ID, 1));
+            if (tx.succeeded()) {
+                warehouseCounterGiven = true;
+                warehouseQuestOffered = true;
+                VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+                village.setWarehouseCounterGiven(true);
+                village.setWarehouseQuestOffered(true);
+                VillageManager.get().save(store, ref, village);
+                LOGGER.info("Gave Warehouse Counter to " + playerName);
+            } else {
+                LOGGER.warning("Could not give Warehouse Counter to " + playerName + " — inventory full?");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to give Warehouse Counter: " + e.getMessage());
+        }
+    }
+
+    private void markWarehouseQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
+        warehouseQuestOffered = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setWarehouseQuestOffered(true);
         VillageManager.get().save(store, ref, village);
     }
 

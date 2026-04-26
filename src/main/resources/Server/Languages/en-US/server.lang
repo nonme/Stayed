@@ -2,11 +2,14 @@
 interactionHints.talk = Press [{key}] to talk
 interactionHints.manage_house = Press [{key}] to manage
 interactionHints.manage_farm = Press [{key}] to manage farm
+interactionHints.manage_warehouse = Press [{key}] to manage warehouse
 
 # === Hearthbound items ===
 items.Hearthbound_Founding_Stone.name = Founding Stone
 items.Hearthbound_Brazier.name = Hearth Brazier
 items.Hearthbound_Scarecrow.name = Farm Scarecrow
+items.Hearthbound_Counter.name = Warehouse Counter
+items.Hearthbound_Storage_Chest.name = Village Storage Chest
 items.Hearthbound_Ghost.name = Ghost Block
 
 # === Hearthbound NPCs ===

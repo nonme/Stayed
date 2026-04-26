@@ -1,0 +1,55 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Counter.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Furniture_Village_Counter.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Decorative_Sets/Village/Counter.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Weight": 1,
+        "Texture": "Blocks/Decorative_Sets/Village/Counter_Texture.png"
+      }
+    ],
+    "HitboxType": "Desk",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Hearthbound_Counter"
+      }
+    },
+    "BlockParticleSetId": "Wood",
+    "BlockSoundSetId": "Wood",
+    "Support": {
+      "Down": [
+        {
+          "FaceType": "Full"
+        }
+      ]
+    },
+    "Supporting": {
+      "Up": [
+        {}
+      ]
+    },
+    "InteractionHint": "server.interactionHints.manage_warehouse",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Hearthbound"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

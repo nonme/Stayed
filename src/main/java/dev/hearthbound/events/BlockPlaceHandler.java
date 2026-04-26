@@ -8,6 +8,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.EntityEventSystem;
 import com.hypixel.hytale.math.vector.Vector3i;
+import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.ecs.PlaceBlockEvent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
@@ -59,6 +60,20 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
         // Prefab authoring mode: let the player drop anchor blocks freely.
         if (BuildingSystem.get().isPrefabAuthoring(player.getUuid())) {
             return;
+        }
+
+        // Brazier anchor cannot be placed on chunk borders (local x/z == 0 or 31) —
+        // the ghost preview system breaks when the building footprint crosses chunk boundaries.
+        if (BuildingType.BRAZIER_BLOCK.equals(itemId)) {
+            Vector3i pos0 = event.getTargetBlock();
+            int lx = Math.floorMod(pos0.x, 32);
+            int lz = Math.floorMod(pos0.z, 32);
+            if (lx == 0 || lx == 31 || lz == 0 || lz == 31) {
+                event.setCancelled(true);
+                player.sendMessage(Message.raw(
+                        "Due to technical limitations, you can't place this anchor block on chunk borders. Move a block or two away."));
+                return;
+            }
         }
 
         if (BuildingType.TOWN_HALL.equals(buildingType)) {

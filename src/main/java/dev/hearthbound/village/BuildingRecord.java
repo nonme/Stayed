@@ -18,6 +18,7 @@ public class BuildingRecord {
             .append(new KeyedCodec<>("PosX", Codec.INTEGER), BuildingRecord::setPosX, BuildingRecord::getPosX).add()
             .append(new KeyedCodec<>("PosY", Codec.INTEGER), BuildingRecord::setPosY, BuildingRecord::getPosY).add()
             .append(new KeyedCodec<>("PosZ", Codec.INTEGER), BuildingRecord::setPosZ, BuildingRecord::getPosZ).add()
+            .append(new KeyedCodec<>("Rotation", Codec.INTEGER), BuildingRecord::setRotation, BuildingRecord::getRotation).add()
             .append(new KeyedCodec<>("BuildProgress", Codec.INTEGER), BuildingRecord::setBuildProgress, BuildingRecord::getBuildProgress).add()
             .append(new KeyedCodec<>("Completed", Codec.BOOLEAN), BuildingRecord::setCompleted, BuildingRecord::isCompleted).add()
             .append(new KeyedCodec<>("AssignedVillager", Codec.UUID_STRING), BuildingRecord::setAssignedVillagerId, BuildingRecord::getAssignedVillagerId).add()
@@ -26,6 +27,7 @@ public class BuildingRecord {
 
     private String type = "";
     private int posX, posY, posZ;
+    private int rotation = 0;
     private int buildProgress = 0;
     private boolean completed = false;
     private java.util.UUID assignedVillagerId;
@@ -49,6 +51,9 @@ public class BuildingRecord {
     public void setPosY(int posY) { this.posY = posY; }
     public int getPosZ() { return posZ; }
     public void setPosZ(int posZ) { this.posZ = posZ; }
+
+    public int getRotation() { return rotation; }
+    public void setRotation(int rotation) { this.rotation = rotation; }
 
     public Vector3i getPosition() { return new Vector3i(posX, posY, posZ); }
 

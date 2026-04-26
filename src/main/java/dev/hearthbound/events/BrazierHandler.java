@@ -14,6 +14,7 @@ import com.hypixel.hytale.server.core.event.events.ecs.UseBlockEvent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.ui.VillagerHousePage;
 import dev.hearthbound.village.BuildingType;
 
 /**
@@ -52,6 +53,10 @@ public class BrazierHandler extends EntityEventSystem<EntityStore, UseBlockEvent
 
         event.setCancelled(true);
 
-        // TODO: open house management UI (VillagerHousePage) once implemented
+        World world = player.getWorld();
+        PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
+
+        VillagerHousePage page = new VillagerHousePage(playerRef, ref, world, pos.x, pos.y, pos.z);
+        player.getPageManager().openCustomPage(ref, store, page);
     }
 }

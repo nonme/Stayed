@@ -370,7 +370,7 @@ public class ElfSage {
         skin.faceAccessory   = null;
         skin.earAccessory    = null;
 
-        LOGGER.info("Sage skin built: hair=" + skin.haircut + " body=" + skin.bodyCharacteristic
+        LOGGER.fine("Sage skin built: hair=" + skin.haircut + " body=" + skin.bodyCharacteristic
                 + " eyes=" + skin.eyes + " overtop=" + skin.overtop);
         return skin;
     }
@@ -455,7 +455,7 @@ public class ElfSage {
                 LOGGER.warning("Could not fix PersistentModel after skin apply: " + pmEx.getMessage());
             }
 
-            LOGGER.info("Applied sage appearance to elf NPC");
+            LOGGER.fine("Applied sage appearance to elf NPC");
         } catch (Exception e) {
             LOGGER.warning("Failed to apply sage appearance: " + e.getMessage());
             e.printStackTrace();

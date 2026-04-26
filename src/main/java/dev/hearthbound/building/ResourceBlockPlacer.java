@@ -125,15 +125,14 @@ public class ResourceBlockPlacer {
             String normalizedType = normalizeBlockId(entry.blockType());
             boolean fast = dev.hearthbound.building.BuildingSystem.get() != null
                     && dev.hearthbound.building.BuildingSystem.get().isFastBuild();
-            if (consumeResource(normalizedType)) {
+            boolean free = isFreeBlock(normalizedType);
+            if (free || consumeResource(normalizedType)) {
                 BlockPlacer.placeBlock(world, entry);
                 currentIndex++;
                 if (paused) {
                     paused = false;
                     LOGGER.info("ResourceBlockPlacer resumed at block " + currentIndex);
                 }
-                // Longer pause right after switching to a new material; it reads as the elf
-                // "picking up the next tool" rather than a metronomic placement tempo.
                 nextDelay = fast ? FAST_DELAY_MS : (switchingMaterial
                         ? randomInRange(SWITCH_DELAY_MIN_MS, SWITCH_DELAY_MAX_MS)
                         : randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
@@ -284,7 +283,10 @@ public class ResourceBlockPlacer {
     public java.util.Map<String, Integer> getRemainingResources() {
         java.util.Map<String, Integer> remaining = new java.util.LinkedHashMap<>();
         for (int i = currentIndex; i < blocks.size(); i++) {
-            remaining.merge(normalizeBlockId(blocks.get(i).blockType()), 1, Integer::sum);
+            String id = normalizeBlockId(blocks.get(i).blockType());
+            if (!isFreeBlock(id)) {
+                remaining.merge(id, 1, Integer::sum);
+            }
         }
         return remaining;
     }
@@ -293,5 +295,11 @@ public class ResourceBlockPlacer {
         String b = blockType.startsWith("*") ? blockType.substring(1) : blockType;
         int idx = b.indexOf("_State_Definitions_");
         return idx != -1 ? b.substring(0, idx) : b;
+    }
+
+    /** Blocks that are placed for free — no player deposit needed. */
+    static boolean isFreeBlock(String normalizedId) {
+        return normalizedId.startsWith("Plant_")
+                || normalizedId.startsWith("Ingredient_");
     }
 }

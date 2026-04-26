@@ -1,5 +1,12 @@
 package dev.hearthbound.building;
 
+import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
@@ -8,18 +15,12 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.connectedblocks.ConnectedBlocksUtil;
 
-import java.util.List;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 public class BlockPlacer {
 
     private static final Logger LOGGER = Logger.getLogger(BlockPlacer.class.getName());
 
     public record BlockEntry(int x, int y, int z, String blockType, int rotation) {
+
         public BlockEntry(int x, int y, int z, String blockType) {
             this(x, y, z, blockType, 0);
         }
@@ -48,7 +49,9 @@ public class BlockPlacer {
         task = scheduler.scheduleAtFixedRate(() -> {
             try {
                 if (currentIndex >= blocks.size()) {
-                    if (task != null) task.cancel(false);
+                    if (task != null) {
+                        task.cancel(false);
+                    }
                     if (onComplete != null) {
                         world.execute(onComplete);
                     }
@@ -59,7 +62,9 @@ public class BlockPlacer {
                 currentIndex++;
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "BlockPlacer tick failed at index " + currentIndex, e);
-                if (task != null) task.cancel(false);
+                if (task != null) {
+                    task.cancel(false);
+                }
             }
         }, 0, delayMs, TimeUnit.MILLISECONDS);
     }
@@ -110,10 +115,14 @@ public class BlockPlacer {
 
     public static void updateConnectedBlock(World world, int x, int y, int z, String blockTypeKey, int rotation) {
         WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(x, z));
-        if (chunk == null) return;
+        if (chunk == null) {
+            return;
+        }
         var assetMap = BlockType.getAssetMap();
         int blockId = assetMap.getIndex(blockTypeKey);
-        if (blockId == Integer.MIN_VALUE) return;
+        if (blockId == Integer.MIN_VALUE) {
+            return;
+        }
         ConnectedBlocksUtil.setConnectedBlockAndNotifyNeighbors(
                 blockId, RotationTuple.get(rotation), Vector3i.ZERO,
                 new Vector3i(x, y, z), chunk, chunk.getBlockChunk());
@@ -136,6 +145,8 @@ public class BlockPlacer {
     }
 
     public void cancel() {
-        if (task != null) task.cancel(false);
+        if (task != null) {
+            task.cancel(false);
+        }
     }
 }

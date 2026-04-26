@@ -271,8 +271,13 @@ public class PrefabLoader {
     private static int buildPass(String blockId) {
         String stripped = blockId.startsWith("*") ? blockId.substring(1) : blockId;
         if (stripped.contains("Door")) return 0; // doors are part of the shell
+        if (stripped.equals("Furniture_Village_Planter")) return 0; // exception: structural planter
         if (stripped.startsWith("Furniture_")) return 1;
         if (stripped.startsWith("Deco_")) return 1;
+        if (stripped.startsWith("Bench_")) return 1;
+        if (stripped.startsWith("Container_")) return 1;
+        if (stripped.startsWith("Plant_")) return 1;
+        if (stripped.startsWith("Ingredient_")) return 1;
         return 0;
     }
 

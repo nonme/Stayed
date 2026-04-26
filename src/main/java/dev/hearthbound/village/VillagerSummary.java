@@ -4,6 +4,8 @@ import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 
+import java.util.UUID;
+
 /**
  * Persistent summary of a villager stored inside VillageData.
  * Kept here so the Town Hall UI can list all residents even when their NPC chunks are unloaded.
@@ -16,12 +18,14 @@ public class VillagerSummary {
                     .append(new KeyedCodec<>("LastName", Codec.STRING), VillagerSummary::setLastName, VillagerSummary::getLastName).add()
                     .append(new KeyedCodec<>("Race", Codec.STRING), VillagerSummary::setRace, VillagerSummary::getRace).add()
                     .append(new KeyedCodec<>("Profession", Codec.STRING), VillagerSummary::setProfession, VillagerSummary::getProfession).add()
+                    .append(new KeyedCodec<>("VillagerUuid", Codec.UUID_STRING), VillagerSummary::setVillagerUuid, VillagerSummary::getVillagerUuid).add()
                     .build();
 
     private String firstName = "";
     private String lastName = "";
     private String race = VillagerData.RACE_HUMAN;
     private String profession = VillagerData.PROF_NONE;
+    private UUID villagerUuid;
 
     public VillagerSummary() {}
 
@@ -43,6 +47,9 @@ public class VillagerSummary {
 
     public String getProfession() { return profession; }
     public void setProfession(String profession) { this.profession = profession; }
+
+    public UUID getVillagerUuid() { return villagerUuid; }
+    public void setVillagerUuid(UUID villagerUuid) { this.villagerUuid = villagerUuid; }
 
     public String getFullName() {
         if (firstName.isEmpty() && lastName.isEmpty()) return "Unknown";

@@ -145,9 +145,12 @@ public class VillageTickHandler {
 
             // Save village data immediately — before the deferred moveTo
             VillagerData villagerData = store.getComponent(followerRef, VillagerData.getComponentType());
-            village.addVillager(villagerData != null
+            UUID followerUuid = NpcManager.extractUuid(store, followerRef);
+            VillagerSummary summary = villagerData != null
                     ? new VillagerSummary(villagerData)
-                    : new VillagerSummary());
+                    : new VillagerSummary();
+            summary.setVillagerUuid(followerUuid);
+            village.addVillager(summary);
             VillageManager.get().save(store, playerRef, village);
 
             LOGGER.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");
@@ -156,7 +159,6 @@ public class VillageTickHandler {
             // - if the villager is far from the village, teleport them next to the player
             //   (player just returned, so they're standing in open space — safe to land near)
             // - always update leashPoint to the founding stone so WanderInCircle stays in village
-            UUID followerUuid = NpcManager.extractUuid(store, followerRef);
             double leashX = village.getFoundingStoneX() + 0.5;
             double leashY = village.getFoundingStoneY() + 0.1;
             double leashZ = village.getFoundingStoneZ() + 0.5;

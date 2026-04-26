@@ -234,7 +234,7 @@ public final class NpcRegistry {
                     if (ref == null || !ref.isValid()) continue; // chunk not loaded yet
 
                     // Entity is in an active chunk — restore it.
-                    LOGGER.info("NpcRegistry: reconcile restoring " + record.roleName
+                    LOGGER.fine("NpcRegistry: reconcile restoring " + record.roleName
                             + " uuid=" + record.entityUuid);
                     applyRestoreAndUpdateChunk(ref, w, record);
                 }

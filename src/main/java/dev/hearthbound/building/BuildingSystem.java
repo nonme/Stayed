@@ -8,13 +8,11 @@ import com.hypixel.hytale.server.core.entity.Entity;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.npc.ElfSage;
-import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +95,8 @@ public class BuildingSystem {
         // Snapshot every cell we're about to overwrite so we can restore terrain when the ghost
         // is cleared (including after a server restart — the snapshot is persisted on VillageData).
         ghostSnapshot = new HashMap<>();
+        int placed = 0;
+        int yMin = Integer.MAX_VALUE, yMax = Integer.MIN_VALUE;
         for (BlockPlacer.BlockEntry entry : plan) {
             if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
             var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
@@ -105,6 +105,9 @@ public class BuildingSystem {
             String ghostId = toGhostBlock(entry.blockType());
             BlockPlacer.placeBlock(world, new BlockPlacer.BlockEntry(
                     entry.x(), entry.y(), entry.z(), ghostId, entry.rotation()));
+            placed++;
+            if (entry.y() < yMin) yMin = entry.y();
+            if (entry.y() > yMax) yMax = entry.y();
         }
         // Second pass: connected-block update so fences/walls/roofs orient against neighbors.
         for (BlockPlacer.BlockEntry entry : plan) {
@@ -120,15 +123,10 @@ public class BuildingSystem {
             VillageManager.get().save(store, playerRef, village);
         }
 
-        LOGGER.info("Ghost preview shown for " + buildingType +
-                " rotation=" + rotation + " (" + plan.size() + " blocks)");
-        // Diagnostic: log door positions relative to anchor so we can see where ghost put them
-        for (BlockPlacer.BlockEntry entry : plan) {
-            if (isDoorBlock(entry.blockType())) {
-                LOGGER.info("  DOOR in plan: dx=" + (entry.x() - anchorX) +
-                        " dz=" + (entry.z() - anchorZ) + " rotation=" + entry.rotation());
-            }
-        }
+        LOGGER.info("[Ghost] showGhostPreview: type=" + buildingType + " rotation=" + rotation
+                + " plan=" + plan.size() + " placed=" + placed
+                + " Y=[" + yMin + ".." + yMax + "]"
+                + " anchor=(" + anchorX + "," + anchorY + "," + anchorZ + ")");
         return true;
     }
 
@@ -147,15 +145,26 @@ public class BuildingSystem {
      * persisted snapshot.
      */
     public void clearGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
+        String caller = new Throwable().getStackTrace().length > 1
+                ? new Throwable().getStackTrace()[1].toString() : "unknown";
+        LOGGER.info("[Ghost] clearGhostPreview called from: " + caller
+                + " | inMemorySnapshot=" + ghostSnapshot.size());
+
         Map<String, String> snapshot = ghostSnapshot;
         if (snapshot.isEmpty() && store != null && playerRef != null) {
             VillageData village = VillageManager.get().getVillageData(store, playerRef);
             if (village != null) {
                 snapshot = village.getPendingGhostSnapshot();
+                LOGGER.info("[Ghost] using persisted snapshot, size=" + snapshot.size());
             }
         }
 
         int restored = 0;
+        int skipped = 0;
+        // Count distinct block IDs found at skipped positions, and Y range of each
+        java.util.Map<String, Integer> skippedByBlock = new java.util.TreeMap<>();
+        java.util.Map<String, Integer> skippedByBlockMinY = new java.util.TreeMap<>();
+        java.util.Map<String, Integer> skippedByBlockMaxY = new java.util.TreeMap<>();
         for (Map.Entry<String, String> e : snapshot.entrySet()) {
             int[] xyz = parseCoordKey(e.getKey());
             if (xyz == null) continue;
@@ -169,6 +178,12 @@ public class BuildingSystem {
                     world.setBlock(x, y, z, original);
                 }
                 restored++;
+            } else {
+                String foundId = (bt != null) ? bt.getId() : "null";
+                skippedByBlock.merge(foundId, 1, Integer::sum);
+                skippedByBlockMinY.merge(foundId, y, Math::min);
+                skippedByBlockMaxY.merge(foundId, y, Math::max);
+                skipped++;
             }
         }
         activeBuildPlan = null;
@@ -180,7 +195,16 @@ public class BuildingSystem {
                 VillageManager.get().save(store, playerRef, village);
             }
         }
-        LOGGER.info("Ghost preview cleared (" + restored + " cells restored)");
+        LOGGER.info("[Ghost] clearGhostPreview done: restored=" + restored + " skipped=" + skipped);
+        if (!skippedByBlock.isEmpty()) {
+            StringBuilder sb = new StringBuilder("[Ghost] skipped blocks (found at those coords): ");
+            for (Map.Entry<String, Integer> entry : skippedByBlock.entrySet()) {
+                sb.append(entry.getKey()).append("×").append(entry.getValue())
+                  .append(" Y=[").append(skippedByBlockMinY.get(entry.getKey()))
+                  .append("..").append(skippedByBlockMaxY.get(entry.getKey())).append("] ");
+            }
+            LOGGER.info(sb.toString());
+        }
     }
 
     private static int[] parseCoordKey(String key) {
@@ -201,6 +225,10 @@ public class BuildingSystem {
      * can re-place the Founding Stone without leftover phantom blocks.
      */
     public void clearOrphanedGhost(World world, int cx, int cy, int cz, int radius) {
+        String caller = new Throwable().getStackTrace().length > 1
+                ? new Throwable().getStackTrace()[1].toString() : "unknown";
+        LOGGER.info("[Ghost] clearOrphanedGhost called from: " + caller
+                + " | center=(" + cx + "," + cy + "," + cz + ") radius=" + radius);
         int cleared = 0;
         for (int x = cx - radius; x <= cx + radius; x++) {
             for (int y = cy - 2; y <= cy + radius + 2; y++) {
@@ -214,7 +242,7 @@ public class BuildingSystem {
                 }
             }
         }
-        if (cleared > 0) LOGGER.info("Cleared " + cleared + " orphaned ghost blocks around " + cx + "," + cy + "," + cz);
+        LOGGER.info("[Ghost] clearOrphanedGhost done: cleared=" + cleared);
     }
 
     /**
@@ -267,6 +295,7 @@ public class BuildingSystem {
 
         // Add Town Hall building record (not yet built)
         BuildingRecord townHall = new BuildingRecord(BuildingType.TOWN_HALL, anchorX, anchorY, anchorZ);
+        townHall.setRotation(rotation);
         village.addBuilding(townHall);
         VillageManager.get().save(store, playerRef, village);
 
@@ -374,6 +403,7 @@ public class BuildingSystem {
         }
 
         activeRecord = record;
+        record.setRotation(rotation);
         village.setConstructionStarted(true);
         VillageManager.get().save(store, playerRef, village);
 
@@ -420,9 +450,7 @@ public class BuildingSystem {
         // because each block looks at neighbors that don't exist yet at placement time.
         // PrefabStore.placeNoReturn places the whole selection atomically, so the
         // engine's connected-block resolver has the full neighborhood available.
-        VillageData village = VillageManager.get().getVillageData(store, playerRef);
-        int rotation = village != null ? village.getRotation() : 0;
-        replaceWithPrefab(world, store, record, rotation);
+        replaceWithPrefab(world, store, record, record.getRotation());
 
         // Swap builder-role elf to villager-role so he wanders inside the finished building.
         // Spawn position: same safe spot the builder stood at, which is just outside the door
@@ -634,7 +662,10 @@ public class BuildingSystem {
             if (!plan.isEmpty()) {
                 java.util.Map<String, Integer> resources = new java.util.LinkedHashMap<>();
                 for (BlockPlacer.BlockEntry e : plan) {
-                    resources.merge(normalizeBlockId(e.blockType()), 1, Integer::sum);
+                    String id = normalizeBlockId(e.blockType());
+                    if (!ResourceBlockPlacer.isFreeBlock(id)) {
+                        resources.merge(id, 1, Integer::sum);
+                    }
                 }
                 return resources;
             }

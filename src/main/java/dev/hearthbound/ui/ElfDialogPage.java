@@ -55,6 +55,11 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String POST_FOUNDED        = "post_founded";
     private static final String QUEST_RESCUE        = "quest_rescue";
     private static final String QUEST_ACTIVE        = "quest_active";
+    private static final String QUEST_HOUSE         = "quest_house";
+    private static final String QUEST_HOUSE_OFFER   = "quest_house_offer";
+    private static final String BUILD_MENU          = "build_menu";
+
+    private static final String BRAZIER_ITEM_ID = "Hearthbound_Brazier";
 
     private String screen;
     private String playerName;
@@ -66,6 +71,9 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean townHallBuilt;
     private boolean rescueQuestStarted;
     private boolean hasStoneInInventory;
+    private boolean houseQuestOffered;
+    private boolean houseBrazierGiven;
+    private int villagerCount;
 
     // Cached for quest launch (captured at build time)
     private Ref<EntityStore> cachedPlayerRef;
@@ -95,6 +103,9 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         founded            = village != null && village.isFounded();
         townHallBuilt      = village != null && village.getStage() >= VillageData.STAGE_TOWN_HALL;
         rescueQuestStarted = village != null && village.isRescueQuestStarted();
+        houseQuestOffered  = village != null && village.isHouseQuestOffered();
+        houseBrazierGiven  = village != null && village.isHouseBrazierGiven();
+        villagerCount      = village != null ? village.getVillagerCount() : 0;
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
                 .countItemStacks(s -> FOUNDING_STONE_ID.equals(s.getItemId())) > 0;
 
@@ -110,7 +121,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         if (!founded) {
             screen = !metElf ? INTRO_1 : MENU;
         } else if (townHallBuilt) {
-            screen = MENU;
+            // Auto-show house quest offer if villager arrived and it hasn't been offered yet
+            screen = (villagerCount >= 1 && !houseQuestOffered) ? QUEST_HOUSE : MENU;
         } else {
             screen = POST_FOUNDED;
         }
@@ -129,6 +141,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 EventData.of(DialogEventData.ACTION_KEY, "choice2"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnChoice3",
                 EventData.of(DialogEventData.ACTION_KEY, "choice3"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnChoice4",
+                EventData.of(DialogEventData.ACTION_KEY, "choice4"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnClose",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
     }
@@ -143,6 +157,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         b.set("#BtnChoice1.Visible", false);
         b.set("#BtnChoice2.Visible", false);
         b.set("#BtnChoice3.Visible", false);
+        b.set("#BtnChoice4.Visible", false);
         b.set("#ChoiceContainer.Visible", false);
 
         switch (screen) {
@@ -189,6 +204,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     } else {
                         b.set("#BtnChoice2.Text", "Any news on the survivors?");
                     }
+                    b.set("#BtnChoice4.Text", "I want to build something.");
+                    b.set("#BtnChoice4.Visible", true);
                 } else if (!stoneGiven) {
                     b.set("#BtnChoice2.Text", "I want to start a settlement.");
                 } else {
@@ -197,6 +214,17 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#BtnChoice2.Visible", true);
                 b.set("#BtnChoice3.Text", "That's all for now.");
                 b.set("#BtnChoice3.Visible", true);
+            }
+            case BUILD_MENU -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "What do you need built?\n" +
+                        "Tell me, and I will give you an anchor to mark the site.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "A house for a settler.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Never mind.");
+                b.set("#BtnChoice2.Visible", true);
             }
             case ANSWER_ELF -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -309,6 +337,29 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#BtnPrimary.Text", "Understood.");
                 b.set("#BtnPrimary.Visible", true);
             }
+            case QUEST_HOUSE -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "You brought someone back.\n" +
+                        "Good. But a person who sleeps outside is not a settler — they are a guest " +
+                        "waiting to leave.\n" +
+                        "They need a house. A place that is theirs. That is what makes them stay.");
+                b.set("#BtnPrimary.Text", "What do I need?");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_HOUSE_OFFER -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "I will build it. You just need to find the right spot.\n" +
+                        "Place the brazier where you want the hearth to be — inside the footprint, " +
+                        "on the ground. The house goes around it.\n" +
+                        "Use the brazier to manage construction once the site is chosen.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "Got it.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not now.");
+                b.set("#BtnChoice2.Visible", true);
+            }
         }
     }
 
@@ -343,6 +394,17 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         }
                     }
                     case "choice3" -> { close(); return; }
+                    case "choice4" -> next = BUILD_MENU;
+                }
+            }
+
+            case BUILD_MENU -> {
+                if ("choice1".equals(action)) {
+                    giveBrazier(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    next = MENU;
                 }
             }
 
@@ -387,6 +449,20 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             }
 
             case QUEST_ACTIVE -> { if ("primary".equals(action)) { close(); return; } }
+
+            case QUEST_HOUSE -> { if ("primary".equals(action)) next = QUEST_HOUSE_OFFER; }
+
+            case QUEST_HOUSE_OFFER -> {
+                if ("choice1".equals(action)) {
+                    giveBrazier(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    // Mark offered anyway so auto-open doesn't re-trigger next visit
+                    markHouseQuestOffered(ref, store);
+                    next = MENU;
+                }
+            }
         }
 
         // Persist metElf on first conversation reaching MENU
@@ -452,6 +528,35 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         } catch (Exception e) {
             LOGGER.warning("Failed to give Founding Stone: " + e.getMessage());
         }
+    }
+
+    private void giveBrazier(Ref<EntityStore> ref, Store<EntityStore> store) {
+        try {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) return;
+            var tx = player.getInventory().getCombinedHotbarFirst()
+                    .addItemStack(new ItemStack(BRAZIER_ITEM_ID, 1));
+            if (tx.succeeded()) {
+                houseBrazierGiven = true;
+                houseQuestOffered = true;
+                VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+                village.setHouseBrazierGiven(true);
+                village.setHouseQuestOffered(true);
+                VillageManager.get().save(store, ref, village);
+                LOGGER.info("Gave Brazier to " + playerName);
+            } else {
+                LOGGER.warning("Could not give Brazier to " + playerName + " — inventory full?");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to give Brazier: " + e.getMessage());
+        }
+    }
+
+    private void markHouseQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
+        houseQuestOffered = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setHouseQuestOffered(true);
+        VillageManager.get().save(store, ref, village);
     }
 
     private void saveFlags(Ref<EntityStore> ref, Store<EntityStore> store) {

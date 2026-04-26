@@ -34,6 +34,12 @@
   Pressed: (Background: #280e0e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11))
 );
 
+@RecallBtnStyle = TextButtonStyle(
+  Default: (Background: #2a1a4a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a090d8, FontSize: 12)),
+  Hovered: (Background: #3a2860, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c8b8f0, FontSize: 12)),
+  Pressed: (Background: #1a1030, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a090d8, FontSize: 12))
+);
+
 Group {
   LayoutMode: Middle;
   Background: #050810(0.88);
@@ -179,6 +185,18 @@ Group {
         Label #ResidentStatus {
           Anchor: (Top: 4, Full: 0);
           Style: (HorizontalAlignment: Start, TextColor: #4e6878, FontSize: 11, Wrap: true);
+        }
+
+        Group {
+          Anchor: (Top: 12, Height: 34);
+          LayoutMode: Left;
+
+          TextButton #RecallButton {
+            Visible: false;
+            Anchor: (Width: 180, Height: 32);
+            Style: @RecallBtnStyle;
+            Text: "Recall to house";
+          }
         }
       }
     }

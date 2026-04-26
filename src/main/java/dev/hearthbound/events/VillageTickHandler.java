@@ -14,6 +14,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
+import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
@@ -22,6 +23,7 @@ import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.ui.VillageHud;
 import dev.hearthbound.util.TickScheduler;
+import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
@@ -47,6 +49,7 @@ public class VillageTickHandler {
     private static final long TICK_INTERVAL_MS = 5000;
     private static final String VILLAGER_ROLE = "Villager_Human";
     private static final String FOLLOWER_ROLE = "Villager_Rescue_Follower";
+    private static final String VICTIM_ROLE   = "Villager_Rescue_Trapped";
 
     private ScheduledFuture<?> tickTask;
     private VillageHud hud;
@@ -89,6 +92,8 @@ public class VillageTickHandler {
         }
 
         convertAllFollowers(store, playerRef, village, world);
+        assignHomelessVillagers(store, playerRef, village, world);
+        tickHunger(store, village);
     }
 
     private void convertAllFollowers(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -96,34 +101,64 @@ public class VillageTickHandler {
         // Don't convert while the player is still walking back — wait for Return objective to finish
         if (isReturnObjectiveActive(store, playerRef)) return;
 
-        Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
-        List<Ref<EntityStore>> followers = new ArrayList<>();
-
-        store.forEachChunk(query, (chunk, buffer) -> {
-            for (int i = 0; i < chunk.size(); i++) {
-                try {
-                    NPCEntity npcEntity = chunk.getComponent(i, NPCEntity.getComponentType());
-                    if (npcEntity != null && FOLLOWER_ROLE.equals(npcEntity.getRoleName())) {
-                        followers.add(chunk.getReferenceTo(i));
-                    }
-                } catch (Exception ignored) {}
-            }
-        });
-
-        for (Ref<EntityStore> followerRef : followers) {
-            convertFollowerToVillager(store, playerRef, followerRef, village, world);
-        }
-
-        // If there are still registered followers in unloaded chunks (e.g. player flew away in
-        // creative and the follower's chunk was never loaded), force-load those chunks so the
-        // follower appears and gets converted on the next tick.
+        // Walk every RESCUE-tagged registry record. This covers both loaded and unloaded NPCs,
+        // and handles the race where the player flies away before RoleChangeSystem runs:
+        //   - NPC loaded as Trapped  → re-apply Follower role change here, convert next tick
+        //   - NPC loaded as Follower → convert immediately
+        //   - NPC in unloaded chunk  → force-load so it appears on the next tick
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
             if (record.interaction != NpcRegistry.InteractionType.RESCUE) continue;
+
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
-            if (ref != null && ref.isValid()) continue; // already in a loaded chunk
-            LOGGER.info("convertAllFollowers: force-loading chunk for unloaded follower uuid="
-                    + record.entityUuid + " chunkIndex=" + record.chunkIndex);
-            world.getChunkAsync(record.chunkIndex);
+            if (ref == null || !ref.isValid()) {
+                // Chunk not loaded — load it, then convert immediately in the callback
+                // instead of waiting for the next tick (chunk may unload again by then).
+                if (!record.restorePending) {
+                    LOGGER.info("convertAllFollowers: loading chunk for follower uuid="
+                            + record.entityUuid + " chunkIndex=" + record.chunkIndex);
+                    final NpcRegistry.NpcRecord rec = record;
+                    world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() -> {
+                        Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                        Ref<EntityStore> liveRef = world.getEntityRef(rec.entityUuid);
+                        if (liveRef == null || !liveRef.isValid()) return;
+                        NPCEntity liveNpc = liveStore.getComponent(liveRef, NPCEntity.getComponentType());
+                        if (liveNpc == null) return;
+                        String role = liveNpc.getRoleName();
+                        VillageData liveVillage = VillageManager.get().getVillageData(liveStore, playerRef);
+                        if (liveVillage == null) return;
+                        if (FOLLOWER_ROLE.equals(role)) {
+                            convertFollowerToVillager(liveStore, playerRef, liveRef, liveVillage, world);
+                        } else if (VICTIM_ROLE.equals(role) && FOLLOWER_ROLE.equals(rec.roleName)) {
+                            int idx = NPCPlugin.get().getIndex(FOLLOWER_ROLE);
+                            if (idx >= 0) RoleChangeSystem.requestRoleChange(liveRef, liveNpc.getRole(), idx, false, liveStore);
+                        }
+                    }));
+                }
+                continue;
+            }
+
+            NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
+            if (npcEntity == null) continue;
+
+            String currentRole = npcEntity.getRoleName();
+
+            if (FOLLOWER_ROLE.equals(currentRole)) {
+                // Ready to convert — reload village in case a previous iteration saved it
+                VillageData liveVillage = VillageManager.get().getVillageData(store, playerRef);
+                if (liveVillage == null) continue;
+                convertFollowerToVillager(store, playerRef, ref, liveVillage, world);
+
+            } else if (VICTIM_ROLE.equals(currentRole) && FOLLOWER_ROLE.equals(record.roleName)) {
+                // RoleChangeSystem hasn't applied the role change yet (player flew away immediately
+                // after dialog). The registry was already updated to FOLLOWER_ROLE by RescueDialogPage,
+                // so we know the player agreed to join — re-apply the role change here.
+                int followerRoleIndex = NPCPlugin.get().getIndex(FOLLOWER_ROLE);
+                if (followerRoleIndex >= 0) {
+                    RoleChangeSystem.requestRoleChange(ref, npcEntity.getRole(), followerRoleIndex, false, store);
+                    LOGGER.info("convertAllFollowers: re-applied Trapped→Follower role change for uuid="
+                            + record.entityUuid);
+                }
+            }
         }
     }
 
@@ -176,7 +211,7 @@ public class VillageTickHandler {
                 long skinSeed = oldRecord != null ? oldRecord.skinSeed : 0L;
                 long chunkIndex = oldRecord != null ? oldRecord.chunkIndex : 0L;
                 NpcRegistry.get().updateRecord(new NpcRegistry.NpcRecord(
-                        followerUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.NONE, skinSeed, chunkIndex));
+                        followerUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex));
                 HearthboundDataStore.get().save();
             }
 
@@ -235,6 +270,84 @@ public class VillageTickHandler {
 
         } catch (Exception e) {
             LOGGER.warning("convertFollowerToVillager failed: " + e.getMessage());
+        }
+    }
+
+    // Hunger increase per tick (every 5 seconds)
+    private static final int HUNGER_PER_TICK = 2;
+
+    /**
+     * Increases hunger for every registered villager and saves updated VillagerData.
+     * Iterates over NPCEntity chunks to find live villagers by UUID.
+     */
+    private void tickHunger(Store<EntityStore> store, VillageData village) {
+        Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
+        store.forEachChunk(query, (chunk, buffer) -> {
+            for (int i = 0; i < chunk.size(); i++) {
+                try {
+                    Ref<EntityStore> ref = chunk.getReferenceTo(i);
+                    VillagerData data = store.getComponent(ref, VillagerData.getComponentType());
+                    if (data == null) continue;
+                    data.setHunger(data.getHunger() + HUNGER_PER_TICK);
+                    store.putComponent(ref, VillagerData.getComponentType(), data);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    /**
+     * Matches every unhoused villager to a completed, unoccupied residential building.
+     * Runs every tick so it handles both cases:
+     * - house built before any villager exists
+     * - villager arrives after houses already built
+     */
+    private void assignHomelessVillagers(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                         VillageData village, World world) {
+        VillageManager mgr = VillageManager.get();
+
+        UUID homelessUuid;
+        while ((homelessUuid = mgr.findHomelessVillager(village)) != null) {
+            BuildingRecord house = mgr.findUnoccupiedHouse(village);
+            if (house == null) break; // no free houses right now
+
+            mgr.assignVillagerToHouse(store, playerRef, village, house, homelessUuid);
+
+            // Reload village after save so the next loop iteration sees updated state
+            village = mgr.getVillageData(store, playerRef);
+            if (village == null) break;
+
+            final UUID assignedUuid = homelessUuid;
+            final String houseType = house.getType();
+            final int houseX = house.getPosX();
+            final int houseY = house.getPosY();
+            final int houseZ = house.getPosZ();
+            final int houseRotation = house.getRotation();
+
+            // Move the villager to their new house door on the next world tick
+            world.execute(() -> {
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                Entity entity = world.getEntity(assignedUuid);
+                if (entity == null) return;
+
+                Ref<EntityStore> villagerRef = world.getEntityRef(assignedUuid);
+                if (villagerRef == null || !villagerRef.isValid()) return;
+
+                int[] doorOffset = BuildingType.getDoorOffset(houseType, houseRotation);
+                double doorX = houseX + doorOffset[0] + 0.5;
+                double doorY = houseY + 1;
+                double doorZ = houseZ + doorOffset[1] + 0.5;
+
+                entity.moveTo(villagerRef, doorX, doorY, doorZ, liveStore);
+
+                // Re-anchor wander to the house door so the villager stays near their home
+                NPCEntity npcEntity = liveStore.getComponent(villagerRef, NPCEntity.getComponentType());
+                if (npcEntity != null) {
+                    npcEntity.setLeashPoint(new Vector3d(doorX, doorY, doorZ));
+                }
+
+                LOGGER.info("Villager " + assignedUuid + " moved to house door at "
+                        + doorX + "," + doorY + "," + doorZ);
+            });
         }
     }
 }

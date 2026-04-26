@@ -452,19 +452,38 @@ public class BuildingSystem {
         // engine's connected-block resolver has the full neighborhood available.
         replaceWithPrefab(world, store, record, record.getRotation());
 
-        // Swap builder-role elf to villager-role so he wanders inside the finished building.
-        // Spawn position: same safe spot the builder stood at, which is just outside the door
-        // — Wander radius 5 gives him room to drift inside once the door is passable.
+        // After building a residential house the elf returns to the Town Hall (wanderer role).
+        // After building the Town Hall itself he also uses wanderer so he stands near the entrance.
+        // ROLE_VILLAGER was used while wander-radius pointed at the new house — no longer needed.
         if (activeBuilder != null) {
-            ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_VILLAGER,
-                    new Vector3d(activeBuilder.getSafeX(), activeBuilder.getSafeY(), activeBuilder.getSafeZ()),
-                    new Vector3f(0, 0, 0));
+            Vector3d returnPos = elfReturnPos(store, playerRef, record,
+                    activeBuilder.getSafeX(), activeBuilder.getSafeY(), activeBuilder.getSafeZ());
+            ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_WANDERER,
+                    returnPos, new Vector3f(0, 0, 0));
         }
 
         VillageManager.get().completeBuilding(store, playerRef, record);
         activeBuilder = null;
         activeRecord = null;
         LOGGER.info("Building complete: " + record.getType());
+    }
+
+    /**
+     * Where the elf should stand after finishing a build.
+     * For any building type: the Town Hall door (founding stone + door offset).
+     * Falls back to the builder's safe spot if village data is missing.
+     */
+    private Vector3d elfReturnPos(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                   BuildingRecord record, double fallbackX, double fallbackY, double fallbackZ) {
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null) return new Vector3d(fallbackX, fallbackY, fallbackZ);
+
+        int sx = village.getFoundingStoneX();
+        int sy = village.getFoundingStoneY();
+        int sz = village.getFoundingStoneZ();
+        int rot = village.getRotation();
+        int[] doorOffset = BuildingType.getDoorOffset(BuildingType.TOWN_HALL, rot);
+        return new Vector3d(sx + doorOffset[0] + 0.5, sy + 1, sz + doorOffset[1] + 0.5);
     }
 
     /**

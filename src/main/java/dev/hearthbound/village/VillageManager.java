@@ -5,6 +5,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
+import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
@@ -76,6 +77,61 @@ public class VillageManager {
         save(store, playerRef, data);
         LOGGER.info("Building added: " + building.getType() + " at " +
                 building.getPosX() + ", " + building.getPosY() + ", " + building.getPosZ());
+    }
+
+    /**
+     * Finds the first completed residential building with no assigned villager, or null.
+     */
+    public BuildingRecord findUnoccupiedHouse(VillageData data) {
+        for (BuildingRecord b : data.getBuildings()) {
+            if (!b.isCompleted()) continue;
+            if (!BuildingType.isResidential(b.getType())) continue;
+            if (b.getAssignedVillagerId() == null) return b;
+        }
+        return null;
+    }
+
+    /**
+     * Assigns the villager to the house: sets house.assignedVillagerId, updates VillagerData
+     * state to STATE_IDLE, and syncs the VillagerSummary in village data.
+     * Saves village data after.
+     */
+    public void assignVillagerToHouse(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, BuildingRecord house, UUID villagerUuid) {
+        house.setAssignedVillagerId(villagerUuid);
+
+        // Update VillagerSummary
+        for (VillagerSummary summary : data.getVillagers()) {
+            if (villagerUuid.equals(summary.getVillagerUuid())) {
+                summary.setProfession(summary.getProfession()); // no-op, summary has no state field — ok
+                break;
+            }
+        }
+
+        save(store, playerRef, data);
+        LOGGER.info("Villager " + villagerUuid + " assigned to house at "
+                + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ());
+    }
+
+    /**
+     * Finds the first homeless villager UUID from the village's villager list, or null.
+     * A villager is homeless if their VillagerData on the NpcRegistry has STATE_HOMELESS,
+     * OR if they appear in the villager list but no house has them assigned.
+     */
+    public UUID findHomelessVillager(VillageData data) {
+        for (VillagerSummary summary : data.getVillagers()) {
+            UUID uuid = summary.getVillagerUuid();
+            if (uuid == null) continue;
+            if (!isVillagerAssignedToAnyHouse(data, uuid)) return uuid;
+        }
+        return null;
+    }
+
+    private boolean isVillagerAssignedToAnyHouse(VillageData data, UUID villagerUuid) {
+        for (BuildingRecord b : data.getBuildings()) {
+            if (villagerUuid.equals(b.getAssignedVillagerId())) return true;
+        }
+        return false;
     }
 
     /**

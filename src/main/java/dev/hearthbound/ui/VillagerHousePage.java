@@ -4,6 +4,7 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
+import com.hypixel.hytale.server.core.entity.Entity;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
@@ -12,9 +13,13 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
+import com.hypixel.hytale.math.vector.Vector3d;
 import dev.hearthbound.building.BuildingSystem;
+import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -82,6 +87,8 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 EventData.of(DialogEventData.ACTION_KEY, "start_build"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#RecallButton",
+                EventData.of(DialogEventData.ACTION_KEY, "recall"), false);
     }
 
     // ========== Render ==========
@@ -128,19 +135,19 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         if (record == null || !record.isCompleted()) {
             b.set("#ResidentName.Text", "No one yet");
             b.set("#ResidentStatus.Text", "Build the house first.");
+            b.set("#RecallButton.Visible", false);
             return;
         }
 
         UUID assignedId = record.getAssignedVillagerId();
         if (assignedId == null) {
             b.set("#ResidentName.Text", "Unoccupied");
-            b.set("#ResidentStatus.Text", "No villager assigned to this house.");
+            b.set("#ResidentStatus.Text", "Waiting for a villager to move in.");
+            b.set("#RecallButton.Visible", false);
             return;
         }
 
-        // Look up villager summary from village data
         String name = "Unknown";
-        String status = "Resident";
         if (village != null) {
             for (VillagerSummary v : village.getVillagers()) {
                 if (assignedId.equals(v.getVillagerUuid())) {
@@ -150,7 +157,8 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
             }
         }
         b.set("#ResidentName.Text", name);
-        b.set("#ResidentStatus.Text", status);
+        b.set("#ResidentStatus.Text", "Resident");
+        b.set("#RecallButton.Visible", true);
     }
 
     private void populateConstructionTab(UICommandBuilder b, BuildingRecord record) {
@@ -328,6 +336,20 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 sendUpdate(b, false);
             }
 
+            case "recall" -> {
+                if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+                BuildingRecord record = findHouseRecord(store);
+                if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
+                UUID assignedId = record.getAssignedVillagerId();
+                if (assignedId == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                recallVillager(assignedId, record);
+
+                UICommandBuilder b = new UICommandBuilder();
+                b.set("#ResidentStatus.Text", "Recalled to house.");
+                sendUpdate(b, false);
+            }
+
             case "start_build" -> {
                 if (!confirmed) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
 
@@ -385,6 +407,43 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
             total += deficit;
         }
         return total;
+    }
+
+    private void recallVillager(UUID villagerUuid, BuildingRecord house) {
+        int[] doorOffset = BuildingType.getDoorOffset(house.getType(), house.getRotation());
+        double doorX = house.getPosX() + doorOffset[0] + 0.5;
+        double doorY = house.getPosY() + 1;
+        double doorZ = house.getPosZ() + doorOffset[1] + 0.5;
+        LOGGER.info("recallVillager: anchor=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
+                + ") rotation=" + house.getRotation() + " offset=(" + doorOffset[0] + "," + doorOffset[1]
+                + ") → door=(" + doorX + "," + doorY + "," + doorZ + ")");
+
+        // If the villager's chunk is not loaded, load it first, then teleport on the world thread.
+        Entity entity = world.getEntity(villagerUuid);
+        if (entity == null) {
+            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(villagerUuid);
+            if (record == null) {
+                LOGGER.warning("recallVillager: no NpcRecord for uuid=" + villagerUuid);
+                return;
+            }
+            world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() ->
+                    doMoveTo(villagerUuid, doorX, doorY, doorZ)));
+            return;
+        }
+        doMoveTo(villagerUuid, doorX, doorY, doorZ);
+    }
+
+    private void doMoveTo(UUID villagerUuid, double x, double y, double z) {
+        Store<EntityStore> liveStore = world.getEntityStore().getStore();
+        Entity entity = world.getEntity(villagerUuid);
+        if (entity == null) return;
+        Ref<EntityStore> ref = world.getEntityRef(villagerUuid);
+        if (ref == null || !ref.isValid()) return;
+        entity.moveTo(ref, x, y, z, liveStore);
+        NPCEntity npcEntity = liveStore.getComponent(ref, NPCEntity.getComponentType());
+        if (npcEntity != null) {
+            npcEntity.setLeashPoint(new Vector3d(x, y, z));
+        }
     }
 
     private int depositFromInventory(Player player, BuildingRecord target, Map<String, Integer> required) {

@@ -17,6 +17,9 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
+import dev.hearthbound.npc.HearthboundDataStore;
+import dev.hearthbound.npc.NpcManager;
+import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.village.VillageData;
@@ -217,6 +220,19 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             // changeAppearance=false — keep the PlayerSkin we applied at spawn time.
             RoleChangeSystem.requestRoleChange(npcRef, npcEntity.getRole(), followerRoleIndex, false, store);
             RescueQuest1.registerFollower(npcRef);
+
+            // Immediately mark the registry record as FOLLOWER_ROLE so VillageTickHandler can
+            // distinguish "agreed to join, RoleChangeSystem pending" from "hasn't talked to player yet".
+            UUID npcUuid = NpcManager.extractUuid(store, npcRef);
+            if (npcUuid != null) {
+                NpcRegistry.NpcRecord old = NpcRegistry.get().getRecord(npcUuid);
+                if (old != null) {
+                    NpcRegistry.get().updateRecord(new NpcRegistry.NpcRecord(
+                            npcUuid, "Villager_Rescue_Follower",
+                            NpcRegistry.InteractionType.RESCUE, old.skinSeed, old.chunkIndex));
+                    HearthboundDataStore.get().save();
+                }
+            }
             LOGGER.info("Role change queued: Trapped → Follower");
 
             // RoleChangeSystem processes the queue next tick. After that, remove the

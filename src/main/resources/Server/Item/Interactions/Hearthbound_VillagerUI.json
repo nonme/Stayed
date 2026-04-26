@@ -1,0 +1,7 @@
+{
+  "$Comment": "Interaction for opening Hearthbound villager info dialog",
+  "Type": "OpenCustomUI",
+  "Page": {
+    "Id": "hearthbound_villager_dialog"
+  }
+}

@@ -1,0 +1,188 @@
+@CloseBtnStyle = TextButtonStyle(
+  Default: (Background: #2a1515, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a07070, FontSize: 11)),
+  Hovered: (Background: #3d1e1e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d09090, FontSize: 11)),
+  Pressed: (Background: #1a0d0d, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a07070, FontSize: 11))
+);
+
+@SectionLabelStyle = LabelStyle(
+  HorizontalAlignment: Start, VerticalAlignment: Center,
+  TextColor: #5a7080, FontSize: 9, RenderBold: true, RenderUppercase: true, LetterSpacing: 1
+);
+
+Group {
+  LayoutMode: Middle;
+
+  SceneBlur {
+    Anchor: (Full: 0);
+  }
+
+  Group {
+    Anchor: (Full: 0);
+    Background: #030508(0.72);
+  }
+
+  Group {
+    Anchor: (Width: 420, Height: 300);
+    Background: #0c0f16;
+    OutlineColor: #1e3040(0.8);
+    OutlineSize: 1;
+    LayoutMode: Top;
+
+    // ── Title bar ──
+    Group {
+      Anchor: (Height: 64);
+      Background: #0f1520;
+      LayoutMode: Full;
+
+      Group {
+        Anchor: (Left: 20, Right: 52, Top: 0, Bottom: 0);
+        LayoutMode: Middle;
+
+        Label #VillagerName {
+          Anchor: (Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #d8c898, FontSize: 15, RenderBold: true);
+          Text: "Villager";
+        }
+        Label #VillagerRace {
+          Anchor: (Top: 3, Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #3e5462, FontSize: 10);
+          Text: "Human";
+        }
+      }
+
+      TextButton #CloseButton {
+        Anchor: (Top: 18, Right: 14, Width: 28, Height: 28);
+        Style: @CloseBtnStyle;
+        Text: "X";
+      }
+    }
+
+    // ── Separator ──
+    Group {
+      Anchor: (Height: 1);
+      Background: #1a2d3a(0.6);
+    }
+
+    // ── Happiness section ──
+    Group {
+      Anchor: (Height: 58);
+      LayoutMode: Top;
+      Padding: (Top: 12, Bottom: 0, Left: 20, Right: 20);
+
+      Group {
+        Anchor: (Height: 12);
+        LayoutMode: Left;
+
+        Label {
+          Style: @SectionLabelStyle;
+          Text: "Happiness";
+        }
+        Label #HappinessLabel {
+          Anchor: (Left: 10);
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #7a9070, FontSize: 10);
+          Text: "Content";
+        }
+      }
+
+      Group {
+        Anchor: (Top: 8, Height: 14);
+        LayoutMode: Left;
+
+        Group #HappySeg1 {
+          Anchor: (Width: 60, Height: 14);
+          Background: #1a3020;
+          OutlineColor: #0a1810(0.5);
+          OutlineSize: 1;
+          TooltipText: "Miserable";
+        }
+        Group #HappySeg2 {
+          Anchor: (Left: 2, Width: 60, Height: 14);
+          Background: #1a3020;
+          OutlineColor: #0a1810(0.5);
+          OutlineSize: 1;
+          TooltipText: "Unhappy";
+        }
+        Group #HappySeg3 {
+          Anchor: (Left: 2, Width: 60, Height: 14);
+          Background: #1a3020;
+          OutlineColor: #0a1810(0.5);
+          OutlineSize: 1;
+          TooltipText: "Content";
+        }
+        Group #HappySeg4 {
+          Anchor: (Left: 2, Width: 60, Height: 14);
+          Background: #1a3020;
+          OutlineColor: #0a1810(0.5);
+          OutlineSize: 1;
+          TooltipText: "Happy";
+        }
+        Group #HappySeg5 {
+          Anchor: (Left: 2, Width: 60, Height: 14);
+          Background: #1a3020;
+          OutlineColor: #0a1810(0.5);
+          OutlineSize: 1;
+          TooltipText: "Thriving";
+        }
+      }
+    }
+
+    // ── Separator ──
+    Group {
+      Anchor: (Height: 1);
+      Background: #1a2530(0.5);
+    }
+
+    // ── Needs section ──
+    Group {
+      Anchor: (Height: 124);
+      LayoutMode: Top;
+      Padding: (Top: 12, Bottom: 20, Left: 20, Right: 20);
+
+      Label {
+        Anchor: (Height: 12);
+        Style: @SectionLabelStyle;
+        Text: "Needs";
+      }
+
+      Group #NeedHome {
+        Visible: false;
+        Anchor: (Top: 8, Height: 22);
+        LayoutMode: Left;
+
+        Label {
+          Anchor: (Width: 18, Height: 22);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c06858, FontSize: 13, RenderBold: true);
+          Text: "!";
+        }
+        Label {
+          Anchor: (Left: 6);
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #c06858, FontSize: 11);
+          Text: "No home";
+        }
+      }
+
+      Group #NeedHungry {
+        Visible: false;
+        Anchor: (Top: 4, Height: 22);
+        LayoutMode: Left;
+
+        Label {
+          Anchor: (Width: 18, Height: 22);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89838, FontSize: 13, RenderBold: true);
+          Text: "!";
+        }
+        Label #NeedHungryText {
+          Anchor: (Left: 6);
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #c89838, FontSize: 11);
+          Text: "Hungry";
+        }
+      }
+
+      Label #NeedNone {
+        Anchor: (Top: 8);
+        Style: (HorizontalAlignment: Start, TextColor: #3a6848, FontSize: 11);
+        Text: "No immediate needs";
+      }
+    }
+  }
+}

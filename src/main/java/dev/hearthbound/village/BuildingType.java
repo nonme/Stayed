@@ -56,20 +56,31 @@ public final class BuildingType {
         };
     }
 
-    /** Door offset (dx, dz) relative to anchor, door faces -Z at rotation=0. */
-    public static int[] getDoorOffset(String type, int rotation) {
-        int dx = 0;
-        int dz = switch (type) {
-            case TOWN_HALL -> -4;
-            case WAREHOUSE -> -3;
-            case HOUSE_HUMAN -> -2;
-            default -> -2;
-        };
-        return switch (rotation) {
-            case 1 -> new int[]{-dz, dx};
+    /**
+     * Door position offset (dx, dz) relative to the anchor block, accounting for building rotation.
+     * Only used for NPC positioning (elf after build, villager recall/assign) — not for block placement.
+     *
+     * Base offsets are in prefab-native coords (before any rotation):
+     *   HOUSE_HUMAN: Brazier at prefab (x=2,z=3), door center at (x=1,z=-4) → dx=-1, dz=-7
+     *   TOWN_HALL:   anchor at (0,0), door at z=-4 → dx=0, dz=-4
+     *
+     * The prefab anchor block has its own rotation baked in (Brazier rotation=2 in prefab).
+     * Actual rotation steps = (record.rotation - anchorPrefabRotation + 4) % 4.
+     */
+    public static int[] getDoorOffset(String type, int recordRotation) {
+        int dx, dz, anchorPrefabRotation;
+        switch (type) {
+            case HOUSE_HUMAN -> { dx = -1; dz = -3; anchorPrefabRotation = 2; }
+            case TOWN_HALL   -> { dx =  0; dz = -4; anchorPrefabRotation = 0; }
+            case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
+            default          -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
+        }
+        int steps = (recordRotation - anchorPrefabRotation + 4) % 4;
+        return switch (steps) {
+            case 1 -> new int[]{-dz,  dx};
             case 2 -> new int[]{-dx, -dz};
-            case 3 -> new int[]{dz, -dx};
-            default -> new int[]{dx, dz};
+            case 3 -> new int[]{ dz, -dx};
+            default -> new int[]{dx,   dz};
         };
     }
 

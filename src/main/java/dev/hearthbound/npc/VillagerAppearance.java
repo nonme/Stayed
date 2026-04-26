@@ -69,8 +69,6 @@ public final class VillagerAppearance {
             UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
             String entityId = (uuidComp != null) ? uuidComp.getUuid().toString().substring(0, 8) : "no-uuid";
 
-            LOGGER.info("[skin] apply start — entity=" + entityId + " seed=" + seed + " idx=" + villagerIndex);
-
             PlayerSkin skin = createHumanSkin(seed, villagerIndex);
             if (skin == null) {
                 LOGGER.warning("[skin] createHumanSkin returned null — entity=" + entityId);
@@ -87,22 +85,15 @@ public final class VillagerAppearance {
                 return;
             }
 
-            LOGGER.info("[skin] putComponent PlayerSkinComponent — entity=" + entityId
-                    + " haircut=" + skin.haircut + " undertop=" + skin.undertop + " pants=" + skin.pants);
             store.putComponent(npcRef, PlayerSkinComponent.getComponentType(), new PlayerSkinComponent(skin));
 
-            // Verify the component is actually present immediately after writing.
             PlayerSkinComponent check = store.getComponent(npcRef, PlayerSkinComponent.getComponentType());
             if (check == null) {
-                LOGGER.warning("[skin] PlayerSkinComponent missing immediately after putComponent! entity=" + entityId);
-            } else {
-                LOGGER.info("[skin] putComponent verified OK — entity=" + entityId);
+                LOGGER.warning("[skin] PlayerSkinComponent missing after putComponent — entity=" + entityId);
             }
 
             store.putComponent(npcRef, ModelComponent.getComponentType(), new ModelComponent(model));
             fixPersistentModelScale(npcRef, store, model);
-
-            LOGGER.info("[skin] apply done — entity=" + entityId);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to apply villager appearance", e);
         }

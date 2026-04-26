@@ -43,7 +43,7 @@ public final class NpcRegistry {
     private static final long RECONCILE_INTERVAL_MS = 1_000;
     private static final long RECONCILE_INTERVAL_MS = 1_000;
 
-    public enum InteractionType { ELF, RESCUE, NONE }
+    public enum InteractionType { ELF, RESCUE, VILLAGER, NONE }
 
     /**
      * Everything needed to restore an NPC after chunk reload.

@@ -34,11 +34,20 @@ public class VillagerData implements Component<EntityStore> {
     public static final String RACE_TRORK = "trork";
     public static final String RACE_ELF = "elf";
 
+    // Hunger thresholds (0 = full, 100 = very hungry)
+    public static final int HUNGER_MODERATE = 40;
+    public static final int HUNGER_SEVERE   = 70;
+
+    // Happiness contributions
+    public static final int HAPPINESS_BONUS_HOME      =  30;
+    public static final int HAPPINESS_PENALTY_HUNGRY  = -10;
+    public static final int HAPPINESS_PENALTY_STARVING = -30;
+
     public static final BuilderCodec<VillagerData> CODEC = BuilderCodec.builder(VillagerData.class, VillagerData::new)
             .append(new KeyedCodec<>("Race", Codec.STRING), VillagerData::setRace, VillagerData::getRace).add()
             .append(new KeyedCodec<>("Profession", Codec.STRING), VillagerData::setProfession, VillagerData::getProfession).add()
             .append(new KeyedCodec<>("State", Codec.STRING), VillagerData::setState, VillagerData::getState).add()
-            .append(new KeyedCodec<>("Happiness", Codec.INTEGER), VillagerData::setHappiness, VillagerData::getHappiness).add()
+            .append(new KeyedCodec<>("Hunger", Codec.INTEGER), VillagerData::setHunger, VillagerData::getHunger).add()
             .append(new KeyedCodec<>("FirstName", Codec.STRING), VillagerData::setFirstName, VillagerData::getFirstName).add()
             .append(new KeyedCodec<>("LastName", Codec.STRING), VillagerData::setLastName, VillagerData::getLastName).add()
             .append(new KeyedCodec<>("SkinSeed", Codec.LONG), VillagerData::setSkinSeed, VillagerData::getSkinSeed).add()
@@ -57,7 +66,8 @@ public class VillagerData implements Component<EntityStore> {
     private String race = RACE_HUMAN;
     private String profession = PROF_NONE;
     private String state = STATE_IDLE;
-    private int happiness = 50;
+    // Hunger: 0 = full, 100 = very hungry. Increases over time; reduced by farms (future).
+    private int hunger = 0;
     private String firstName = "";
     private String lastName = "";
     // 0 = unseeded (legacy). A non-zero seed means the skin has been rolled and must be
@@ -83,8 +93,32 @@ public class VillagerData implements Component<EntityStore> {
     public String getState() { return state; }
     public void setState(String state) { this.state = state; }
 
-    public int getHappiness() { return happiness; }
-    public void setHappiness(int happiness) { this.happiness = Math.max(0, Math.min(100, happiness)); }
+    public int getHunger() { return hunger; }
+    public void setHunger(int hunger) { this.hunger = Math.max(0, Math.min(100, hunger)); }
+
+    public boolean isHungry()   { return hunger >= HUNGER_MODERATE; }
+    public boolean isStarving() { return hunger >= HUNGER_SEVERE; }
+
+    /**
+     * Computed happiness from -100 to 100.
+     * Base is 0; bonuses/penalties stack on top.
+     */
+    public int getHappiness() {
+        int h = 0;
+        if (hasHome()) h += HAPPINESS_BONUS_HOME;
+        if (isStarving()) h += HAPPINESS_PENALTY_STARVING;
+        else if (isHungry()) h += HAPPINESS_PENALTY_HUNGRY;
+        return Math.max(-100, Math.min(100, h));
+    }
+
+    public String getHappinessLabel() {
+        int h = getHappiness();
+        if (h <= -50) return "Miserable";
+        if (h <= -15) return "Unhappy";
+        if (h <   15) return "Content";
+        if (h <   50) return "Happy";
+        return "Thriving";
+    }
 
     public String getFirstName() { return firstName; }
     public void setFirstName(String firstName) { this.firstName = firstName; }
@@ -116,7 +150,7 @@ public class VillagerData implements Component<EntityStore> {
         copy.race = this.race;
         copy.profession = this.profession;
         copy.state = this.state;
-        copy.happiness = this.happiness;
+        copy.hunger = this.hunger;
         copy.firstName = this.firstName;
         copy.lastName = this.lastName;
         copy.skinSeed = this.skinSeed;

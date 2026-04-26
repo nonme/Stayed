@@ -103,22 +103,36 @@ public final class RescueQuest1 {
             try {
                 UUID uuid = NpcManager.extractUuid(store, ref);
                 if (uuid != null) {
-                    NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
-                    long chunkIndex = record != null ? record.chunkIndex : 0L;
-                    NpcRegistry.get().unregister(uuid);
-                    if (ref.isValid()) {
-                        store.removeEntity(ref, RemoveReason.REMOVE);
-                    } else {
-                        // NPC is in an unloaded chunk — defer deletion to NpcChunkLoadHandler.
-                        NpcRegistry.get().markForRemoval(uuid, chunkIndex);
-                    }
+                    removeQuestNpc(store, uuid, ref);
                 }
             } catch (Exception e) {
                 LOGGER.warning("cleanup: failed to remove NPC ref: " + e.getMessage());
             }
         }
         activeNpcRefs.clear();
+
+        // Also purge any stale RESCUE records from previous sessions that were loaded from disk
+        // but never tracked in activeNpcRefs (e.g. server restarted mid-quest, then /hb quest reset).
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record.interaction != NpcRegistry.InteractionType.RESCUE) continue;
+            LOGGER.info("cleanup: removing stale RESCUE record uuid=" + record.entityUuid);
+            removeQuestNpc(store, record.entityUuid, null);
+        }
+
         HearthboundDataStore.get().save();
+    }
+
+    private static void removeQuestNpc(Store<EntityStore> store, UUID uuid, Ref<EntityStore> ref) {
+        NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
+        long chunkIndex = record != null ? record.chunkIndex : 0L;
+        NpcRegistry.get().unregister(uuid);
+
+        if (ref != null && ref.isValid()) {
+            store.removeEntity(ref, RemoveReason.REMOVE);
+        } else {
+            // NPC is in an unloaded chunk — defer deletion to NpcChunkLoadHandler.
+            NpcRegistry.get().markForRemoval(uuid, chunkIndex);
+        }
     }
 
     /** Removes all ReachLocationMarker entities from the world. Stale markers confuse

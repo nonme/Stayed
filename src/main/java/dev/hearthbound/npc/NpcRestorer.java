@@ -92,6 +92,13 @@ public final class NpcRestorer {
                 interactions.setInteractionHint("server.interactionHints.talk");
                 store.putComponent(ref, Interactions.getComponentType(), interactions);
             }
+            case VILLAGER -> {
+                store.putComponent(ref, Interactable.getComponentType(), Interactable.INSTANCE);
+                Interactions interactions = new Interactions();
+                interactions.setInteractionId(InteractionType.Use, "HearthboundVillager");
+                interactions.setInteractionHint("server.interactionHints.talk");
+                store.putComponent(ref, Interactions.getComponentType(), interactions);
+            }
             case NONE -> {
                 // No interaction needed — don't touch the components
             }

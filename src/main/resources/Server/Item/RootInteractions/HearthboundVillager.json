@@ -1,0 +1,6 @@
+{
+  "$Comment": "RootInteraction for Hearthbound villager info dialog",
+  "Interactions": [
+    "Hearthbound_VillagerUI"
+  ]
+}

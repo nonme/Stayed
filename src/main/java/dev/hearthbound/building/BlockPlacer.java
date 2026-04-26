@@ -88,6 +88,26 @@ public class BlockPlacer {
                 chunk.getBlockChunk());
     }
 
+    /**
+     * Removes a block silently — no break sound, no particles, no item drops.
+     * Uses setBlock(Empty) with suppression flags instead of breakBlock.
+     */
+    public static void silentRemoveBlock(World world, int x, int y, int z) {
+        WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(x, z));
+        if (chunk == null) {
+            world.breakBlock(x, y, z, 0);
+            return;
+        }
+        var assetMap = BlockType.getAssetMap();
+        int emptyId = assetMap.getIndex("Empty");
+        if (emptyId == Integer.MIN_VALUE) {
+            world.breakBlock(x, y, z, 0);
+            return;
+        }
+        // NO_SEND_PARTICLES(4) | NO_SEND_AUDIO(1024) | NO_DROP_ITEMS(2048)
+        chunk.setBlock(x, y, z, emptyId, assetMap.getAsset(emptyId), 0, 0, 4 | 1024 | 2048);
+    }
+
     public static void updateConnectedBlock(World world, int x, int y, int z, String blockTypeKey, int rotation) {
         WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(x, z));
         if (chunk == null) return;

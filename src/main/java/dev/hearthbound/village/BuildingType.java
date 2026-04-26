@@ -12,8 +12,9 @@ public final class BuildingType {
     public static final String HOUSE_KWEEBEC = "house_kweebec";
     public static final String HOUSE_TRORK = "house_trork";
 
-    // Anchor block ID (custom Hearthbound block)
+    // Anchor block IDs (custom Hearthbound blocks)
     public static final String FOUNDING_STONE_BLOCK = "Hearthbound_Founding_Stone";
+    public static final String BRAZIER_BLOCK = "Hearthbound_Brazier";
 
     // Ghost preview block (transparent, no collision)
     public static final String GHOST_BLOCK = "Hearthbound_Ghost";
@@ -24,6 +25,7 @@ public final class BuildingType {
     public static String getPrefabName(String type) {
         return switch (type) {
             case TOWN_HALL -> "Townhall_lvl1_v1";
+            case HOUSE_HUMAN -> "VillagerHouse_lvl1_v1";
             default -> null;
         };
     }
@@ -35,18 +37,21 @@ public final class BuildingType {
     public static String getAnchorBlockId(String type) {
         return switch (type) {
             case TOWN_HALL -> FOUNDING_STONE_BLOCK;
+            case HOUSE_HUMAN -> BRAZIER_BLOCK;
             default -> FOUNDING_STONE_BLOCK;
         };
     }
 
     /**
      * Y offset of the anchor placeholder block inside the prefab coordinate space.
-     * Used to align prefab Y coords to the world Y of the founding stone.
-     * Town Hall: statue starts at prefabY=2 → anchorPrefabY=2.
+     * Used to align prefab Y coords to the world Y of the anchor block.
+     * Town Hall: statue at prefabY=2 → anchorPrefabY=2.
+     * House: brazier Y will be set once prefab is finalized (default 0 until then).
      */
     public static int getAnchorPrefabY(String type) {
         return switch (type) {
             case TOWN_HALL -> 2;
+            case HOUSE_HUMAN -> 1;
             default -> 0;
         };
     }
@@ -57,6 +62,7 @@ public final class BuildingType {
         int dz = switch (type) {
             case TOWN_HALL -> -4;
             case WAREHOUSE -> -3;
+            case HOUSE_HUMAN -> -2;
             default -> -2;
         };
         return switch (rotation) {

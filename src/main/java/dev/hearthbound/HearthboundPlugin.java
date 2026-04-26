@@ -9,6 +9,7 @@ import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.commands.HearthboundCommand;
 import dev.hearthbound.events.BlockBreakHandler;
 import dev.hearthbound.events.BlockPlaceHandler;
+import dev.hearthbound.events.BrazierHandler;
 import dev.hearthbound.events.FoundingStoneHandler;
 import dev.hearthbound.events.NpcChunkLoadHandler;
 import dev.hearthbound.events.PlayerJoinHandler;
@@ -63,6 +64,7 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new BlockPlaceHandler());
         this.getEntityStoreRegistry().registerSystem(new BlockBreakHandler());
         this.getEntityStoreRegistry().registerSystem(new FoundingStoneHandler());
+        this.getEntityStoreRegistry().registerSystem(new BrazierHandler());
 
         // Register NPC interaction → Elf dialog page
         OpenCustomUIInteraction.registerCustomPageSupplier(

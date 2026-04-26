@@ -1,8 +1,10 @@
 # === Hearthbound interactionHints ===
 interactionHints.talk = Press [{key}] to talk
+interactionHints.manage_house = Press [{key}] to manage
 
 # === Hearthbound items ===
 items.Hearthbound_Founding_Stone.name = Founding Stone
+items.Hearthbound_Brazier.name = Hearth Brazier
 items.Hearthbound_Ghost.name = Ghost Block
 
 # === Hearthbound NPCs ===

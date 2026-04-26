@@ -21,7 +21,6 @@ import com.hypixel.hytale.server.core.modules.entity.component.PersistentModel;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
-import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -31,10 +30,15 @@ import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.npc.VillagerAppearance;
 import dev.hearthbound.npc.VillagerNames;
+import dev.hearthbound.npc.appearance.BodyArchetype;
+import dev.hearthbound.village.VillageData;
+import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
+import dev.hearthbound.village.VillagerSummary;
 import it.unimi.dsi.fastutil.Pair;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -192,7 +196,8 @@ public final class RescueQuest1 {
                     int groundY = candidate[1];
                     int blockZ = candidate[2];
 
-                    Spawned spawned = RescueQuest1.spawn(world, liveStore, blockX, groundY, blockZ);
+                    Set<String> takenFirstNames = collectTakenFullNames(liveStore, playerRef);
+                    Spawned spawned = RescueQuest1.spawn(world, liveStore, blockX, groundY, blockZ, takenFirstNames);
                     if (spawned == null) {
                         LOGGER.warning("startForPlayer: RescueQuest1.spawn() failed at (" + blockX + "," + groundY + "," + blockZ + ")");
                         onDone.accept(null);
@@ -322,7 +327,8 @@ public final class RescueQuest1 {
     /** Places the trap at {@code (centerX, groundY, centerZ)} and spawns NPCs.
      *  Must be called on the world thread with the target chunk already loaded. */
     public static Spawned spawn(World world, Store<EntityStore> store,
-                                int centerX, int groundY, int centerZ) {
+                                int centerX, int groundY, int centerZ,
+                                Set<String> takenFirstNames) {
         int prefabOriginWorldY = groundY - PREFAB_SURFACE_Y;
 
         try {
@@ -354,7 +360,8 @@ public final class RescueQuest1 {
             activeNpcRefs.add(victimRef);
 
             long skinSeed = ThreadLocalRandom.current().nextLong();
-            String[] name = VillagerNames.rollHumanName(skinSeed);
+            BodyArchetype body = VillagerAppearance.predictBody(skinSeed);
+            String[] name = VillagerNames.rollHumanName(skinSeed, body, takenFirstNames);
             VillagerData victimData = new VillagerData(VillagerData.RACE_HUMAN, name[0], name[1], skinSeed);
             store.putComponent(victimRef, VillagerData.getComponentType(), victimData);
 
@@ -389,6 +396,17 @@ public final class RescueQuest1 {
         }
 
         return new Spawned(victimPos, guardPos);
+    }
+
+    private static Set<String> collectTakenFullNames(Store<EntityStore> store, Ref<EntityStore> playerRef) {
+        Set<String> taken = new HashSet<>();
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null) return taken;
+        for (VillagerSummary v : village.getVillagers()) {
+            String full = v.getFullName();
+            if (!full.isEmpty()) taken.add(full);
+        }
+        return taken;
     }
 
     public record Spawned(Vector3d victimPos, Vector3d guardPos) {}

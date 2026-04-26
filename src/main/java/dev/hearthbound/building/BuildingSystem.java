@@ -88,6 +88,12 @@ public class BuildingSystem {
             return false;
         }
 
+        // Set active plan early so hasActivePreview() returns true during block placement,
+        // preventing PlaceBlockEvent re-entrancy from triggering a second ghost preview
+        // while we are still placing the first one.
+        activeBuildPlan = plan;
+        activeRotation = rotation;
+
         // Snapshot every cell we're about to overwrite so we can restore terrain when the ghost
         // is cleared (including after a server restart — the snapshot is persisted on VillageData).
         ghostSnapshot = new HashMap<>();
@@ -100,7 +106,7 @@ public class BuildingSystem {
             BlockPlacer.placeBlock(world, new BlockPlacer.BlockEntry(
                     entry.x(), entry.y(), entry.z(), ghostId, entry.rotation()));
         }
-        // Second pass: connected-block update so fences/walls orient against neighbors.
+        // Second pass: connected-block update so fences/walls/roofs orient against neighbors.
         for (BlockPlacer.BlockEntry entry : plan) {
             if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
             String ghostId = toGhostBlock(entry.blockType());
@@ -114,8 +120,6 @@ public class BuildingSystem {
             VillageManager.get().save(store, playerRef, village);
         }
 
-        activeBuildPlan = plan;
-        activeRotation = rotation;
         LOGGER.info("Ghost preview shown for " + buildingType +
                 " rotation=" + rotation + " (" + plan.size() + " blocks)");
         // Diagnostic: log door positions relative to anchor so we can see where ghost put them
@@ -160,7 +164,7 @@ public class BuildingSystem {
             var bt = world.getBlockType(x, y, z);
             if (bt != null && isGhostBlockId(bt.getId())) {
                 if (original == null || original.equals("Empty") || original.equals("Editor_Empty")) {
-                    world.breakBlock(x, y, z, 0);
+                    BlockPlacer.silentRemoveBlock(world, x, y, z);
                 } else {
                     world.setBlock(x, y, z, original);
                 }
@@ -204,7 +208,7 @@ public class BuildingSystem {
                     var bt = world.getBlockType(x, y, z);
                     if (bt == null) continue;
                     if (isGhostBlockId(bt.getId())) {
-                        world.breakBlock(x, y, z, 0);
+                        BlockPlacer.silentRemoveBlock(world, x, y, z);
                         cleared++;
                     }
                 }
@@ -528,21 +532,35 @@ public class BuildingSystem {
     /** Returns true for decorative/furniture blocks that should be skipped in ghost preview. */
     private static boolean isDecorBlock(String blockType) {
         String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
-        return base.startsWith("Deco_") || base.startsWith("Furniture_");
+        if (base.equals("Furniture_Village_Planter")) return false;
+        return base.startsWith("Deco_") || base.startsWith("Furniture_") || base.startsWith("Plant_");
     }
 
     /** Maps a real block ID to its no-collision ghost equivalent based on shape. */
     private static String toGhostBlock(String blockType) {
         String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
 
-        // Strip state suffix — we use only the base ghost block + raw rotation from prefab
         int stateIdx = base.indexOf("_State_Definitions_");
         String shape = stateIdx != -1 ? base.substring(0, stateIdx) : base;
+        String stateSuffix = stateIdx != -1 ? base.substring(stateIdx) : "";
 
         String lower = shape.toLowerCase();
-        if (lower.contains("_stairs"))       return "Hearthbound_Ghost_Stairs";
-        if (lower.contains("_wall"))         return "Hearthbound_Ghost_Fence";
-        if (lower.contains("_fence"))        return "Hearthbound_Ghost_Fence";
+
+        // For wall/fence blocks, directly map state variants to their ghost counterparts
+        // instead of letting the connected-block system auto-detect corners — the prefab's
+        // diagonal wall layouts don't always satisfy the Corner adjacency pattern.
+        if ((lower.contains("_wall") && !lower.contains("wood_village_wall"))
+                || lower.contains("_fence")) {
+            if (!stateSuffix.isEmpty()) {
+                // Preserve the state variant: Corner → *Hearthbound_Ghost_Fence_State_Definitions_Corner
+                return "*Hearthbound_Ghost_Fence" + stateSuffix;
+            }
+            return "Hearthbound_Ghost_Fence";
+        }
+
+        if (lower.contains("_stairs"))             return "Hearthbound_Ghost_Stairs";
+        if (lower.contains("_corner"))             return "Hearthbound_Ghost_Corner";
+        if (lower.contains("wood_village_wall"))   return "Hearthbound_Ghost_Cube";
         if (lower.contains("_roof_flat"))    return "Hearthbound_Ghost_Roof_Flat";
         if (lower.contains("_roof_shallow")) return "Hearthbound_Ghost_Roof_Shallow";
         if (lower.contains("_roof_steep"))   return "Hearthbound_Ghost_Roof_Steep";

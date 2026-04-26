@@ -1,18 +1,58 @@
 {
-  "TranslationProperties": { "Name": "server.items.Hearthbound_Ghost_Fence.name" },
-  "MaxStack": 1, "Quality": "Technical", "PlayerAnimationsId": "Block",
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Ghost_Fence.name"
+  },
+  "MaxStack": 1,
+  "Quality": "Technical",
+  "PlayerAnimationsId": "Block",
   "BlockType": {
-    "Material": "Empty", "DrawType": "Model", "Opacity": "Transparent",
+    "Material": "Empty",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
     "CustomModel": "Blocks/Structures/Fences/Dev_Fence.blockymodel",
-    "CustomModelTexture": [{ "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png", "Weight": 1 }],
-    "HitboxType": "Fence", "VariantRotation": "Wall",
-    "BlockParticleSetId": "Dust", "ParticleColor": "#e7eaeb", "BlockSoundSetId": "Soft",
+    "CustomModelTexture": [
+      {
+        "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png",
+        "Weight": 1
+      }
+    ],
+    "HitboxType": "Fence",
+    "VariantRotation": "Wall",
+    "BlockParticleSetId": "Dust",
+    "ParticleColor": "#e7eaeb",
+    "BlockSoundSetId": "Soft",
     "State": {
       "Definitions": {
         "Corner": {
           "CustomModel": "Blocks/Structures/Fences/Dev_Fence_Corner.blockymodel",
-          "CustomModelTexture": [{ "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png", "Weight": 1 }],
-          "HitboxType": "Fence_Corner_Thin", "FlipType": "Orthogonal"
+          "CustomModelTexture": [
+            {
+              "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png",
+              "Weight": 1
+            }
+          ],
+          "HitboxType": "Fence_Corner",
+          "FlipType": "OrthogonalInverse"
+        },
+        "T": {
+          "CustomModel": "Blocks/Structures/Fences/Dev_Fence_T.blockymodel",
+          "CustomModelTexture": [
+            {
+              "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png",
+              "Weight": 1
+            }
+          ],
+          "FlipType": "Symmetric"
+        },
+        "Cross": {
+          "CustomModel": "Blocks/Structures/Fences/Dev_Fence_Cross.blockymodel",
+          "CustomModelTexture": [
+            {
+              "Texture": "Blocks/Structures/Fences/Dev_Fence_Texture/Dev_White.png",
+              "Weight": 1
+            }
+          ],
+          "FlipType": "None"
         }
       }
     },
@@ -21,9 +61,21 @@
       "TemplateShapeAssetId": "WallConnectedBlockTemplate",
       "TemplateShapeBlockPatterns": {
         "Straight": "Hearthbound_Ghost_Fence",
-        "Corner": "*Hearthbound_Ghost_Fence_State_Definitions_Corner"
+        "Corner": "*Hearthbound_Ghost_Fence_State_Definitions_Corner",
+        "T_Junction": "*Hearthbound_Ghost_Fence_State_Definitions_T",
+        "Cross_Junction": "*Hearthbound_Ghost_Fence_State_Definitions_Cross"
+      }
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Rocks",
+        "Quantity": 0
       }
     }
   },
-  "Tags": { "Family": ["Hearthbound"] }
+  "Tags": {
+    "Family": [
+      "Hearthbound"
+    ]
+  }
 }

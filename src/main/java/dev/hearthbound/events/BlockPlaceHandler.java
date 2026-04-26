@@ -42,7 +42,13 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
         if (item == null || item.isEmpty()) return;
 
         String itemId = item.getItemId();
-        if (!BuildingType.FOUNDING_STONE_BLOCK.equals(itemId)) return;
+
+        String buildingType = switch (itemId) {
+            case BuildingType.FOUNDING_STONE_BLOCK -> BuildingType.TOWN_HALL;
+            case BuildingType.BRAZIER_BLOCK -> BuildingType.HOUSE_HUMAN;
+            default -> null;
+        };
+        if (buildingType == null) return;
 
         Ref<EntityStore> playerRef = chunk.getReferenceTo(entityIndex);
         if (playerRef == null) return;
@@ -50,16 +56,17 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
         Player player = chunk.getComponent(entityIndex, Player.getComponentType());
         if (player == null) return;
 
-        // Prefab authoring mode: let the player drop the Founding Stone inside a prefab
-        // selection without triggering ghost preview / founding flow.
+        // Prefab authoring mode: let the player drop anchor blocks freely.
         if (BuildingSystem.get().isPrefabAuthoring(player.getUuid())) {
             return;
         }
 
-        VillageData village = VillageManager.get().getVillageData(store, playerRef);
-        if (village != null && village.isFounded()) {
-            LOGGER.info("Village already founded, ignoring Founding Stone placement");
-            return;
+        if (BuildingType.TOWN_HALL.equals(buildingType)) {
+            VillageData village = VillageManager.get().getVillageData(store, playerRef);
+            if (village != null && village.isFounded()) {
+                LOGGER.info("Village already founded, ignoring Founding Stone placement");
+                return;
+            }
         }
 
         if (BuildingSystem.get().hasActivePreview()) {
@@ -68,23 +75,20 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
         }
 
         Vector3i pos = event.getTargetBlock();
-        LOGGER.info("Founding Stone placed at " + pos.x + ", " + pos.y + ", " + pos.z);
+        LOGGER.info(itemId + " placed at " + pos.x + ", " + pos.y + ", " + pos.z);
 
         EntityStore entityStore = (EntityStore) commandBuffer.getExternalData();
         World world = entityStore.getWorld();
 
-        // Defer to next tick (store is locked during EntityEventSystem)
+        String buildingTypeFinal = buildingType;
         Ref<EntityStore> refForLater = playerRef;
         world.execute(() -> {
-            // getRotationIndex returns the anchor's yaw in the same encoding the prefab editor
-            // uses when saving the anchor's rotation. Pass it through unchanged — the rotation
-            // math in PrefabLoader will take the difference with the prefab's anchor rotation.
             int rotation = 0;
             try {
                 BlockAccessor accessor = world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(pos.x, pos.z));
                 if (accessor != null) {
                     rotation = accessor.getRotationIndex(pos.x, pos.y, pos.z) & 0x3;
-                    LOGGER.info("Founding Stone placed at " + pos + " rotation=" + rotation);
+                    LOGGER.info(itemId + " placed at " + pos + " rotation=" + rotation);
                 }
             } catch (Exception e) {
                 LOGGER.warning("Could not read block rotation: " + e.getMessage());
@@ -92,8 +96,8 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
 
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
             BuildingSystem.get().showGhostPreview(liveStore, refForLater, world,
-                    BuildingType.TOWN_HALL, pos.x, pos.y, pos.z, rotation);
-            LOGGER.info("Ghost preview shown with rotation " + rotation);
+                    buildingTypeFinal, pos.x, pos.y, pos.z, rotation);
+            LOGGER.info("Ghost preview shown for " + buildingTypeFinal + " rotation=" + rotation);
         });
     }
 

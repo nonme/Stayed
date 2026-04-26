@@ -24,7 +24,7 @@
     "BlockParticleSetId": "Stone",
     "BlockSoundSetId": "Stone",
     "ParticleColor": "#9f9e81",
-    "InteractionHint": "server.interactionHints.talk",
+    "InteractionHint": "server.interactionHints.manage_house",
     "Interactions": {
       "Use": "Open_Container"
     },

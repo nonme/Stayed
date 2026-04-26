@@ -40,7 +40,9 @@ public class BlockBreakHandler extends EntityEventSystem<EntityStore, BreakBlock
                        Store<EntityStore> store, CommandBuffer<EntityStore> commandBuffer,
                        BreakBlockEvent event) {
         String blockId = event.getBlockType().getId();
-        if (!BuildingType.FOUNDING_STONE_BLOCK.equals(blockId)) return;
+        boolean isFoundingStone = BuildingType.FOUNDING_STONE_BLOCK.equals(blockId);
+        boolean isBrazier = BuildingType.BRAZIER_BLOCK.equals(blockId);
+        if (!isFoundingStone && !isBrazier) return;
 
         Vector3i pos = event.getTargetBlock();
         Ref<EntityStore> playerRef = chunk.getReferenceTo(entityIndex);
@@ -61,7 +63,7 @@ public class BlockBreakHandler extends EntityEventSystem<EntityStore, BreakBlock
             // case (ghost still active this session) and the post-restart case (snapshot loaded
             // from VillageData).
             BuildingSystem.get().clearGhostPreview(worldStore, playerRef, world);
-            if (playerRef != null) {
+            if (isFoundingStone && playerRef != null) {
                 BuildingSystem.get().resetFoundingIfPreTownHall(worldStore, playerRef, world);
             }
             // Belt-and-braces: if somehow ghost blocks exist outside the snapshot (legacy state),

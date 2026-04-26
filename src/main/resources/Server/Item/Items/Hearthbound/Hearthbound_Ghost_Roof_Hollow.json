@@ -1,28 +1,102 @@
 {
-  "TranslationProperties": { "Name": "server.items.Hearthbound_Ghost_Roof_Hollow.name" },
-  "MaxStack": 1, "Quality": "Technical", "PlayerAnimationsId": "Block",
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Ghost_Roof_Hollow.name"
+  },
+  "MaxStack": 1,
+  "Quality": "Technical",
+  "PlayerAnimationsId": "Block",
   "BlockType": {
-    "Material": "Empty", "DrawType": "Model",
+    "Material": "Empty",
+    "DrawType": "Model",
     "CustomModel": "Blocks/Structures/Roofs/Dev_Roof.blockymodel",
-    "CustomModelTexture": [{ "Texture": "Blocks/Structures/Roofs/Dev_Roof_Texture/Dev_White.png", "Weight": 1 }],
-    "HitboxType": "Stairs_Thin", "VariantRotation": "NESW",
-    "BlockParticleSetId": "Dust", "ParticleColor": "#e7eaeb", "BlockSoundSetId": "Soft",
+    "CustomModelTexture": [
+      {
+        "Texture": "Blocks/Structures/Roofs/Dev_Roof_Texture/Dev_White.png",
+        "Weight": 1
+      }
+    ],
+    "HitboxType": "Stairs_Thin",
+    "VariantRotation": "NESW",
+    "BlockParticleSetId": "Dust",
+    "ParticleColor": "#e7eaeb",
+    "BlockSoundSetId": "Soft",
     "State": {
       "Definitions": {
-        "Corner_Right": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner.blockymodel", "HitboxType": "Roof_Corner_Right", "FlipType": "Orthogonal" },
-        "Corner_Left": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner.blockymodel", "HitboxType": "Roof_Corner_Left", "FlipType": "Orthogonal" },
-        "Inverted_Corner_Right": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Inverted.blockymodel", "HitboxType": "Stairs_Inverted_Corner_Right", "FlipType": "Orthogonal" },
-        "Inverted_Corner_Left": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Inverted.blockymodel", "HitboxType": "Stairs_Inverted_Corner_Left", "FlipType": "Orthogonal" }
+        "Corner_Right": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Right.blockymodel",
+          "HitboxType": "Roof_Corner_Right",
+          "FlipType": "OrthogonalInverse"
+        },
+        "Corner_Left": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Left.blockymodel",
+          "HitboxType": "Roof_Corner_Left",
+          "FlipType": "Orthogonal"
+        },
+        "Inverted_Corner_Right": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Inverted_Right.blockymodel",
+          "HitboxType": "Stairs_Inverted_Corner_Right",
+          "FlipType": "OrthogonalInverse"
+        },
+        "Inverted_Corner_Left": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Corner_Inverted.blockymodel",
+          "HitboxType": "Stairs_Inverted_Corner_Left",
+          "FlipType": "Orthogonal"
+        }
       }
     },
     "ConnectedBlockRuleSet": {
       "Type": "Roof",
       "Regular": {
-        "Straight": { "State": "default" }, "Corner_Right": { "State": "Corner_Right" }, "Corner_Left": { "State": "Corner_Left" },
-        "Inverted_Corner_Right": { "State": "Inverted_Corner_Right" }, "Inverted_Corner_Left": { "State": "Inverted_Corner_Left" }
+        "Straight": {
+          "State": "default",
+          "Block": "Hearthbound_Ghost_Roof"
+        },
+        "Corner_Right": {
+          "State": "Corner_Right",
+          "Block": "Hearthbound_Ghost_Roof"
+        },
+        "Corner_Left": {
+          "State": "Corner_Left",
+          "Block": "Hearthbound_Ghost_Roof"
+        },
+        "Inverted_Corner_Right": {
+          "State": "Inverted_Corner_Right",
+          "Block": "Hearthbound_Ghost_Roof"
+        },
+        "Inverted_Corner_Left": {
+          "State": "Inverted_Corner_Left",
+          "Block": "Hearthbound_Ghost_Roof"
+        }
+      },
+      "Hollow": {
+        "Straight": {
+          "State": "default"
+        },
+        "Corner_Right": {
+          "State": "Corner_Right"
+        },
+        "Corner_Left": {
+          "State": "Corner_Left"
+        },
+        "Inverted_Corner_Right": {
+          "State": "Inverted_Corner_Right"
+        },
+        "Inverted_Corner_Left": {
+          "State": "Inverted_Corner_Left"
+        }
       },
       "MaterialName": "Roof"
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Rocks",
+        "Quantity": 0
+      }
     }
   },
-  "Tags": { "Family": ["Hearthbound"] }
+  "Tags": {
+    "Family": [
+      "Hearthbound"
+    ]
+  }
 }

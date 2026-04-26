@@ -1,29 +1,81 @@
 {
-  "TranslationProperties": { "Name": "server.items.Hearthbound_Ghost_Roof_Shallow.name" },
-  "MaxStack": 1, "Quality": "Technical", "PlayerAnimationsId": "Block",
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Ghost_Roof_Shallow.name"
+  },
+  "MaxStack": 1,
+  "Quality": "Technical",
+  "PlayerAnimationsId": "Block",
   "BlockType": {
-    "Material": "Empty", "DrawType": "Model",
+    "Material": "Empty",
+    "DrawType": "Model",
     "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow.blockymodel",
-    "CustomModelTexture": [{ "Texture": "Blocks/Structures/Roofs/Dev_Roof_Texture/Dev_White.png", "Weight": 1 }],
-    "HitboxType": "Stairs_Shallow", "VariantRotation": "NESW",
-    "BlockParticleSetId": "Dust", "ParticleColor": "#e7eaeb", "BlockSoundSetId": "Soft",
+    "CustomModelTexture": [
+      {
+        "Texture": "Blocks/Structures/Roofs/Dev_Roof_Texture/Dev_White.png",
+        "Weight": 1
+      }
+    ],
+    "HitboxType": "Stairs_Shallow",
+    "VariantRotation": "NESW",
+    "BlockParticleSetId": "Dust",
+    "ParticleColor": "#e7eaeb",
+    "BlockSoundSetId": "Soft",
     "State": {
       "Definitions": {
-        "Corner_Right": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner.blockymodel", "HitboxType": "Roof_Corner_Shallow_Right", "FlipType": "OrthogonalInverse" },
-        "Corner_Left": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner.blockymodel", "HitboxType": "Roof_Corner_Shallow_Left", "FlipType": "Orthogonal" },
-        "Inverted_Corner_Right": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner_Inverted.blockymodel", "HitboxType": "Roof_Corner_Shallow_Inverted_Right", "FlipType": "OrthogonalInverse" },
-        "Inverted_Corner_Left": { "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner_Inverted.blockymodel", "HitboxType": "Roof_Corner_Shallow_Inverted_Left", "FlipType": "Orthogonal" }
+        "Corner_Right": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner.blockymodel",
+          "HitboxType": "Roof_Corner_Shallow_Right",
+          "FlipType": "OrthogonalInverse"
+        },
+        "Corner_Left": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner.blockymodel",
+          "HitboxType": "Roof_Corner_Shallow_Left",
+          "FlipType": "Orthogonal"
+        },
+        "Inverted_Corner_Right": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner_Inverted.blockymodel",
+          "HitboxType": "Roof_Corner_Shallow_Inverted_Right",
+          "FlipType": "OrthogonalInverse"
+        },
+        "Inverted_Corner_Left": {
+          "CustomModel": "Blocks/Structures/Roofs/Dev_Roof_Shallow_Corner_Inverted.blockymodel",
+          "HitboxType": "Roof_Corner_Shallow_Inverted_Left",
+          "FlipType": "Orthogonal"
+        }
       }
     },
     "ConnectedBlockRuleSet": {
       "Type": "Roof",
       "Width": 2,
       "Regular": {
-        "Straight": { "State": "default" }, "Corner_Right": { "State": "Corner_Right" }, "Corner_Left": { "State": "Corner_Left" },
-        "Inverted_Corner_Right": { "State": "Inverted_Corner_Right" }, "Inverted_Corner_Left": { "State": "Inverted_Corner_Left" }
+        "Straight": {
+          "State": "default"
+        },
+        "Corner_Right": {
+          "State": "Corner_Right"
+        },
+        "Corner_Left": {
+          "State": "Corner_Left"
+        },
+        "Inverted_Corner_Right": {
+          "State": "Inverted_Corner_Right"
+        },
+        "Inverted_Corner_Left": {
+          "State": "Inverted_Corner_Left"
+        }
       },
       "MaterialName": "Roof_Shallow"
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Rocks",
+        "Quantity": 0
+      }
     }
   },
-  "Tags": { "Family": ["Hearthbound"] }
+  "Tags": {
+    "Family": [
+      "Hearthbound"
+    ]
+  }
 }

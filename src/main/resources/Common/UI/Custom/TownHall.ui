@@ -125,7 +125,7 @@ Group {
     // --- Village tab ---
     Group #PanelVillage {
       FlexWeight: 1;
-      LayoutMode: Top;
+      LayoutMode: TopScrolling;
       Padding: (Top: 16, Bottom: 12, Left: 20, Right: 20);
 
       // Pre-founding
@@ -183,55 +183,74 @@ Group {
         Visible: false;
         LayoutMode: Top;
 
-        // Two-column info
+        // Buildings card
         Group {
-          LayoutMode: Left;
-          Anchor: (Height: 130);
+          Anchor: (Full: 0);
+          LayoutMode: Top;
+          Background: #0a0e14;
+          OutlineColor: #1e2a34(0.8);
+          OutlineSize: 1;
+          Padding: (Full: 12);
 
           Group {
-            Anchor: (Width: 240);
-            LayoutMode: Top;
+            Anchor: (Height: 16);
+            LayoutMode: Left;
 
-            Label #SectionBuildings {
-              Style: (HorizontalAlignment: Start, TextColor: #8a7050, FontSize: 11, RenderBold: true);
+            Label {
+              Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 10, RenderBold: true);
               Text: "BUILDINGS";
-            }
-
-            Group {
-              Anchor: (Top: 4, Height: 1);
-              Background: #1e2a34;
-            }
-
-            Label #BuildingsList {
-              Anchor: (Top: 6, Full: 0);
-              Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 11, Wrap: true);
             }
           }
 
           Group {
-            Anchor: (Left: 20, Width: 240);
-            LayoutMode: Top;
+            Anchor: (Top: 8, Height: 1);
+            Background: #1e2a34;
+          }
+
+          Label #BuildingsList {
+            Anchor: (Top: 8, Full: 0);
+            Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 12, Wrap: true);
+          }
+        }
+
+        // Population card
+        Group {
+          Anchor: (Top: 10, Full: 0);
+          LayoutMode: Top;
+          Background: #0a0e14;
+          OutlineColor: #1e2a34(0.8);
+          OutlineSize: 1;
+          Padding: (Full: 12);
+
+          Group {
+            Anchor: (Height: 16);
+            LayoutMode: Left;
 
             Label #SectionPopulation {
-              Style: (HorizontalAlignment: Start, TextColor: #8a7050, FontSize: 11, RenderBold: true);
+              Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 10, RenderBold: true);
               Text: "POPULATION";
             }
 
-            Group {
-              Anchor: (Top: 4, Height: 1);
-              Background: #1e2a34;
+            Label #PopulationCount {
+              Anchor: (Left: 8);
+              Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #4e6878, FontSize: 10);
             }
+          }
 
-            Label #PopulationInfo {
-              Anchor: (Top: 6, Full: 0);
-              Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 11, Wrap: true);
-            }
+          Group {
+            Anchor: (Top: 8, Height: 1);
+            Background: #1e2a34;
+          }
+
+          Label #PopulationInfo {
+            Anchor: (Top: 8, Full: 0);
+            Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 12, Wrap: true);
           }
         }
 
         Label #ContainerHint {
-          Anchor: (Top: 10, Full: 0);
-          Style: (HorizontalAlignment: Center, TextColor: #364650, FontSize: 10, Wrap: true);
+          Anchor: (Top: 16, Full: 0);
+          Style: (HorizontalAlignment: Center, TextColor: #2e4050, FontSize: 10, Wrap: true);
         }
       }
     }

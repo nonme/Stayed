@@ -1,6 +1,6 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Hearthbound_Ghost_Half.name"
+    "Name": "server.items.Hearthbound_Ghost_Corner.name"
   },
   "MaxStack": 1,
   "Quality": "Technical",
@@ -8,15 +8,15 @@
   "BlockType": {
     "Material": "Empty",
     "DrawType": "Model",
-    "CustomModel": "Blocks/Structures/Base_Shapes/HalfBlock.blockymodel",
+    "CustomModel": "Blocks/Structures/Tubes/Corner.blockymodel",
     "CustomModelTexture": [
       {
         "Texture": "BlockTextures/Dev_White_Top.png",
         "Weight": 1
       }
     ],
-    "HitboxType": "Block_Half",
-    "VariantRotation": "NESW",
+    "HitboxType": "Branch_Corner",
+    "VariantRotation": "UpDownNESW",
     "BlockParticleSetId": "Dust",
     "ParticleColor": "#e7eaeb",
     "BlockSoundSetId": "Soft",

@@ -83,6 +83,22 @@ public class PrefabLoader {
         return load(prefabName, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, 0);
     }
 
+    /** Returns the anchor block's local [lx, lz] relative to the selection corner. */
+    private static int[] findAnchorLocal(BlockSelection selection, String anchorBlockId, int anchorPrefabY,
+                                          int prefabOriginX, int prefabOriginY, int prefabOriginZ) {
+        var assetMap = BlockType.getAssetMap();
+        int[] found = {0, 0};
+        selection.forEachBlock((bx, by, bz, holder) -> {
+            BlockType bt = assetMap.getAsset(holder.blockId());
+            if (bt == null) return;
+            if (bt.getId().equals(anchorBlockId) && by - prefabOriginY == anchorPrefabY) {
+                found[0] = bx - prefabOriginX;
+                found[1] = bz - prefabOriginZ;
+            }
+        });
+        return found;
+    }
+
     /** Reads the yaw rotation of the anchor block from the prefab (lowest 2 bits of RotationTuple index). */
     private static int readAnchorRotation(BlockSelection selection, String anchorBlockId, int anchorPrefabY) {
         var assetMap = BlockType.getAssetMap();
@@ -104,11 +120,17 @@ public class PrefabLoader {
 
         var assetMap = BlockType.getAssetMap();
 
-        // Prefab stores blocks at world coords offset by (selection.getX(), getY(), getZ()).
-        // We want prefab-local coords, then map: localY=anchorPrefabY → worldY.
         int prefabOriginX = selection.getX();
         int prefabOriginY = selection.getY();
         int prefabOriginZ = selection.getZ();
+
+        // Find the anchor block's local XZ position so all offsets are relative to it,
+        // not to the selection corner. Town Hall worked before because its anchor happened
+        // to be at absolute x=0,z=0, but any other anchor position requires explicit pinning.
+        int[] anchorLocal = findAnchorLocal(selection, anchorBlockId, anchorPrefabY,
+                prefabOriginX, prefabOriginY, prefabOriginZ);
+        int anchorLX = anchorLocal[0];
+        int anchorLZ = anchorLocal[1];
 
         List<BlockPlacer.BlockEntry> result = new ArrayList<>();
 
@@ -125,10 +147,10 @@ public class PrefabLoader {
             if (SKIP_BLOCKS.contains(id)) return;
             if (id.equals(anchorBlockId)) return;
 
-            // Compute prefab-local coords relative to anchor (anchor is at prefabOrigin + (0, anchorPrefabY, 0))
-            int lx = bx - prefabOriginX;
-            int ly = by - prefabOriginY - anchorPrefabY;
-            int lz = bz - prefabOriginZ;
+            // Coords relative to the anchor block (not the selection corner).
+            int lx = (bx - prefabOriginX) - anchorLX;
+            int ly = (by - prefabOriginY) - anchorPrefabY;
+            int lz = (bz - prefabOriginZ) - anchorLZ;
 
             // Rotate local XZ around anchor (0,0) by rotationSteps * 90° CCW: (x,z) → (z, -x).
             // Direction paired with the CCW yaw rotation in rotateBlockRotation — keeping the

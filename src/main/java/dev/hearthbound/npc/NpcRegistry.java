@@ -93,6 +93,18 @@ public final class NpcRegistry {
                 + " chunk=" + record.chunkIndex + " interaction=" + record.interaction);
     }
 
+    /**
+     * Replaces the record for an existing NPC (e.g. after role change).
+     * Preserves restorePending state from the old record so active polling isn't disrupted.
+     */
+    public void updateRecord(NpcRecord newRecord) {
+        NpcRecord old = records.get(newRecord.entityUuid);
+        if (old != null) newRecord.restorePending = old.restorePending;
+        records.put(newRecord.entityUuid, newRecord);
+        LOGGER.fine("NpcRegistry updated " + newRecord.roleName + " uuid=" + newRecord.entityUuid
+                + " interaction=" + newRecord.interaction);
+    }
+
     public void unregister(UUID uuid) {
         NpcRecord removed = records.remove(uuid);
         if (removed != null) {

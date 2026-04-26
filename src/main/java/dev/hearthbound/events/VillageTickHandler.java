@@ -14,7 +14,10 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
+import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
+import dev.hearthbound.npc.NpcRegistry;
+import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.ui.VillageHud;
@@ -110,6 +113,18 @@ public class VillageTickHandler {
         for (Ref<EntityStore> followerRef : followers) {
             convertFollowerToVillager(store, playerRef, followerRef, village, world);
         }
+
+        // If there are still registered followers in unloaded chunks (e.g. player flew away in
+        // creative and the follower's chunk was never loaded), force-load those chunks so the
+        // follower appears and gets converted on the next tick.
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record.interaction != NpcRegistry.InteractionType.RESCUE) continue;
+            Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
+            if (ref != null && ref.isValid()) continue; // already in a loaded chunk
+            LOGGER.info("convertAllFollowers: force-loading chunk for unloaded follower uuid="
+                    + record.entityUuid + " chunkIndex=" + record.chunkIndex);
+            world.getChunkAsync(record.chunkIndex);
+        }
     }
 
     /** Returns true while Objective_RescueTrap_Return is still in the player's active set. */
@@ -153,6 +168,18 @@ public class VillageTickHandler {
             village.addVillager(summary);
             VillageManager.get().save(store, playerRef, village);
 
+            // Update NpcRegistry to reflect the new role and no interaction, then persist.
+            // Without this, after a server restart NpcRestorer would re-apply the RESCUE
+            // interaction to a villager, and the saved role name would still say Follower.
+            if (followerUuid != null) {
+                NpcRegistry.NpcRecord oldRecord = NpcRegistry.get().getRecord(followerUuid);
+                long skinSeed = oldRecord != null ? oldRecord.skinSeed : 0L;
+                long chunkIndex = oldRecord != null ? oldRecord.chunkIndex : 0L;
+                NpcRegistry.get().updateRecord(new NpcRegistry.NpcRecord(
+                        followerUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.NONE, skinSeed, chunkIndex));
+                HearthboundDataStore.get().save();
+            }
+
             LOGGER.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");
 
             // On the next tick (after RoleChangeSystem applies the new role):
@@ -195,6 +222,14 @@ public class VillageTickHandler {
                 NPCEntity liveNpcEntity = liveStore.getComponent(followerRef, NPCEntity.getComponentType());
                 if (liveNpcEntity != null) {
                     liveNpcEntity.setLeashPoint(new Vector3d(leashX, leashY, leashZ));
+                }
+
+                // Re-apply skin after role change — RoleChangeSystem may have reset the
+                // model when switching from Villager_Rescue_Follower (Appearance: Player)
+                // to Villager_Human (Appearance: Outlander).
+                NpcRegistry.NpcRecord liveRecord = NpcRegistry.get().getRecord(followerUuid);
+                if (liveRecord != null) {
+                    NpcRestorer.restore(followerRef, liveStore, world, liveRecord);
                 }
             });
 

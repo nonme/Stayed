@@ -17,6 +17,7 @@ import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
+import dev.hearthbound.npc.VillagerScheduler;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.quest.RescueQuest1;
@@ -53,6 +54,7 @@ public class VillageTickHandler {
 
     private ScheduledFuture<?> tickTask;
     private VillageHud hud;
+    private final VillagerScheduler villagerScheduler = new VillagerScheduler();
 
     public void start(Store<EntityStore> store, Ref<EntityStore> playerRef, PlayerRef player, World world) {
         stop();
@@ -78,6 +80,10 @@ public class VillageTickHandler {
         return hud;
     }
 
+    public VillagerScheduler getVillagerScheduler() {
+        return villagerScheduler;
+    }
+
     private void tick(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
         if (!playerRef.isValid()) {
             stop();
@@ -93,7 +99,9 @@ public class VillageTickHandler {
 
         convertAllFollowers(store, playerRef, village, world);
         assignHomelessVillagers(store, playerRef, village, world);
+        assignUnstaffedFarms(store, playerRef, village);
         tickHunger(store, village);
+        villagerScheduler.tick(store, playerRef, village, world);
     }
 
     private void convertAllFollowers(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -107,7 +115,8 @@ public class VillageTickHandler {
         //   - NPC loaded as Follower → convert immediately
         //   - NPC in unloaded chunk  → force-load so it appears on the next tick
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
-            if (record.interaction != NpcRegistry.InteractionType.RESCUE) continue;
+            if (record.interaction != NpcRegistry.InteractionType.RESCUE
+                    && record.interaction != NpcRegistry.InteractionType.FOLLOWER) continue;
 
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
             if (ref == null || !ref.isValid()) {
@@ -259,12 +268,13 @@ public class VillageTickHandler {
                     liveNpcEntity.setLeashPoint(new Vector3d(leashX, leashY, leashZ));
                 }
 
-                // Re-apply skin after role change — RoleChangeSystem may have reset the
-                // model when switching from Villager_Rescue_Follower (Appearance: Player)
-                // to Villager_Human (Appearance: Outlander).
+                // Re-apply interaction and skin after role change — RoleChangeSystem applies
+                // the new role asynchronously and resets the Interactions component.
+                // restoreAfterRoleChange() defers applyInteraction() so it runs after the
+                // role is fully applied, ensuring our HearthboundVillager handler wins.
                 NpcRegistry.NpcRecord liveRecord = NpcRegistry.get().getRecord(followerUuid);
                 if (liveRecord != null) {
-                    NpcRestorer.restore(followerRef, liveStore, world, liveRecord);
+                    NpcRestorer.restoreAfterRoleChange(followerRef, world, liveRecord);
                 }
             });
 
@@ -339,6 +349,13 @@ public class VillageTickHandler {
 
                 entity.moveTo(villagerRef, doorX, doorY, doorZ, liveStore);
 
+                // Clear homeless state so hasHome() returns true and happiness shows correctly.
+                VillagerData vd = liveStore.getComponent(villagerRef, VillagerData.getComponentType());
+                if (vd != null && VillagerData.STATE_HOMELESS.equals(vd.getState())) {
+                    vd.setState(VillagerData.STATE_IDLE);
+                    liveStore.putComponent(villagerRef, VillagerData.getComponentType(), vd);
+                }
+
                 // Re-anchor wander to the house door so the villager stays near their home
                 NPCEntity npcEntity = liveStore.getComponent(villagerRef, NPCEntity.getComponentType());
                 if (npcEntity != null) {
@@ -348,6 +365,31 @@ public class VillageTickHandler {
                 LOGGER.info("Villager " + assignedUuid + " moved to house door at "
                         + doorX + "," + doorY + "," + doorZ);
             });
+        }
+    }
+
+    /**
+     * For every completed farm with no assigned worker, tries to assign the first
+     * eligible villager (has a house, has no profession).
+     * Mirrors assignHomelessVillagers — runs every tick so order of building/arrival
+     * doesn't matter.
+     */
+    private void assignUnstaffedFarms(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData village) {
+        VillageManager mgr = VillageManager.get();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (!BuildingType.FARM.equals(building.getType())) continue;
+            if (building.getAssignedVillagerId() != null) continue; // already has a worker
+
+            UUID farmerUuid = mgr.assignFarmerProfession(store, playerRef, village, building);
+            if (farmerUuid != null) {
+                LOGGER.info("assignUnstaffedFarms: assigned " + farmerUuid + " to farm at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
+                // Reload village after save so the next iteration sees updated state
+                village = mgr.getVillageData(store, playerRef);
+                if (village == null) return;
+            }
         }
     }
 }

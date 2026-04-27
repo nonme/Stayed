@@ -10,7 +10,12 @@ import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.HearthboundPlugin;
+import dev.hearthbound.npc.NpcManager;
+import dev.hearthbound.npc.VillagerScheduler;
 import dev.hearthbound.village.VillagerData;
+
+import java.util.UUID;
 
 public class VillagerDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
@@ -57,6 +62,7 @@ public class VillagerDialogPage extends InteractiveCustomUIPage<DialogEventData>
             b.set("#VillagerName.Text", "Unknown");
             b.set("#VillagerRace.Text", "");
             b.set("#HappinessLabel.Text", "Content");
+            b.set("#ActivityLabel.Text", "—");
             renderHappinessBar(b, 0);
             renderNeeds(b, false, false, false);
             return;
@@ -67,6 +73,19 @@ public class VillagerDialogPage extends InteractiveCustomUIPage<DialogEventData>
         b.set("#HappinessLabel.Text", data.getHappinessLabel());
         renderHappinessBar(b, data.getHappiness());
         renderNeeds(b, !data.hasHome(), data.isHungry(), data.isStarving());
+        renderActivity(b, store);
+    }
+
+    private void renderActivity(UICommandBuilder b, Store<EntityStore> store) {
+        UUID npcUuid = NpcManager.extractUuid(store, npcRef);
+        if (npcUuid == null) {
+            b.set("#ActivityLabel.Text", "—");
+            return;
+        }
+
+        VillagerScheduler scheduler = HearthboundPlugin.get().getVillageTickHandler().getVillagerScheduler();
+        String label = scheduler != null ? scheduler.getActivityLabel(npcUuid) : null;
+        b.set("#ActivityLabel.Text", label != null ? label : "—");
     }
 
     private void renderHappinessBar(UICommandBuilder b, int happiness) {

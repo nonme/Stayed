@@ -5,6 +5,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -132,6 +133,69 @@ public class VillageManager {
             if (villagerUuid.equals(b.getAssignedVillagerId())) return true;
         }
         return false;
+    }
+
+    /**
+     * Returns all completed buildings of the given type, or empty list.
+     */
+    public List<BuildingRecord> findCompletedBuildings(VillageData data, String type) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && type.equals(b.getType()))
+                .toList();
+    }
+
+    /**
+     * Returns the first completed farm, or null.
+     */
+    public BuildingRecord findCompletedFarm(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.FARM.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Returns the first completed warehouse, or null.
+     */
+    public BuildingRecord findCompletedWarehouse(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.WAREHOUSE.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Assigns PROF_FARMER to the first eligible (housed, no profession) villager and
+     * links them to the given farm building record.
+     * Returns the UUID of the assigned villager, or null if nobody eligible.
+     */
+    public UUID assignFarmerProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                       VillageData data, BuildingRecord farm) {
+        for (VillagerSummary summary : data.getVillagers()) {
+            if (!VillagerData.PROF_NONE.equals(summary.getProfession())) continue;
+            UUID uuid = summary.getVillagerUuid();
+            if (uuid == null) continue;
+
+            // Only assign if the villager has a house
+            if (!isVillagerAssignedToAnyHouse(data, uuid)) continue;
+
+            summary.setProfession(VillagerData.PROF_FARMER);
+            farm.setAssignedVillagerId(uuid);
+            save(store, playerRef, data);
+
+            LOGGER.info("Assigned farmer profession to villager " + uuid);
+            return uuid;
+        }
+        return null;
+    }
+
+    /**
+     * Finds the VillagerSummary by UUID, or null.
+     */
+    public VillagerSummary findVillagerSummary(VillageData data, UUID uuid) {
+        if (uuid == null) return null;
+        for (VillagerSummary s : data.getVillagers()) {
+            if (uuid.equals(s.getVillagerUuid())) return s;
+        }
+        return null;
     }
 
     /**

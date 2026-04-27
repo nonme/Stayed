@@ -94,7 +94,8 @@ public final class BuildingType {
     public static int[] getDoorOffset(String type, int recordRotation) {
         int dx, dz, anchorPrefabRotation;
         switch (type) {
-            case HOUSE_HUMAN -> { dx = -1; dz = -3; anchorPrefabRotation = 2; }
+            // Brazier anchor at prefab (2,1,3); stand two blocks in front at (2,1,1) → offset (0,-2).
+            case HOUSE_HUMAN -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
             case TOWN_HALL   -> { dx =  0; dz = -4; anchorPrefabRotation = 0; }
             case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
             // Farm: scarecrow anchor at prefab (0,2,4), gate at (0,1,-4) → dz = -4-4 = -8.

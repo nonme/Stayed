@@ -26,5 +26,6 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new TestSkinTonesCommand());
         addSubCommand(new QuestCommand());
         addSubCommand(new NpcCommand());
+        addSubCommand(new TimeCommand());
     }
 }

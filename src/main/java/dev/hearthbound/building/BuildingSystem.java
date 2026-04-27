@@ -489,7 +489,22 @@ public class BuildingSystem {
                     returnPos, new Vector3f(0, 0, 0));
         }
 
-        VillageManager.get().completeBuilding(store, playerRef, record);
+        VillageManager mgr = VillageManager.get();
+        mgr.completeBuilding(store, playerRef, record);
+
+        // When a farm is built, assign farmer profession to the first eligible villager
+        if (BuildingType.FARM.equals(record.getType())) {
+            dev.hearthbound.village.VillageData village = mgr.getVillageData(store, playerRef);
+            if (village != null) {
+                java.util.UUID farmerUuid = mgr.assignFarmerProfession(store, playerRef, village, record);
+                if (farmerUuid != null) {
+                    LOGGER.info("Farm built — assigned farmer: " + farmerUuid);
+                } else {
+                    LOGGER.info("Farm built — no eligible villager for farmer yet");
+                }
+            }
+        }
+
         activeBuilder = null;
         activeRecord = null;
         LOGGER.info("Building complete: " + record.getType());
@@ -549,20 +564,12 @@ public class BuildingSystem {
                 LOGGER.warning("replaceWithPrefab: anchor block not found in rotated prefab, skipping final swap");
                 return;
             }
-            LOGGER.info("replaceWithPrefab DEBUG:"
-                    + " selection.xyz=(" + rotated.getX() + "," + rotated.getY() + "," + rotated.getZ() + ")"
-                    + " anchorBlock_abs=(" + anchorLocal[0] + "," + anchorLocal[1] + "," + anchorLocal[2] + ")"
-                    + " anchorBlock_rel=(" + (anchorLocal[0]-rotated.getX()) + "," + (anchorLocal[1]-rotated.getY()) + "," + (anchorLocal[2]-rotated.getZ()) + ")"
-                    + " worldTarget=(" + record.getPosX() + "," + record.getPosY() + "," + record.getPosZ() + ")"
-                    + " angle=" + angleDeg);
             rotated.setAnchorAtWorldPos(anchorLocal[0], anchorLocal[1], anchorLocal[2]);
 
             com.hypixel.hytale.math.vector.Vector3i stonePos =
                     new com.hypixel.hytale.math.vector.Vector3i(
                             record.getPosX(), record.getPosY(), record.getPosZ());
             rotated.placeNoReturn(world, stonePos, store);
-            LOGGER.info("replaceWithPrefab: placed " + prefabName + " at " + stonePos +
-                    " angle=" + angleDeg);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "replaceWithPrefab failed", e);
         }

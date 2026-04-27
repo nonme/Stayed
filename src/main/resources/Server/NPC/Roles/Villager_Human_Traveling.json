@@ -1,0 +1,47 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Villager_Human.name",
+      "Description": "Translation key for NPC name display"
+    }
+  },
+  "DefaultNPCAttitude": "Ignore",
+  "DefaultPlayerAttitude": "Neutral",
+  "Appearance": "Outlander",
+  "MaxHealth": 60,
+  "DisableDamageGroups": ["Self"],
+  "KnockbackScale": 0.5,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 5,
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 360,
+      "Acceleration": 10,
+      "RunThreshold": 1.0
+    }
+  ],
+  "Instructions": [
+    {
+      "Sensor": { "Type": "Target" },
+      "HeadMotion": {
+        "Type": "Observe",
+        "AngleRange": [-5.0, 5.0],
+        "PickRandomAngle": true
+      },
+      "BodyMotion": {
+        "Type": "Seek",
+        "StopDistance": 0.5,
+        "SlowDownDistance": 1.5,
+        "AbortDistance": 500,
+        "RelativeSpeed": 0.28,
+        "UsePathfinder": true
+      }
+    }
+  ],
+  "NameTranslationKey": {
+    "Compute": "NameTranslationKey"
+  }
+}

@@ -76,9 +76,14 @@ public class BlockPlacer {
             return;
         }
         var assetMap = BlockType.getAssetMap();
-        int blockId = assetMap.getIndex(entry.blockType());
+        // Strip '*' prefix for assetMap lookup — state-variant IDs use '*' as a marker.
+        // If not found in assetMap, pass the original blockType (with '*') to world.setBlock —
+        // the engine accepts '*Foo_State_Definitions_Bar' directly via setBlock.
+        String originalId = entry.blockType();
+        String lookupId = originalId.startsWith("*") ? originalId.substring(1) : originalId;
+        int blockId = assetMap.getIndex(lookupId);
         if (blockId == Integer.MIN_VALUE) {
-            world.setBlock(entry.x(), entry.y(), entry.z(), entry.blockType());
+            world.setBlock(entry.x(), entry.y(), entry.z(), originalId);
             return;
         }
         BlockType bt = assetMap.getAsset(blockId);

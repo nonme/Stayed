@@ -2,14 +2,14 @@
   "Type": "Generic",
   "Parameters": {
     "NameTranslationKey": {
-      "Value": "server.npcRoles.Villager_Human.name",
+      "Value": "server.npcRoles.Villager_Human_Farmer.name",
       "Description": "Translation key for NPC name display"
     }
   },
   "StartState": "Idle",
   "DefaultNPCAttitude": "Ignore",
   "DefaultPlayerAttitude": "Neutral",
-  "Appearance": "Outlander",
+  "Appearance": "Player",
   "MaxHealth": 60,
   "DisableDamageGroups": ["Self"],
   "BusyStates": ["$Interaction"],
@@ -25,6 +25,31 @@
       "RunThreshold": 0.3
     }
   ],
+  "StateTransitions": [
+    {
+      "States": [
+        {
+          "From": [],
+          "To": ["Idle"]
+        }
+      ],
+      "Actions": [
+        {
+          "Type": "Inventory",
+          "Operation": "SetHotbar",
+          "Item": "Tool_Hoe_Crude",
+          "Slot": 0,
+          "UseTarget": false
+        },
+        {
+          "Type": "Inventory",
+          "Operation": "EquipHotbar",
+          "Slot": 0,
+          "UseTarget": false
+        }
+      ]
+    }
+  ],
   "Instructions": [
     {
       "Instructions": [
@@ -33,7 +58,7 @@
           "Instructions": [
             {
               "Continue": true,
-              "Sensor": { "Type": "Player", "Range": 8 },
+              "Sensor": { "Type": "Player", "Range": 1 },
               "HeadMotion": { "Type": "Watch" }
             },
             {
@@ -42,32 +67,12 @@
                 {
                   "Actions": [
                     {
-                      "Type": "Random",
-                      "Actions": [
-                        {
-                          "Weight": 60,
-                          "Action": {
-                            "Type": "Timeout",
-                            "Delay": [3, 6],
-                            "Action": { "Type": "Nothing" }
-                          }
-                        },
-                        {
-                          "Weight": 40,
-                          "Action": {
-                            "Type": "Sequence",
-                            "Actions": [
-                              { "Type": "Timeout",
-                                "Delay": [2, 4],
-                                "Action": { "Type": "Nothing" }
-                              }
-                            ]
-                          }
-                        }
-                      ]
+                      "Type": "Timeout",
+                      "Delay": [2, 5],
+                      "Action": { "Type": "Nothing" }
                     }
                   ],
-                  "BodyMotion": { "Type": "WanderInCircle", "Radius": 12, "RelativeSpeed": 0.3 }
+                  "BodyMotion": { "Type": "WanderInCircle", "Radius": 3, "RelativeSpeed": 0.25 }
                 }
               ]
             }

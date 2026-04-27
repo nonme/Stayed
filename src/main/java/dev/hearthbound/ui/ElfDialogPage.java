@@ -229,10 +229,15 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     } else {
                         b.set("#BtnChoice2.Text", "Any news on the survivors?");
                     }
-                    b.set("#BtnChoice3.Text", "I want to build something.");
-                    b.set("#BtnChoice3.Visible", true);
-                    b.set("#BtnChoice4.Text", "That's all for now.");
-                    b.set("#BtnChoice4.Visible", true);
+                    if (houseBuilt) {
+                        b.set("#BtnChoice3.Text", "I want to build something.");
+                        b.set("#BtnChoice3.Visible", true);
+                        b.set("#BtnChoice4.Text", "That's all for now.");
+                        b.set("#BtnChoice4.Visible", true);
+                    } else {
+                        b.set("#BtnChoice3.Text", "That's all for now.");
+                        b.set("#BtnChoice3.Visible", true);
+                    }
                 } else if (!stoneGiven) {
                     b.set("#BtnChoice2.Text", "I want to start a settlement.");
                     b.set("#BtnChoice3.Text", "That's all for now.");
@@ -482,7 +487,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         }
                     }
                     case "choice3" -> {
-                        if (townHallBuilt) next = BUILD_MENU;
+                        if (townHallBuilt && houseBuilt) next = BUILD_MENU;
                         else { close(); return; }
                     }
                     case "choice4" -> { close(); return; }

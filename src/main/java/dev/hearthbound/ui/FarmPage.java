@@ -19,6 +19,7 @@ import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
+import dev.hearthbound.village.VillagerSummary;
 
 import java.util.Map;
 import java.util.UUID;
@@ -117,18 +118,32 @@ public class FarmPage extends InteractiveCustomUIPage<DialogEventData> {
         String subtitle = (record != null && record.isCompleted()) ? "Built" : "Planned";
         b.set("#FarmSubtitle.Text", subtitle);
 
-        populateInfoTab(b, record);
+        populateInfoTab(b, store, record);
         populateConstructionTab(b, record);
     }
 
-    private void populateInfoTab(UICommandBuilder b, BuildingRecord record) {
+    private void populateInfoTab(UICommandBuilder b, Store<EntityStore> store, BuildingRecord record) {
         if (record == null || !record.isCompleted()) {
             b.set("#FarmStatusLabel.Text", "Not built yet.");
             b.set("#FarmStatusDetail.Text", "Build the farm first.");
+            b.set("#FarmWorkerLabel.Text", "—");
             return;
         }
+
         b.set("#FarmStatusLabel.Text", "Operational");
-        b.set("#FarmStatusDetail.Text", "Your farm is up and running.");
+
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        UUID workerUuid = record.getAssignedVillagerId();
+        VillagerSummary worker = (village != null && workerUuid != null)
+                ? VillageManager.get().findVillagerSummary(village, workerUuid) : null;
+
+        if (worker != null) {
+            b.set("#FarmWorkerLabel.Text", worker.getFullName());
+            b.set("#FarmStatusDetail.Text", "Working the fields.");
+        } else {
+            b.set("#FarmWorkerLabel.Text", "No one assigned yet");
+            b.set("#FarmStatusDetail.Text", "A villager will be assigned once they have a home.");
+        }
     }
 
     private void setTabActive(UICommandBuilder b, String tab) {
@@ -236,7 +251,7 @@ public class FarmPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#PanelConstruction.Visible", false);
                 setTabActive(b, "info");
                 BuildingRecord record = findFarmRecord(store);
-                populateInfoTab(b, record);
+                populateInfoTab(b, store, record);
                 sendUpdate(b, false);
             }
 

@@ -181,6 +181,36 @@ Group {
           Style: (HorizontalAlignment: Start, TextColor: #4e6878, FontSize: 11, Wrap: true);
         }
       }
+
+      Group {
+        Anchor: (Top: 10, Full: 0);
+        LayoutMode: Top;
+        Background: #0a0e14;
+        OutlineColor: #1e2a34(0.8);
+        OutlineSize: 1;
+        Padding: (Full: 12);
+
+        Group {
+          Anchor: (Height: 16);
+          LayoutMode: Left;
+
+          Label {
+            Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #6a8040, FontSize: 10, RenderBold: true);
+            Text: "WORKER";
+          }
+        }
+
+        Group {
+          Anchor: (Top: 8, Height: 1);
+          Background: #1e2a34;
+        }
+
+        Label #FarmWorkerLabel {
+          Anchor: (Top: 8, Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #d4c080, FontSize: 13, RenderBold: true, Wrap: true);
+          Text: "—";
+        }
+      }
     }
 
     // ── Construction tab ──

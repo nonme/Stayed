@@ -84,6 +84,23 @@ public class PrefabLoader {
     }
 
     /**
+     * Returns blocks in native local coordinates — relative to the anchor block, no rotation.
+     * (lx, ly, lz) = (0, 0, 0) is the anchor position.
+     * Used by BuildingLayout to inspect prefab geometry before any world rotation is applied.
+     */
+    public static List<BlockPlacer.BlockEntry> loadNativeLocal(
+            String prefabName, String anchorBlockId, int anchorPrefabY) {
+        try {
+            BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
+            return extractBlocks(selection, anchorBlockId, anchorPrefabY,
+                    0, anchorPrefabY, 0, 0);
+        } catch (Exception e) {
+            LOGGER.warning("Failed to load prefab '" + prefabName + "' (native local): " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * Returns world-coordinate positions of Empty cells that are strictly below the anchor
      * Y level (ly < 0). Used by the ghost preview to clear terrain under the building footprint.
      */
@@ -159,6 +176,21 @@ public class PrefabLoader {
             }
         });
         return found;
+    }
+
+    /**
+     * Returns the yaw rotation (0–3) of the anchor block as stored in the prefab.
+     * This is the "default orientation" of the prefab. Use it to compute rotation steps:
+     *   rotationSteps = (worldRotation - readAnchorRotation(prefabName, anchorId, anchorPrefabY) + 4) % 4
+     */
+    public static int readAnchorRotation(String prefabName, String anchorBlockId, int anchorPrefabY) {
+        try {
+            BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
+            return readAnchorRotation(selection, anchorBlockId, anchorPrefabY);
+        } catch (Exception e) {
+            LOGGER.warning("PrefabLoader.readAnchorRotation failed for '" + prefabName + "': " + e.getMessage());
+            return 0;
+        }
     }
 
     /** Reads the yaw rotation of the anchor block from the prefab (lowest 2 bits of RotationTuple index). */

@@ -22,7 +22,7 @@ Group {
   }
 
   Group {
-    Anchor: (Width: 420, Height: 300);
+    Anchor: (Width: 420, Height: 350);
     Background: #0c0f16;
     OutlineColor: #1e3040(0.8);
     OutlineSize: 1;
@@ -132,9 +132,34 @@ Group {
       Background: #1a2530(0.5);
     }
 
+    // ── Activity section ──
+    Group {
+      Anchor: (Height: 44);
+      LayoutMode: Top;
+      Padding: (Top: 10, Bottom: 0, Left: 20, Right: 20);
+
+      Label {
+        Anchor: (Height: 12);
+        Style: @SectionLabelStyle;
+        Text: "Activity";
+      }
+
+      Label #ActivityLabel {
+        Anchor: (Top: 6);
+        Style: (HorizontalAlignment: Start, TextColor: #7ab0d0, FontSize: 11);
+        Text: "—";
+      }
+    }
+
+    // ── Separator ──
+    Group {
+      Anchor: (Height: 1);
+      Background: #1a2530(0.5);
+    }
+
     // ── Needs section ──
     Group {
-      Anchor: (Height: 124);
+      Anchor: (Height: 100);
       LayoutMode: Top;
       Padding: (Top: 12, Bottom: 20, Left: 20, Right: 20);
 

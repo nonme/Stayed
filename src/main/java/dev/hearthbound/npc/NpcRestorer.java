@@ -3,7 +3,9 @@ package dev.hearthbound.npc;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.InteractionType;
+import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.modules.entity.component.Interactable;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.core.modules.interaction.Interactions;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -31,6 +33,35 @@ public final class NpcRestorer {
 
     private NpcRestorer() {}
 
+    /**
+     * Like restore(), but defers applyInteraction() by SKIN_DELAY_MS + retry.
+     * Use after RoleChangeSystem.requestRoleChange() — the role is applied asynchronously
+     * and resets Interactions; immediate applyInteraction() would be overwritten.
+     */
+    public static void restoreAfterRoleChange(Ref<EntityStore> ref, World world,
+                                              NpcRegistry.NpcRecord record) {
+        TickScheduler.getExecutor().schedule(() ->
+            world.execute(() -> {
+                if (!ref.isValid()) return;
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                applyInteraction(ref, liveStore, record.interaction);
+            }),
+            SKIN_DELAY_MS, TimeUnit.MILLISECONDS
+        );
+        // Retry — RoleChangeSystem timing can vary
+        TickScheduler.getExecutor().schedule(() ->
+            world.execute(() -> {
+                if (!ref.isValid()) return;
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                applyInteraction(ref, liveStore, record.interaction);
+            }),
+            SKIN_DELAY_MS + SKIN_RETRY_MS, TimeUnit.MILLISECONDS
+        );
+
+        // Skin — same schedule as regular restore()
+        scheduleSkins(ref, world, record);
+    }
+
     public static void restore(Ref<EntityStore> ref, Store<EntityStore> store,
                                World world, NpcRegistry.NpcRecord record) {
         // Step 1: Interaction — always putComponent unconditionally so client gets the packet.
@@ -39,20 +70,27 @@ public final class NpcRestorer {
         applyInteraction(ref, store, record.interaction);
 
         // Step 2: Skin — delayed so client receives entity spawn packet first.
+        scheduleSkins(ref, world, record);
+    }
+
+    private static void scheduleSkins(Ref<EntityStore> ref, World world, NpcRegistry.NpcRecord record) {
 
         if (record.skinSeed != 0L) {
             TickScheduler.getExecutor().schedule(() ->
                 world.execute(() -> {
                     if (!ref.isValid()) return;
-                    VillagerAppearance.apply(ref, store, record.skinSeed, 0);
+                    Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                    VillagerAppearance.apply(ref, liveStore, record.skinSeed, 0);
+                    equipProfessionItem(ref, liveStore, record.roleName);
                 }),
                 SKIN_DELAY_MS, TimeUnit.MILLISECONDS
             );
-            // Retry — engine timing can vary, a second attempt ensures skin is applied
             TickScheduler.getExecutor().schedule(() ->
                 world.execute(() -> {
                     if (!ref.isValid()) return;
-                    VillagerAppearance.apply(ref, store, record.skinSeed, 0);
+                    Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                    VillagerAppearance.apply(ref, liveStore, record.skinSeed, 0);
+                    equipProfessionItem(ref, liveStore, record.roleName);
                 }),
                 SKIN_DELAY_MS + SKIN_RETRY_MS, TimeUnit.MILLISECONDS
             );
@@ -72,6 +110,28 @@ public final class NpcRestorer {
                 }),
                 SKIN_DELAY_MS + SKIN_RETRY_MS, TimeUnit.MILLISECONDS
             );
+        }
+    }
+
+    private static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
+        NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
+        if (npc == null) {
+            LOGGER.warning("equipProfessionItem: NPCEntity null for " + roleName);
+            return;
+        }
+        // Use live role name — the NPC may have had its role changed to a profession role
+        // after the registry record was created (e.g. Villager_Human → Villager_Human_Farmer).
+        String liveRole = npc.getRoleName();
+        String effectiveRole = liveRole != null ? liveRole : roleName;
+        String itemId = switch (effectiveRole) {
+            case "Villager_Human_Farmer" -> "Tool_Hoe_Crude";
+            default -> null;
+        };
+        // Always clear slot 0 first, then equip profession item if any
+        npc.getInventory().getHotbar().setItemStackForSlot((short) 0, null);
+        if (itemId != null) {
+            npc.getInventory().getHotbar().setItemStackForSlot((short) 0, new ItemStack(itemId));
+            LOGGER.info("equipProfessionItem: equipped " + itemId + " to " + effectiveRole);
         }
     }
 
@@ -99,8 +159,8 @@ public final class NpcRestorer {
                 interactions.setInteractionHint("server.interactionHints.talk");
                 store.putComponent(ref, Interactions.getComponentType(), interactions);
             }
-            case NONE -> {
-                // No interaction needed — don't touch the components
+            case FOLLOWER, NONE -> {
+                // No interaction — follower has agreed to join, no dialog needed
             }
         }
     }

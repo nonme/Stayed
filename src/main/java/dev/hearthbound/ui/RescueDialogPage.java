@@ -106,10 +106,9 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case INTRO -> {
                 b.set("#SpeakerName.Text", npcName);
                 b.set("#DialogText.Text",
-                        "Please — be careful. The spikes. They covered the pit with branches " +
-                        "and I didn't see it until I was already falling.\n" +
-                        "Goblins. There were maybe a dozen of them. They hit our village at night — " +
-                        "no warning. The fires took everything before anyone could do anything.");
+                        "Careful — spikes at the bottom. I didn't see them until I was already in.\n" +
+                        "Goblins. Three nights ago. They came at night, no warning.\n" +
+                        "By the time I understood what was happening, the fires were already past saving.");
                 b.set("#BtnPrimary.Text", "What happened to the others?");
                 b.set("#BtnPrimary.Visible", true);
             }
@@ -117,10 +116,9 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", npcName);
                 b.set("#DialogText.Text",
                         "I don't know. I ran.\n" +
-                        "The goblins must have set this trap on the trail out, knowing people would flee. " +
-                        "I've been down here since. That guard up top checks in occasionally.\n" +
-                        "I have no village to go back to. No family I know made it out. " +
-                        "I don't even know where I'd go if you pulled me out of here.");
+                        "They set this trap on the main trail out — knew people would flee that way. " +
+                        "I've been down here since. The one watching me comes around every few hours.\n" +
+                        "There is no village to go back to.");
                 b.set("#BtnPrimary.Text", "I'm building a settlement nearby. You could come.");
                 b.set("#BtnPrimary.Visible", true);
             }
@@ -140,8 +138,8 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case FAREWELL -> {
                 b.set("#SpeakerName.Text", npcName);
                 b.set("#DialogText.Text",
-                        "I'll be here. Not like I'm going anywhere.\n" +
-                        "Thank you. I was starting to think no one was coming.");
+                        "I'll be here.\n" +
+                        "I've been waiting a while. Thank you.");
                 b.set("#BtnPrimary.Text", "Hold on.");
                 b.set("#BtnPrimary.Visible", true);
             }

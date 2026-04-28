@@ -64,8 +64,6 @@ public class VillageTickHandler {
     public void start(Store<EntityStore> store, Ref<EntityStore> playerRef, PlayerRef player, World world) {
         stop();
 
-        hud = new VillageHud(player, playerRef);
-
         tickTask = TickScheduler.runRepeating(world, TICK_INTERVAL_MS, TICK_INTERVAL_MS, () -> {
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
             tick(liveStore, playerRef, world);
@@ -97,10 +95,6 @@ public class VillageTickHandler {
 
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         if (village == null || !village.isFounded()) return;
-
-        if (hud != null) {
-            hud.refresh(store);
-        }
 
         convertAllFollowers(store, playerRef, village, world);
         assignHomelessVillagers(store, playerRef, village, world);
@@ -218,6 +212,7 @@ public class VillageTickHandler {
                     : new VillagerSummary();
             summary.setVillagerUuid(followerUuid);
             village.addVillager(summary);
+            village.setRescueQuestStarted(false);
             VillageManager.get().save(store, playerRef, village);
 
             // Update NpcRegistry to reflect the new role and no interaction, then persist.

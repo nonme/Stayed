@@ -271,13 +271,15 @@ public final class RescueQuest1 {
                             ? centerChunk.getHeight(chunkLocalX, chunkLocalZ)
                             : (int) Math.floor(fromPos.getY());
 
-                    // Check the surface block for water / void
-                    var surfaceBlock = world.getBlockType(finalBlockX, groundY, finalBlockZ);
+                    // Reject water (ocean/lake/river) and void.
+                    // Check groundY and groundY+1: on land both are solid/air; under water
+                    // groundY is the seabed and groundY+1 is Fluid_*.
                     boolean isBad = false;
-                    if (surfaceBlock != null) {
-                        String id = surfaceBlock.getId();
-                        for (String prefix : BAD_BLOCK_PREFIXES) {
-                            if (id != null && id.startsWith(prefix)) {
+                    for (int checkY = groundY; checkY <= groundY + 1; checkY++) {
+                        var bt = world.getBlockType(finalBlockX, checkY, finalBlockZ);
+                        if (bt != null) {
+                            String id = bt.getId();
+                            if (id != null && (id.startsWith("Fluid") || id.startsWith("Empty"))) {
                                 isBad = true;
                                 break;
                             }

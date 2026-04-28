@@ -264,14 +264,32 @@ public class ElfSage {
     }
 
     /**
-     * Spawns a fresh elf sage, force-loading the chunk first via getChunkAsync.
-     * After spawn, registers the elf in NpcRegistry so NpcChunkLoadHandler can
-     * restore it on future chunk loads — independent of BSON timing.
+     * Spawns a fresh elf sage. Loads the ring of chunks around world spawn (excluding
+     * the spawn chunk itself), finds the flattest spot for the tent, then spawns.
      */
     public static void doSpawn(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                 World world, Vector3d spawnPos) {
-        long chunkIndex = ChunkUtil.indexChunkFromBlock((int) spawnPos.getX(), (int) spawnPos.getZ());
-        world.getChunkAsync(chunkIndex).thenAccept(chunk -> world.execute(() -> {
+        // spawnPos is world spawn XZ (Y=0). Collect the 8 surrounding chunk indices,
+        // skipping the spawn chunk itself so the elf never lands on the player spawn.
+        long spawnChunk = ChunkUtil.indexChunkFromBlock((int) spawnPos.getX(), (int) spawnPos.getZ());
+        int spawnChunkX = ChunkUtil.xOfChunkIndex(spawnChunk);
+        int spawnChunkZ = ChunkUtil.zOfChunkIndex(spawnChunk);
+
+        java.util.List<long[]> candidateChunks = new java.util.ArrayList<>();
+        for (int dcx = -1; dcx <= 1; dcx++) {
+            for (int dcz = -1; dcz <= 1; dcz++) {
+                if (dcx == 0 && dcz == 0) continue; // skip spawn chunk
+                candidateChunks.add(new long[]{ ChunkUtil.indexChunk(spawnChunkX + dcx, spawnChunkZ + dcz) });
+            }
+        }
+
+        java.util.List<java.util.concurrent.CompletableFuture<?>> futures = new java.util.ArrayList<>();
+        for (long[] entry : candidateChunks) {
+            futures.add(world.getChunkAsync(entry[0]).toCompletableFuture());
+        }
+
+        java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                .thenAccept(ignored -> world.execute(() -> {
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
 
             VillageData liveVillage = VillageManager.get().getOrCreateVillageData(liveStore, playerRef);
@@ -283,10 +301,38 @@ public class ElfSage {
                 }
             }
 
-            purgeOrphanedElfSages(liveStore, world, spawnPos, 8.0, null);
+            // Find the flattest tent spot across all loaded candidate chunks.
+            int bestX = (int) spawnPos.getX() + (int) SPAWN_OFFSET;
+            int bestZ = (int) spawnPos.getZ() + (int) (SPAWN_OFFSET / 2);
+            int bestVariance = Integer.MAX_VALUE;
+            for (long[] entry : candidateChunks) {
+                long chunkIdx = entry[0];
+                int chunkX = ChunkUtil.xOfChunkIndex(chunkIdx);
+                int chunkZ = ChunkUtil.zOfChunkIndex(chunkIdx);
+                // Sample on a 2-block grid in the inner ±5 area of the chunk.
+                int chunkWorldX = ChunkUtil.worldCoordFromLocalCoord(chunkX, 8);
+                int chunkWorldZ = ChunkUtil.worldCoordFromLocalCoord(chunkZ, 8);
+                for (int dx = -5; dx <= 5; dx += 2) {
+                    for (int dz = -5; dz <= 5; dz += 2) {
+                        int cx = chunkWorldX + dx;
+                        int cz = chunkWorldZ + dz;
+                        int v = tentVariance(world, cx, cz);
+                        if (v < bestVariance) {
+                            bestVariance = v;
+                            bestX = cx;
+                            bestZ = cz;
+                        }
+                    }
+                }
+            }
+            int bestY = findSurfaceY(world, bestX, bestZ);
+            Vector3d tentPos = new Vector3d(bestX, bestY, bestZ);
+            LOGGER.info("Tent spot chosen: " + tentPos + " variance=" + bestVariance);
 
-            Vector3d finalPos = spawnPos;
-            Vector3d anchorPos = placeWandererTent(world, liveStore, spawnPos);
+            purgeOrphanedElfSages(liveStore, world, tentPos, 8.0, null);
+
+            Vector3d finalPos = tentPos;
+            Vector3d anchorPos = placeWandererTent(world, liveStore, tentPos);
             if (anchorPos != null) finalPos = anchorPos;
 
             Pair<Ref<EntityStore>, INonPlayerCharacter> result = NpcManager.spawnNpc(
@@ -479,11 +525,37 @@ public class ElfSage {
         ISpawnProvider spawnProvider = world.getWorldConfig().getSpawnProvider();
         Transform[] spawnPoints = spawnProvider.getSpawnPoints();
         if (spawnPoints == null || spawnPoints.length == 0) return null;
+        // Return only XZ — Y is resolved after chunk load via findFlatSpot.
         Vector3d worldSpawn = spawnPoints[0].getPosition();
-        return new Vector3d(
-                worldSpawn.getX() + SPAWN_OFFSET,
-                worldSpawn.getY(),
-                worldSpawn.getZ() + SPAWN_OFFSET / 2
-        );
+        return new Vector3d(worldSpawn.getX(), 0, worldSpawn.getZ());
+    }
+
+    // Tent footprint with 1-block margin: X[-6..6], Z[-4..5] = 13×10.
+    private static final int TENT_HALF_X = 6;
+    private static final int TENT_Z_MIN  = -4;
+    private static final int TENT_Z_MAX  =  5;
+
+    // Scans downward to find Y of the topmost non-empty block. Returns Y+1 (standing position).
+    private static int findSurfaceY(World world, int x, int z) {
+        int emptyId = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY_ID;
+        for (int y = 320; y >= 0; y--) {
+            if (world.getBlock(x, y, z) != emptyId) {
+                return y + 1;
+            }
+        }
+        return 64;
+    }
+
+    // Returns total Y-variance of the tent footprint centered at (cx, cz).
+    // Lower = flatter.
+    private static int tentVariance(World world, int cx, int cz) {
+        int centerY = findSurfaceY(world, cx, cz);
+        int variance = 0;
+        for (int fx = -TENT_HALF_X; fx <= TENT_HALF_X; fx++) {
+            for (int fz = TENT_Z_MIN; fz <= TENT_Z_MAX; fz++) {
+                variance += Math.abs(findSurfaceY(world, cx + fx, cz + fz) - centerY);
+            }
+        }
+        return variance;
     }
 }

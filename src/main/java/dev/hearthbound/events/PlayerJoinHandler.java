@@ -9,7 +9,6 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.HearthboundPlugin;
 import dev.hearthbound.npc.ElfSage;
-import dev.hearthbound.ui.VillageHud;
 
 import java.util.logging.Logger;
 
@@ -35,11 +34,6 @@ public class PlayerJoinHandler {
             VillageTickHandler tickHandler = HearthboundPlugin.get().getVillageTickHandler();
             tickHandler.start(store, playerRef, pRef, world);
 
-            // Attach village HUD to player
-            VillageHud hud = tickHandler.getHud();
-            if (hud != null) {
-                player.getHudManager().setCustomHud(pRef, hud);
-            }
         } catch (Exception e) {
             LOGGER.warning("Failed to initialize village for player: " + e.getMessage());
         }

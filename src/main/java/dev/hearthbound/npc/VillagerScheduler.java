@@ -1,5 +1,14 @@
 package dev.hearthbound.npc;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
+
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.Holder;
@@ -19,22 +28,16 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
+
 import dev.hearthbound.building.BuildingLayout;
+import dev.hearthbound.building.WarehouseDepositor;
+import dev.hearthbound.util.TickScheduler;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
 import dev.hearthbound.village.VillagerSummary;
-
-import dev.hearthbound.util.TickScheduler;
-
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 /**
  * Drives villager daily schedule:
@@ -57,10 +60,11 @@ public class VillagerScheduler {
     private static final String ROLE_LUMBERJACK  = "Villager_Human_Lumberjack";
     private static final String ROLE_MINER       = "Villager_Human_Miner";
     private static final String ROLE_TRAVELING   = "Villager_Human_Traveling";
+    private static final String ROLE_EATING      = "Villager_Human_Eating";
 
     // Day phases (24h clock)
     private static final double WORK_START   = 6.0;
-    private static final double WORK_END     = 20.0;
+    private static final double WORK_END     = 18.0;
     private static final double LUNCH_START  = 12.0;
     private static final double LUNCH_END    = 13.5;
     private static final double DINNER_START = 18.0;
@@ -75,6 +79,9 @@ public class VillagerScheduler {
     private final Map<UUID, Ref<EntityStore>> markerRefs = new HashMap<>();
     // Per-villager current activity label for UI
     private final Map<UUID, String> activityLabel = new HashMap<>();
+    // Villagers already fed during the current meal window (lunch or dinner)
+    // Cleared when the meal window ends, preventing repeated feedVillager() calls.
+    private final Set<UUID> fedThisMeal = new HashSet<>();
 
     public static final String ACTIVITY_GOING_TO_WORK = "Going to work";
     public static final String ACTIVITY_WORKING        = "Working";
@@ -98,6 +105,11 @@ public class VillagerScheduler {
     public void tick(Store<EntityStore> store, Ref<EntityStore> playerRef, VillageData village, World world) {
         double time24 = getTime24(store);
         if (time24 < 0) return;
+
+        // Clear fed-tracking between meal windows so villagers can eat again next meal.
+        if (!inWindow(time24, LUNCH_START, LUNCH_END) && !inWindow(time24, DINNER_START, DINNER_END)) {
+            fedThisMeal.clear();
+        }
 
         BuildingRecord farm      = VillageManager.get().findCompletedFarm(village);
         BuildingRecord warehouse = VillageManager.get().findCompletedWarehouse(village);
@@ -143,7 +155,7 @@ public class VillagerScheduler {
         VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
         String profession = summary != null ? summary.getProfession() : VillagerData.PROF_NONE;
 
-        ScheduleTarget target = resolveTarget(data, profession, village, house, farm, warehouse, sawmill, mine, time24);
+        ScheduleTarget target = resolveTarget(uuid, data, profession, village, house, farm, warehouse, sawmill, mine, time24);
         if (target == null) return;
 
         ScheduleTarget prev = lastTarget.get(uuid);
@@ -169,8 +181,13 @@ public class VillagerScheduler {
             setLeashPoint(ref, store, new Vector3d(target.x(), target.y(), target.z()));
             removeMarker(uuid, world);
             activityLabel.put(uuid, target.activity());
-            // Close house door whenever NPC arrives anywhere (home or work)
             setGateState(houseTarget, world, false);
+
+            if (ACTIVITY_EATING.equals(target.activity()) && warehouse != null
+                    && !fedThisMeal.contains(uuid)) {
+                fedThisMeal.add(uuid);
+                feedVillager(ref, warehouse, world, uuid);
+            }
         } else {
             // Still traveling — rebind marker every tick so Seek stays active
             world.execute(() -> {
@@ -304,16 +321,22 @@ public class VillagerScheduler {
         return null;
     }
 
-    private ScheduleTarget resolveTarget(VillagerData data, String profession, VillageData village,
+    private ScheduleTarget resolveTarget(UUID uuid, VillagerData data, String profession, VillageData village,
                                          BuildingRecord house, BuildingRecord farm,
                                          BuildingRecord warehouse, BuildingRecord sawmill,
                                          BuildingRecord mine, double time24) {
         if (data.isStarving() && warehouse != null) return warehouseTarget(warehouse);
 
-        if (data.isHungry() && warehouse != null) {
-            if (inWindow(time24, LUNCH_START, LUNCH_END) || inWindow(time24, DINNER_START, DINNER_END)) {
-                return warehouseTarget(warehouse);
-            }
+        boolean inMealWindow = inWindow(time24, LUNCH_START, LUNCH_END) || inWindow(time24, DINNER_START, DINNER_END);
+
+        // Keep villager at warehouse for the full meal window, even after hunger reset.
+        // Without this, hunger=0 after feedVillager → next tick resolves a different target → NPC leaves immediately.
+        if (inMealWindow && warehouse != null && fedThisMeal.contains(uuid)) {
+            return warehouseTarget(warehouse);
+        }
+
+        if (data.isHungry() && warehouse != null && inMealWindow) {
+            return warehouseTarget(warehouse);
         }
 
         if (!inWindow(time24, WORK_START, WORK_END)) return homeTarget(house, village);
@@ -435,7 +458,7 @@ public class VillagerScheduler {
                     warehouse.getPosX() + center[0] + 0.5,
                     targetY,
                     warehouse.getPosZ() + center[2] + 0.5,
-                    ROLE_VILLAGER, ACTIVITY_EATING,
+                    ROLE_EATING, ACTIVITY_EATING,
                     warehouse.getPosX() + door[0], warehouse.getPosY() + door[1], warehouse.getPosZ() + door[2],
                     doorRot,
                     layout.openBlock(), layout.closeBlock());
@@ -444,7 +467,32 @@ public class VillagerScheduler {
                 warehouse.getPosX() + center[0] + 0.5,
                 targetY,
                 warehouse.getPosZ() + center[2] + 0.5,
-                ROLE_VILLAGER, ACTIVITY_EATING);
+                ROLE_EATING, ACTIVITY_EATING);
+    }
+
+    /**
+     * Takes one food item from the warehouse, equips it in the NPC's hand, and resets hunger to 0.
+     * Called once when the villager arrives at the warehouse to eat.
+     * Deferred via world.execute() to avoid "Store is currently processing" — called from forEachChunk.
+     */
+    private void feedVillager(Ref<EntityStore> ref, BuildingRecord warehouse, World world, UUID uuid) {
+        String foodId = WarehouseDepositor.withdrawFood(world, warehouse);
+        if (foodId == null) {
+            LOGGER.fine("feedVillager: no food in warehouse for " + uuid);
+            return;
+        }
+
+        // Defer store write — we are inside forEachChunk, can't call putComponent directly.
+        // Reset hunger — food display is handled by ROLE_EATING JSON StateTransitions (SetHotbar + EquipHotbar)
+        world.execute(() -> {
+            if (!ref.isValid()) return;
+            Store<EntityStore> liveStore = world.getEntityStore().getStore();
+            VillagerData liveData = liveStore.getComponent(ref, VillagerData.getComponentType());
+            if (liveData == null) return;
+            liveData.setHunger(0);
+            liveStore.putComponent(ref, VillagerData.getComponentType(), liveData);
+            LOGGER.fine("feedVillager: " + uuid + " ate " + foodId);
+        });
     }
 
     private void switchRole(Ref<EntityStore> ref, Store<EntityStore> store, String roleName, World world) {
@@ -496,7 +544,7 @@ public class VillagerScheduler {
                         new com.hypixel.hytale.math.vector.Vector3i(gx, gy, gz);
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 rotated.placeNoReturn(world, gatePos, liveStore);
-                LOGGER.info("setGateState: prefab=" + prefabName + " rot=" + gateRotation + " at (" + gx + "," + gy + "," + gz + ")");
+                LOGGER.fine("setGateState: prefab=" + prefabName + " rot=" + gateRotation + " at (" + gx + "," + gy + "," + gz + ")");
             } catch (Exception e) {
                 LOGGER.warning("setGateState failed: " + e.getMessage());
             }

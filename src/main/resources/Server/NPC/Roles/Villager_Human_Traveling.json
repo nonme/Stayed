@@ -36,7 +36,7 @@
         "StopDistance": 0.5,
         "SlowDownDistance": 1.5,
         "AbortDistance": 500,
-        "RelativeSpeed": 0.28,
+        "RelativeSpeed": 0.35,
         "UsePathfinder": true
       }
     }

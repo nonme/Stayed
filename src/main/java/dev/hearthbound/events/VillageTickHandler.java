@@ -24,14 +24,15 @@ import dev.hearthbound.quest.RescueQuest1;
 import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.ui.VillageHud;
 import dev.hearthbound.util.TickScheduler;
+import dev.hearthbound.building.ResourceProducer;
+import dev.hearthbound.building.WarehouseDepositor;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
 import dev.hearthbound.village.VillagerSummary;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.logging.Logger;
@@ -48,6 +49,10 @@ public class VillageTickHandler {
 
     private static final Logger LOGGER = Logger.getLogger(VillageTickHandler.class.getName());
     private static final long TICK_INTERVAL_MS = 5000;
+    private static final double WORK_START = 6.0;
+    private static final double WORK_END   = 20.0;
+
+    private final Random rng = new Random();
     private static final String VILLAGER_ROLE = "Villager_Human";
     private static final String FOLLOWER_ROLE = "Villager_Rescue_Follower";
     private static final String VICTIM_ROLE   = "Villager_Rescue_Trapped";
@@ -103,6 +108,7 @@ public class VillageTickHandler {
         assignUnstaffedSawmills(store, playerRef, village);
         assignUnstaffedMines(store, playerRef, village);
         tickHunger(store, village);
+        tickProduction(store, playerRef, village, world);
         villagerScheduler.tick(store, playerRef, village, world);
     }
 
@@ -291,6 +297,8 @@ public class VillageTickHandler {
     /**
      * Increases hunger for every registered villager and saves updated VillagerData.
      * Iterates over NPCEntity chunks to find live villagers by UUID.
+     * Profession is read from VillagerSummary (VillageData BSON), not VillagerData component
+     * — VillagerData.getProfession() always returns PROF_NONE on live entities.
      */
     private void tickHunger(Store<EntityStore> store, VillageData village) {
         Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
@@ -300,11 +308,69 @@ public class VillageTickHandler {
                     Ref<EntityStore> ref = chunk.getReferenceTo(i);
                     VillagerData data = store.getComponent(ref, VillagerData.getComponentType());
                     if (data == null) continue;
+
+                    UUID uuid = NpcManager.extractUuid(store, ref);
+                    if (uuid == null) continue;
+                    VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
+                    if (summary == null) continue;
+
+                    // Farmers eat what they grow — keep them at 0 hunger always
+                    if (VillagerData.PROF_FARMER.equals(summary.getProfession())) {
+                        if (data.getHunger() > 0) {
+                            data.setHunger(0);
+                            store.putComponent(ref, VillagerData.getComponentType(), data);
+                        }
+                        continue;
+                    }
                     data.setHunger(data.getHunger() + HUNGER_PER_TICK);
                     store.putComponent(ref, VillagerData.getComponentType(), data);
                 } catch (Exception ignored) {}
             }
         });
+    }
+
+    /**
+     * For each completed production building with an assigned worker, during work hours,
+     * rolls a chance to produce one item and deposits it into the warehouse.
+     */
+    private void tickProduction(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                VillageData village, World world) {
+        double time24 = getTime24(store);
+        if (time24 < 0) return;
+        if (time24 < WORK_START || time24 >= WORK_END) return;
+
+        BuildingRecord warehouse = VillageManager.get().findCompletedWarehouse(village);
+        if (warehouse == null) {
+            LOGGER.info("tickProduction: no completed warehouse, skipping");
+            return;
+        }
+
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (building.getAssignedVillagerId() == null) continue;
+
+            String type = building.getType();
+            String itemId = ResourceProducer.roll(type, rng);
+            LOGGER.info("tickProduction: " + type + " assigned=" + building.getAssignedVillagerId()
+                    + " rolled=" + (itemId != null ? itemId : "nothing"));
+            if (itemId == null) continue;
+
+            boolean deposited = WarehouseDepositor.deposit(world, warehouse, itemId);
+            LOGGER.info("tickProduction: deposit " + itemId + " → " + (deposited ? "OK" : "FAILED/FULL"));
+        }
+    }
+
+    private double getTime24(Store<EntityStore> store) {
+        try {
+            com.hypixel.hytale.server.core.modules.time.WorldTimeResource resource =
+                    (com.hypixel.hytale.server.core.modules.time.WorldTimeResource)
+                    store.getResource(com.hypixel.hytale.server.core.modules.time.WorldTimeResource.getResourceType());
+            if (resource == null) return -1;
+            java.time.LocalDateTime dt = resource.getGameDateTime();
+            return dt.getHour() + dt.getMinute() / 60.0;
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /**

@@ -1,0 +1,86 @@
+{
+  "Type": "Generic",
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Villager_Human.name",
+      "Description": "Translation key for NPC name display"
+    }
+  },
+  "StartState": "Idle",
+  "DefaultNPCAttitude": "Ignore",
+  "DefaultPlayerAttitude": "Neutral",
+  "Appearance": "Player",
+  "MaxHealth": 60,
+  "DisableDamageGroups": ["Self"],
+  "KnockbackScale": 0.5,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": 5,
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 360,
+      "Acceleration": 8,
+      "RunThreshold": 0.3
+    }
+  ],
+  "StateTransitions": [
+    {
+      "States": [
+        {
+          "From": [],
+          "To": ["Idle"]
+        }
+      ],
+      "Actions": [
+        {
+          "Type": "Inventory",
+          "Operation": "SetHotbar",
+          "Item": "Plant_Crop_Carrot_Item",
+          "Slot": 0,
+          "UseTarget": false
+        },
+        {
+          "Type": "Inventory",
+          "Operation": "EquipHotbar",
+          "Slot": 0,
+          "UseTarget": false
+        }
+      ]
+    }
+  ],
+  "Instructions": [
+    {
+      "Instructions": [
+        {
+          "Sensor": { "Type": "State", "State": "Idle" },
+          "Instructions": [
+            {
+              "Continue": true,
+              "Sensor": { "Type": "Player", "Range": 3 },
+              "HeadMotion": { "Type": "Watch" }
+            },
+            {
+              "Sensor": { "Type": "Any" },
+              "Instructions": [
+                {
+                  "Actions": [
+                    {
+                      "Type": "Timeout",
+                      "Delay": [2, 4],
+                      "Action": { "Type": "Nothing" }
+                    }
+                  ],
+                  "BodyMotion": { "Type": "WanderInCircle", "Radius": 3, "RelativeSpeed": 0.2 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "NameTranslationKey": {
+    "Compute": "NameTranslationKey"
+  }
+}

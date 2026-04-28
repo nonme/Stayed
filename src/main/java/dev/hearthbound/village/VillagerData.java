@@ -22,9 +22,8 @@ public class VillagerData implements Component<EntityStore> {
     public static final String PROF_MASON = "mason";
     public static final String PROF_FARMER = "farmer";
 
-    // States
+    // States (activity — orthogonal to housing status)
     public static final String STATE_IDLE = "idle";
-    public static final String STATE_HOMELESS = "homeless";
     public static final String STATE_BUILDING = "building";
     public static final String STATE_WORKING = "working";
 
@@ -51,6 +50,7 @@ public class VillagerData implements Component<EntityStore> {
             .append(new KeyedCodec<>("FirstName", Codec.STRING), VillagerData::setFirstName, VillagerData::getFirstName).add()
             .append(new KeyedCodec<>("LastName", Codec.STRING), VillagerData::setLastName, VillagerData::getLastName).add()
             .append(new KeyedCodec<>("SkinSeed", Codec.LONG), VillagerData::setSkinSeed, VillagerData::getSkinSeed).add()
+            .append(new KeyedCodec<>("HasHouse", Codec.BOOLEAN), VillagerData::setHasHouse, VillagerData::isHasHouse).add()
             .build();
 
     private static ComponentType<EntityStore, VillagerData> componentType;
@@ -66,6 +66,7 @@ public class VillagerData implements Component<EntityStore> {
     private String race = RACE_HUMAN;
     private String profession = PROF_NONE;
     private String state = STATE_IDLE;
+    private boolean hasHouse = false;
     // Hunger: 0 = full, 100 = very hungry. Increases over time; reduced by farms (future).
     private int hunger = 0;
     private String firstName = "";
@@ -81,8 +82,11 @@ public class VillagerData implements Component<EntityStore> {
         this.firstName = firstName;
         this.lastName = lastName;
         this.skinSeed = skinSeed;
-        this.state = STATE_HOMELESS;
+        // hasHouse stays false — newly created villager has no home yet
     }
+
+    public boolean isHasHouse() { return hasHouse; }
+    public void setHasHouse(boolean hasHouse) { this.hasHouse = hasHouse; }
 
     public String getRace() { return race; }
     public void setRace(String race) { this.race = race; }
@@ -137,7 +141,7 @@ public class VillagerData implements Component<EntityStore> {
     public void setSkinSeed(long skinSeed) { this.skinSeed = skinSeed; }
 
     public boolean hasHome() {
-        return !STATE_HOMELESS.equals(state);
+        return hasHouse;
     }
 
     public boolean canAssignProfession() {
@@ -150,6 +154,7 @@ public class VillagerData implements Component<EntityStore> {
         copy.race = this.race;
         copy.profession = this.profession;
         copy.state = this.state;
+        copy.hasHouse = this.hasHouse;
         copy.hunger = this.hunger;
         copy.firstName = this.firstName;
         copy.lastName = this.lastName;

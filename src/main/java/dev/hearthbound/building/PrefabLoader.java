@@ -65,11 +65,22 @@ public class PrefabLoader {
     public static List<BlockPlacer.BlockEntry> load(
             String prefabName, String anchorBlockId, int anchorPrefabY,
             int worldX, int worldY, int worldZ, int worldRotation) {
+        return load(prefabName, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, worldRotation, false);
+    }
+
+    public static List<BlockPlacer.BlockEntry> load(
+            String prefabName, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int worldRotation, boolean mineOrder) {
         try {
             BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
             int prefabRotation = readAnchorRotation(selection, anchorBlockId, anchorPrefabY);
             int rotationSteps = (worldRotation - prefabRotation + 4) % 4;
-            return extractBlocks(selection, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, rotationSteps);
+            // Never include Empty entries in the build plan — terrain clearing is handled
+            // separately by startResourceBuilding before the elf begins construction.
+            List<BlockPlacer.BlockEntry> blocks = extractBlocks(
+                    selection, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, rotationSteps,
+                    false);
+            return mineOrder ? sortForMineOrder(blocks, worldY) : blocks;
         } catch (Exception e) {
             LOGGER.warning("Failed to load prefab '" + prefabName + "': " + e.getMessage());
             return List.of();
@@ -80,7 +91,7 @@ public class PrefabLoader {
     public static List<BlockPlacer.BlockEntry> load(
             String prefabName, String anchorBlockId, int anchorPrefabY,
             int worldX, int worldY, int worldZ) {
-        return load(prefabName, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, 0);
+        return load(prefabName, anchorBlockId, anchorPrefabY, worldX, worldY, worldZ, 0, false);
     }
 
     /**
@@ -212,6 +223,13 @@ public class PrefabLoader {
     private static List<BlockPlacer.BlockEntry> extractBlocks(
             BlockSelection selection, String anchorBlockId, int anchorPrefabY,
             int worldX, int worldY, int worldZ, int rotationSteps) {
+        return extractBlocks(selection, anchorBlockId, anchorPrefabY,
+                worldX, worldY, worldZ, rotationSteps, false);
+    }
+
+    private static List<BlockPlacer.BlockEntry> extractBlocks(
+            BlockSelection selection, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int rotationSteps, boolean includeBelowEmpty) {
 
         var assetMap = BlockType.getAssetMap();
 
@@ -219,9 +237,6 @@ public class PrefabLoader {
         int prefabOriginY = selection.getY();
         int prefabOriginZ = selection.getZ();
 
-        // Find the anchor block's local XZ position so all offsets are relative to it,
-        // not to the selection corner. Town Hall worked before because its anchor happened
-        // to be at absolute x=0,z=0, but any other anchor position requires explicit pinning.
         int[] anchorLocal = findAnchorLocal(selection, anchorBlockId, anchorPrefabY,
                 prefabOriginX, prefabOriginY, prefabOriginZ);
         int anchorLX = anchorLocal[0];
@@ -233,19 +248,28 @@ public class PrefabLoader {
             BlockType blockType = assetMap.getAsset(holder.blockId());
             if (blockType == null) return;
 
-            // Filler entries describe footprint cells that the engine auto-fills when the
-            // base block is placed (upper half of a chair, open-door swing cells, etc.).
-            // We must only place the base entries — the engine handles the rest.
             if (holder.filler() != 0) return;
 
             String id = blockType.getId();
-            if (SKIP_BLOCKS.contains(id)) return;
-            if (id.equals(anchorBlockId)) return;
 
             // Coords relative to the anchor block (not the selection corner).
             int lx = (bx - prefabOriginX) - anchorLX;
             int ly = (by - prefabOriginY) - anchorPrefabY;
             int lz = (bz - prefabOriginZ) - anchorLZ;
+
+            // For mine mode: include Empty cells below the anchor as explicit clear operations.
+            if ((id.equals("Empty") || id.equals("Editor_Empty")) && includeBelowEmpty && ly < 0) {
+                for (int i = 0; i < rotationSteps; i++) { int t = lx; lx = lz; lz = -t; }
+                result.add(new BlockPlacer.BlockEntry(worldX + lx, worldY + ly, worldZ + lz, "Empty", 0));
+                return;
+            }
+
+            if (SKIP_BLOCKS.contains(id)) return;
+            if (id.equals(anchorBlockId)) return;
+
+            // Below the floor (ly < -1): skip background fill blocks that already exist in
+            // the terrain and would never be visible — placing them is pure waste.
+            if (ly < -1 && isMineBackfill(id)) return;
 
             // Rotate local XZ around anchor (0,0) by rotationSteps * 90° CCW: (x,z) → (z, -x).
             // Direction paired with the CCW yaw rotation in rotateBlockRotation — keeping the
@@ -268,6 +292,36 @@ public class PrefabLoader {
         });
 
         return sortForBuildOrder(result);
+    }
+
+    /**
+     * Mine-specific build order:
+     *   1. Everything at or above the anchor Y (ly >= 0) — bottom-to-top (normal build order).
+     *   2. Everything below the anchor Y (ly < 0) — top-to-bottom (digging downward).
+     *
+     * Within each group the standard shell/furniture and radial sort still apply.
+     */
+    private static List<BlockPlacer.BlockEntry> sortForMineOrder(
+            List<BlockPlacer.BlockEntry> blocks, int anchorWorldY) {
+        List<BlockPlacer.BlockEntry> above = new java.util.ArrayList<>();
+        List<BlockPlacer.BlockEntry> below = new java.util.ArrayList<>();
+        for (BlockPlacer.BlockEntry e : blocks) {
+            if (e.y() >= anchorWorldY - 1) above.add(e);
+            else below.add(e);
+        }
+        // Above: normal bottom-to-top (sortForBuildOrder already does this)
+        List<BlockPlacer.BlockEntry> sortedAbove = sortForBuildOrder(above);
+        // Below: top-to-bottom — negate y for the sort key, then restore
+        below.sort((a, b) -> {
+            int c = Integer.compare(b.y(), a.y()); // descending y = top-to-bottom
+            if (c != 0) return c;
+            return Integer.compare(buildPass(a.blockType()), buildPass(b.blockType()));
+        });
+
+        List<BlockPlacer.BlockEntry> result = new java.util.ArrayList<>(blocks.size());
+        result.addAll(sortedAbove);
+        result.addAll(below);
+        return result;
     }
 
     /**
@@ -357,6 +411,13 @@ public class PrefabLoader {
         }
     }
 
+    /** Background fill blocks that exist in natural terrain and need not be placed by the elf. */
+    private static boolean isMineBackfill(String id) {
+        return "Rock_Stone".equals(id)
+                || id.startsWith("Ore_")
+                || id.startsWith("Rubble_");
+    }
+
     /** True for connected-block state variants named *..._State_Definitions_Corner, etc. */
     private static boolean isCornerVariant(String blockId) {
         return blockId.contains("_State_Definitions_Corner");
@@ -388,7 +449,9 @@ public class PrefabLoader {
                 || stripped.contains("Slab")
                 || stripped.contains("Beam")
                 || stripped.startsWith("Wood_") && stripped.contains("Fence")
-                || stripped.startsWith("Rock_") && stripped.contains("Wall");
+                || stripped.startsWith("Rock_") && stripped.contains("Wall")
+                || stripped.contains("_Branch")
+                || stripped.contains("_Corner");
         if (isDependent) return 3;
         if (stripped.startsWith("Rock_")) return 0;
         if (stripped.startsWith("Wood_")) return 1;

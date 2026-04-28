@@ -22,6 +22,7 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new PrefabModeCommand());
         addSubCommand(new FastBuildCommand());
         addSubCommand(new InstaBuildCommand());
+        addSubCommand(new SpawnVillagerCommand());
         addSubCommand(new TestVillagersCommand());
         addSubCommand(new TestSkinTonesCommand());
         addSubCommand(new QuestCommand());

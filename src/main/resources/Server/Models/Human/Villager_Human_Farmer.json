@@ -1,0 +1,13 @@
+{
+  "Parent": "Player",
+  "AnimationSets": {
+    "Till": {
+      "Animations": [
+        {
+          "Animation": "Characters/Animations/Items/Main_Handed/Hoe/Attacks/Till/Till.blockyanim",
+          "Looping": false
+        }
+      ]
+    }
+  }
+}

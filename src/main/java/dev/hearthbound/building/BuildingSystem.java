@@ -92,28 +92,11 @@ public class BuildingSystem {
         activeBuildPlan = plan;
         activeRotation = rotation;
 
-        // Collect Empty cells that sit below the anchor level and need terrain clearing.
-        List<BlockPlacer.BlockEntry> belowEmpty = loadBelowAnchorEmptyCells(buildingType,
-                anchorX, anchorY, anchorZ, rotation);
-
         // Snapshot every cell we're about to overwrite so we can restore terrain when the ghost
         // is cleared (including after a server restart — the snapshot is persisted on VillageData).
         ghostSnapshot = new HashMap<>();
         int placed = 0;
         int yMin = Integer.MAX_VALUE, yMax = Integer.MIN_VALUE;
-
-        // Snapshot + clear below-anchor Empty cells first.
-        for (BlockPlacer.BlockEntry entry : belowEmpty) {
-            var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
-            String existingId = (existing != null) ? existing.getId() : "Empty";
-            // Only clear if something is actually there — no point touching truly empty air.
-            if (existingId.equals("Empty") || existingId.equals("Editor_Empty")) continue;
-            ghostSnapshot.put(entry.x() + "," + entry.y() + "," + entry.z(), existingId);
-            BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
-            placed++;
-            if (entry.y() < yMin) yMin = entry.y();
-            if (entry.y() > yMax) yMax = entry.y();
-        }
 
         for (BlockPlacer.BlockEntry entry : plan) {
             if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
@@ -434,6 +417,21 @@ public class BuildingSystem {
         village.setConstructionStarted(true);
         VillageManager.get().save(store, playerRef, village);
 
+        // For mine: clear all terrain below the anchor level before construction begins.
+        // This is done once here so the elf never has to "place Empty" during building.
+        if (BuildingType.MINE.equals(record.getType())) {
+            List<BlockPlacer.BlockEntry> belowEmpty = loadBelowAnchorEmptyCells(
+                    record.getType(), record.getPosX(), record.getPosY(), record.getPosZ(), rotation);
+            for (BlockPlacer.BlockEntry entry : belowEmpty) {
+                var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
+                String existingId = (existing != null) ? existing.getId() : "Empty";
+                if (!existingId.equals("Empty") && !existingId.equals("Editor_Empty")) {
+                    BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
+                }
+            }
+            LOGGER.info("Mine terrain cleared: " + belowEmpty.size() + " cells below anchor");
+        }
+
         // Safe position: a couple blocks in front of the building door.
         int[] doorOffset = BuildingType.getDoorOffset(record.getType(), rotation);
         double dirX = doorOffset[0] == 0 ? 0 : (doorOffset[0] > 0 ? 2 : -2);
@@ -686,8 +684,9 @@ public class BuildingSystem {
         if (prefabName != null) {
             String anchorBlockId = BuildingType.getAnchorBlockId(type);
             int anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+            boolean mineOrder = dev.hearthbound.village.BuildingType.MINE.equals(type);
             List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(
-                    prefabName, anchorBlockId, anchorPrefabY, anchorX, anchorY, anchorZ, rotation);
+                    prefabName, anchorBlockId, anchorPrefabY, anchorX, anchorY, anchorZ, rotation, mineOrder);
             if (!plan.isEmpty()) return plan;
             LOGGER.warning("Prefab '" + prefabName + "' empty, falling back to generator");
         }
@@ -737,11 +736,12 @@ public class BuildingSystem {
             List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(prefabName, anchorBlockId, anchorPrefabY, 0, anchorPrefabY, 0);
             if (!plan.isEmpty()) {
                 java.util.Map<String, Integer> resources = new java.util.LinkedHashMap<>();
+                boolean isMine = dev.hearthbound.village.BuildingType.MINE.equals(type);
                 for (BlockPlacer.BlockEntry e : plan) {
                     String id = normalizeBlockId(e.blockType());
-                    if (!ResourceBlockPlacer.isFreeBlock(id)) {
-                        resources.merge(id, 1, Integer::sum);
-                    }
+                    if (ResourceBlockPlacer.isFreeBlock(id)) continue;
+                    if (isMine && ResourceBlockPlacer.isMineExcavationBlock(id)) continue;
+                    resources.merge(id, 1, Integer::sum);
                 }
                 return resources;
             }

@@ -12,6 +12,8 @@ import dev.hearthbound.events.BlockPlaceHandler;
 import dev.hearthbound.events.BrazierHandler;
 import dev.hearthbound.events.FoundingStoneHandler;
 import dev.hearthbound.events.CounterHandler;
+import dev.hearthbound.events.LumbermillHandler;
+import dev.hearthbound.events.MineTorchHandler;
 import dev.hearthbound.events.ScarecrowHandler;
 import dev.hearthbound.events.NpcChunkLoadHandler;
 import dev.hearthbound.events.PlayerJoinHandler;
@@ -70,6 +72,8 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new BrazierHandler());
         this.getEntityStoreRegistry().registerSystem(new ScarecrowHandler());
         this.getEntityStoreRegistry().registerSystem(new CounterHandler());
+        this.getEntityStoreRegistry().registerSystem(new LumbermillHandler());
+        this.getEntityStoreRegistry().registerSystem(new MineTorchHandler());
 
         // Register NPC interaction → Elf dialog page
         OpenCustomUIInteraction.registerCustomPageSupplier(

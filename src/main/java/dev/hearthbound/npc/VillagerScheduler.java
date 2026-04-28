@@ -27,10 +27,13 @@ import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
 import dev.hearthbound.village.VillagerSummary;
 
+import dev.hearthbound.util.TickScheduler;
+
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
@@ -49,9 +52,11 @@ public class VillagerScheduler {
     private static final Logger LOGGER = Logger.getLogger(VillagerScheduler.class.getName());
 
     // Role names — must match JSON files in Server/NPC/Roles/
-    private static final String ROLE_VILLAGER  = "Villager_Human";
-    private static final String ROLE_FARMER    = "Villager_Human_Farmer";
-    private static final String ROLE_TRAVELING = "Villager_Human_Traveling";
+    private static final String ROLE_VILLAGER    = "Villager_Human";
+    private static final String ROLE_FARMER      = "Villager_Human_Farmer";
+    private static final String ROLE_LUMBERJACK  = "Villager_Human_Lumberjack";
+    private static final String ROLE_MINER       = "Villager_Human_Miner";
+    private static final String ROLE_TRAVELING   = "Villager_Human_Traveling";
 
     // Day phases (24h clock)
     private static final double WORK_START   = 6.0;
@@ -96,6 +101,8 @@ public class VillagerScheduler {
 
         BuildingRecord farm      = VillageManager.get().findCompletedFarm(village);
         BuildingRecord warehouse = VillageManager.get().findCompletedWarehouse(village);
+        BuildingRecord sawmill   = VillageManager.get().findCompletedSawmill(village);
+        BuildingRecord mine      = VillageManager.get().findCompletedMine(village);
 
         Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
         store.forEachChunk(query, (chunk, buffer) -> {
@@ -112,11 +119,11 @@ public class VillagerScheduler {
 
                     boolean hasHouse = findVillagerHouse(village, uuid) != null;
                     if (hasHouse) {
-                        if (VillagerData.STATE_HOMELESS.equals(data.getState())) {
-                            data.setState(VillagerData.STATE_IDLE);
+                        if (!data.isHasHouse()) {
+                            data.setHasHouse(true);
                             store.putComponent(ref, VillagerData.getComponentType(), data);
                         }
-                        tickVillager(ref, store, data, village, farm, warehouse, time24, world);
+                        tickVillager(ref, store, data, village, farm, warehouse, sawmill, mine, time24, world);
                     }
                 } catch (Exception e) {
                     LOGGER.warning("VillagerScheduler tick error: " + e.getMessage());
@@ -127,6 +134,7 @@ public class VillagerScheduler {
 
     private void tickVillager(Ref<EntityStore> ref, Store<EntityStore> store, VillagerData data,
                               VillageData village, BuildingRecord farm, BuildingRecord warehouse,
+                              BuildingRecord sawmill, BuildingRecord mine,
                               double time24, World world) {
         UUID uuid = NpcManager.extractUuid(store, ref);
         if (uuid == null) return;
@@ -135,7 +143,7 @@ public class VillagerScheduler {
         VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
         String profession = summary != null ? summary.getProfession() : VillagerData.PROF_NONE;
 
-        ScheduleTarget target = resolveTarget(data, profession, village, house, farm, warehouse, time24);
+        ScheduleTarget target = resolveTarget(data, profession, village, house, farm, warehouse, sawmill, mine, time24);
         if (target == null) return;
 
         ScheduleTarget prev = lastTarget.get(uuid);
@@ -157,7 +165,7 @@ public class VillagerScheduler {
                 startTraveling(ref, liveStore, target, world, uuid);
             });
         } else if (arrived) {
-            switchRole(ref, store, target.arrivedRole());
+            switchRole(ref, store, target.arrivedRole(), world);
             setLeashPoint(ref, store, new Vector3d(target.x(), target.y(), target.z()));
             removeMarker(uuid, world);
             activityLabel.put(uuid, target.activity());
@@ -187,7 +195,7 @@ public class VillagerScheduler {
         }
 
         // 3. Switch to traveling role (Seek → LockedTarget)
-        switchRole(ref, store, ROLE_TRAVELING);
+        switchRole(ref, store, ROLE_TRAVELING, world);
 
         // 4. After role switch is applied, bind marker as LockedTarget.
         //    RoleChangeSystem defers the role swap, so we schedule binding after it.
@@ -298,7 +306,8 @@ public class VillagerScheduler {
 
     private ScheduleTarget resolveTarget(VillagerData data, String profession, VillageData village,
                                          BuildingRecord house, BuildingRecord farm,
-                                         BuildingRecord warehouse, double time24) {
+                                         BuildingRecord warehouse, BuildingRecord sawmill,
+                                         BuildingRecord mine, double time24) {
         if (data.isStarving() && warehouse != null) return warehouseTarget(warehouse);
 
         if (data.isHungry() && warehouse != null) {
@@ -310,6 +319,8 @@ public class VillagerScheduler {
         if (!inWindow(time24, WORK_START, WORK_END)) return homeTarget(house, village);
 
         if (VillagerData.PROF_FARMER.equals(profession) && farm != null) return farmTarget(farm);
+        if (VillagerData.PROF_LUMBERJACK.equals(profession) && sawmill != null) return workTarget(sawmill, ROLE_LUMBERJACK);
+        if (VillagerData.PROF_MASON.equals(profession) && mine != null) return workTarget(mine, ROLE_MINER);
 
         return homeTarget(house, village);
     }
@@ -343,6 +354,35 @@ public class VillagerScheduler {
                 village.getFoundingStoneY() + 1.0,
                 village.getFoundingStoneZ() + 0.5,
                 ROLE_VILLAGER, ACTIVITY_RESTING);
+    }
+
+    private ScheduleTarget workTarget(BuildingRecord building, String arrivedRole) {
+        BuildingLayout.Layout layout = BuildingLayout.get(building.getType());
+        int steps = layout.rotationSteps(building.getRotation());
+        int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
+        double targetY = building.getPosY() + layout.floorLY() + 1.0;
+        LOGGER.info("workTarget [" + building.getType() + "] anchor=(" + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ() + ")"
+                + " rot=" + building.getRotation() + " steps=" + steps
+                + " localCenter=(" + layout.centerLX() + "," + layout.centerLZ() + ")"
+                + " worldCenter=(" + (building.getPosX() + center[0] + 0.5) + "," + targetY + "," + (building.getPosZ() + center[2] + 0.5) + ")"
+                + " hasDoor=" + layout.hasDoor());
+        if (layout.hasDoor()) {
+            int[] door = rotateLocalOffset(layout.doorLX(), layout.doorLY(), layout.doorLZ(), steps);
+            int doorRot = layout.doorWorldRotation(building.getRotation());
+            return new ScheduleTarget(
+                    building.getPosX() + center[0] + 0.5,
+                    targetY,
+                    building.getPosZ() + center[2] + 0.5,
+                    arrivedRole, ACTIVITY_WORKING,
+                    building.getPosX() + door[0], building.getPosY() + door[1], building.getPosZ() + door[2],
+                    doorRot,
+                    layout.openBlock(), layout.closeBlock());
+        }
+        return new ScheduleTarget(
+                building.getPosX() + center[0] + 0.5,
+                targetY,
+                building.getPosZ() + center[2] + 0.5,
+                arrivedRole, ACTIVITY_WORKING);
     }
 
     private ScheduleTarget farmTarget(BuildingRecord farm) {
@@ -407,7 +447,7 @@ public class VillagerScheduler {
                 ROLE_VILLAGER, ACTIVITY_EATING);
     }
 
-    private void switchRole(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
+    private void switchRole(Ref<EntityStore> ref, Store<EntityStore> store, String roleName, World world) {
         NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
         if (npc == null || npc.getRole() == null) return;
         if (roleName.equals(npc.getRole().getRoleName())) return;
@@ -417,6 +457,15 @@ public class VillagerScheduler {
             return;
         }
         RoleChangeSystem.requestRoleChange(ref, npc.getRole(), idx, false, store);
+        // After role change, re-equip profession item — RoleChangeSystem is async,
+        // so delay to let the new role settle before touching inventory.
+        TickScheduler.getExecutor().schedule(() ->
+            world.execute(() -> {
+                if (!ref.isValid()) return;
+                NpcRestorer.equipProfessionItem(ref, world.getEntityStore().getStore(), roleName);
+            }),
+            500L, TimeUnit.MILLISECONDS
+        );
     }
 
     private void setLeashPoint(Ref<EntityStore> ref, Store<EntityStore> store, Vector3d pos) {

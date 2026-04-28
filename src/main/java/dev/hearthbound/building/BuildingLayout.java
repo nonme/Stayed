@@ -86,36 +86,45 @@ public final class BuildingLayout {
         // loadNativeLocal returns b.y() = anchorPrefabY + ly (not ly itself).
         // Convert to true local Y: ly = b.y() - anchorPrefabY.
 
-        // Find door/gate block (filler=0 only, lower block of a 2-tall door).
-        BlockPlacer.BlockEntry doorEntry = blocks.stream()
+        // Find door/gate block — skip for open-air buildings (mine, sawmill) that have
+        // decorative doors the NPC should not try to open/enter.
+        boolean hasManagedDoor = !BuildingType.MINE.equals(type) && !BuildingType.SAWMILL.equals(type);
+        BlockPlacer.BlockEntry doorEntry = hasManagedDoor ? blocks.stream()
                 .filter(b -> isClosedDoor(b.blockType()))
                 .findFirst()
-                .orElse(null);
+                .orElse(null) : null;
 
         String openBlock  = doorEntry != null ? openVariant(doorEntry.blockType())  : null;
         String closeBlock = doorEntry != null ? closeVariant(doorEntry.blockType()) : null;
         // True local Y of the door block relative to anchor.
         int doorTrueLY = doorEntry != null ? (doorEntry.y() - anchorPrefabY) : 0;
 
-        // Interior center: average X/Z of walkable floor blocks.
-        // Iterate over true ly values: 0 (same height as anchor), -1, -2 (farm: Scarecrow is 2 above ground).
+        // Interior center: use hardcoded override if available, otherwise auto-detect.
         int centerLX = 0, centerLZ = 0, floorLY = 0;
-        for (int tryLy : new int[]{0, -1, -2}) {
-            int targetY = tryLy + anchorPrefabY; // b.y() value that corresponds to this ly
-            double sumX = 0, sumZ = 0;
-            int count = 0;
-            for (BlockPlacer.BlockEntry b : blocks) {
-                if (b.y() != targetY) continue;
-                if (!isWalkable(b.blockType())) continue;
-                sumX += b.x();
-                sumZ += b.z();
-                count++;
-            }
-            if (count > 0) {
-                centerLX = (int) Math.round(sumX / count);
-                centerLZ = (int) Math.round(sumZ / count);
-                floorLY  = tryLy;
-                break;
+        int[] workOverride = dev.hearthbound.village.BuildingType.getWorkPointOverride(type);
+        if (workOverride != null) {
+            centerLX = workOverride[0];
+            floorLY  = workOverride[1];
+            centerLZ = workOverride[2];
+        } else {
+            // Iterate over true ly values: 0 (anchor level), -1, -2 (farm: scarecrow 2 above ground).
+            for (int tryLy : new int[]{0, -1, -2}) {
+                int targetY = tryLy + anchorPrefabY;
+                double sumX = 0, sumZ = 0;
+                int count = 0;
+                for (BlockPlacer.BlockEntry b : blocks) {
+                    if (b.y() != targetY) continue;
+                    if (!isWalkable(b.blockType())) continue;
+                    sumX += b.x();
+                    sumZ += b.z();
+                    count++;
+                }
+                if (count > 0) {
+                    centerLX = (int) Math.round(sumX / count);
+                    centerLZ = (int) Math.round(sumZ / count);
+                    floorLY  = tryLy;
+                    break;
+                }
             }
         }
 
@@ -159,7 +168,8 @@ public final class BuildingLayout {
     private static boolean isWalkable(String id) {
         if (id == null || id.isBlank()) return false;
         if (id.equals("Empty") || id.equals("Filter_Air_Block")) return false;
-        // Structural/decoration blocks that are not floor
+        // Skip anchor/custom blocks
+        if (id.startsWith("Hearthbound_")) return false;
         String lower = id.toLowerCase();
         return !lower.contains("fence") && !lower.contains("wall")
                 && !lower.contains("door") && !lower.contains("gate")
@@ -167,7 +177,11 @@ public final class BuildingLayout {
                 && !lower.contains("trunk") && !lower.contains("leaves")
                 && !lower.contains("scarecrow") && !lower.contains("brazier")
                 && !lower.contains("counter") && !lower.contains("chest")
-                && !lower.contains("crop") && !lower.contains("plant");
+                && !lower.contains("crop") && !lower.contains("plant")
+                && !lower.contains("furniture") && !lower.contains("rubble")
+                && !lower.contains("branch") && !lower.contains("deco")
+                && !lower.contains("lantern") && !lower.contains("rope")
+                && !lower.contains("sign") && !lower.contains("ore_");
     }
 
     private static Layout fallback() {

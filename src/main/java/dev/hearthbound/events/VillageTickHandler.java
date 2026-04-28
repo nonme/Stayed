@@ -100,6 +100,8 @@ public class VillageTickHandler {
         convertAllFollowers(store, playerRef, village, world);
         assignHomelessVillagers(store, playerRef, village, world);
         assignUnstaffedFarms(store, playerRef, village);
+        assignUnstaffedSawmills(store, playerRef, village);
+        assignUnstaffedMines(store, playerRef, village);
         tickHunger(store, village);
         villagerScheduler.tick(store, playerRef, village, world);
     }
@@ -349,10 +351,10 @@ public class VillageTickHandler {
 
                 entity.moveTo(villagerRef, doorX, doorY, doorZ, liveStore);
 
-                // Clear homeless state so hasHome() returns true and happiness shows correctly.
+                // Mark villager as housed so hasHome() returns true and happiness shows correctly.
                 VillagerData vd = liveStore.getComponent(villagerRef, VillagerData.getComponentType());
-                if (vd != null && VillagerData.STATE_HOMELESS.equals(vd.getState())) {
-                    vd.setState(VillagerData.STATE_IDLE);
+                if (vd != null && !vd.isHasHouse()) {
+                    vd.setHasHouse(true);
                     liveStore.putComponent(villagerRef, VillagerData.getComponentType(), vd);
                 }
 
@@ -380,13 +382,48 @@ public class VillageTickHandler {
         for (BuildingRecord building : village.getBuildings()) {
             if (!building.isCompleted()) continue;
             if (!BuildingType.FARM.equals(building.getType())) continue;
-            if (building.getAssignedVillagerId() != null) continue; // already has a worker
+            if (building.getAssignedVillagerId() != null) continue;
 
-            UUID farmerUuid = mgr.assignFarmerProfession(store, playerRef, village, building);
-            if (farmerUuid != null) {
-                LOGGER.info("assignUnstaffedFarms: assigned " + farmerUuid + " to farm at "
+            UUID uuid = mgr.assignFarmerProfession(store, playerRef, village, building);
+            if (uuid != null) {
+                LOGGER.info("assignUnstaffedFarms: assigned " + uuid + " to farm at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
-                // Reload village after save so the next iteration sees updated state
+                village = mgr.getVillageData(store, playerRef);
+                if (village == null) return;
+            }
+        }
+    }
+
+    private void assignUnstaffedSawmills(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                         VillageData village) {
+        VillageManager mgr = VillageManager.get();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (!BuildingType.SAWMILL.equals(building.getType())) continue;
+            if (building.getAssignedVillagerId() != null) continue;
+
+            UUID uuid = mgr.assignLumberjackProfession(store, playerRef, village, building);
+            if (uuid != null) {
+                LOGGER.info("assignUnstaffedSawmills: assigned " + uuid + " to sawmill at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
+                village = mgr.getVillageData(store, playerRef);
+                if (village == null) return;
+            }
+        }
+    }
+
+    private void assignUnstaffedMines(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData village) {
+        VillageManager mgr = VillageManager.get();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (!BuildingType.MINE.equals(building.getType())) continue;
+            if (building.getAssignedVillagerId() != null) continue;
+
+            UUID uuid = mgr.assignMinerProfession(store, playerRef, village, building);
+            if (uuid != null) {
+                LOGGER.info("assignUnstaffedMines: assigned " + uuid + " to mine at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;
             }

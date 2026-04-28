@@ -1,0 +1,50 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Lumbermill.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Bench_Lumbermill.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Benches/Lumbermill.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Weight": 1,
+        "Texture": "Blocks/Benches/Lumbermill_Texture.png"
+      }
+    ],
+    "HitboxType": "Bench_Lumbermill",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Hearthbound_Lumbermill"
+      }
+    },
+    "BlockParticleSetId": "Wood",
+    "BlockSoundSetId": "Wood",
+    "Support": {
+      "Down": [
+        {
+          "FaceType": "Full"
+        }
+      ]
+    },
+    "InteractionHint": "server.interactionHints.manage_lumbermill",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Hearthbound"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

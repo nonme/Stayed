@@ -70,6 +70,10 @@ public class BlockPlacer {
     }
 
     public static void placeBlock(World world, BlockEntry entry) {
+        if ("Empty".equals(entry.blockType())) {
+            silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
+            return;
+        }
         WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(entry.x(), entry.z()));
         if (chunk == null) {
             world.setBlock(entry.x(), entry.y(), entry.z(), entry.blockType());

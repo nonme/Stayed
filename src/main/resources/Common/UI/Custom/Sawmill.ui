@@ -1,0 +1,287 @@
+@TabActiveStyle = TextButtonStyle(
+  Default: (Background: #2a3a50, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e8f0f8, FontSize: 12, RenderBold: true)),
+  Hovered: (Background: #354a62, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #ffffff, FontSize: 12, RenderBold: true)),
+  Pressed: (Background: #1e2d3d, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e8f0f8, FontSize: 12, RenderBold: true))
+);
+
+@TabInactiveStyle = TextButtonStyle(
+  Default: (Background: #161e28, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a7080, FontSize: 12)),
+  Hovered: (Background: #1e2a36, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #9ab8cc, FontSize: 12)),
+  Pressed: (Background: #0e161e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a7080, FontSize: 12))
+);
+
+@ConfirmBtnStyle = TextButtonStyle(
+  Default: (Background: #1e4a22, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a8d8ac, FontSize: 13, RenderBold: true)),
+  Hovered: (Background: #286030, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4f0d8, FontSize: 13, RenderBold: true)),
+  Pressed: (Background: #143218, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a8d8ac, FontSize: 13, RenderBold: true))
+);
+
+@DepositBtnStyle = TextButtonStyle(
+  Default: (Background: #1e2d4a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8aaad4, FontSize: 12)),
+  Hovered: (Background: #283c60, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #b8d0f0, FontSize: 12)),
+  Pressed: (Background: #141e33, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8aaad4, FontSize: 12))
+);
+
+@StartBtnStyle = TextButtonStyle(
+  Default: (Background: #1e4a22, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a8d8ac, FontSize: 13, RenderBold: true)),
+  Hovered: (Background: #286030, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4f0d8, FontSize: 13, RenderBold: true)),
+  Pressed: (Background: #143218, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a8d8ac, FontSize: 13, RenderBold: true))
+);
+
+@CloseBtnStyle = TextButtonStyle(
+  Default: (Background: #3a1a1a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11)),
+  Hovered: (Background: #501e1e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #f0b0b0, FontSize: 11)),
+  Pressed: (Background: #280e0e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11))
+);
+
+Group {
+  LayoutMode: Middle;
+  Background: #050810(0.88);
+
+  Group {
+    Anchor: (Width: 540, Height: 480);
+    Background: #0d1018;
+    OutlineColor: #2a3a4a(0.6);
+    OutlineSize: 1;
+    LayoutMode: Top;
+
+    // ── Title bar ──
+    Group {
+      Anchor: (Height: 52);
+      Background: #111820;
+      LayoutMode: Full;
+
+      Group {
+        Anchor: (Left: 48, Right: 48, Top: 0, Bottom: 0);
+        LayoutMode: MiddleCenter;
+
+        Label #BuildingTitle {
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4b878, FontSize: 18, RenderBold: true);
+          Text: "Sawmill";
+        }
+
+        Label #BuildingSubtitle {
+          Anchor: (Top: 2);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4e6070, FontSize: 10);
+        }
+      }
+
+      TextButton #CloseButton {
+        Anchor: (Top: 12, Right: 12, Width: 28, Height: 28);
+        Style: @CloseBtnStyle;
+        Text: "X";
+      }
+    }
+
+    // ── Tab bar ──
+    Group {
+      Anchor: (Height: 38);
+      Background: #0a1018;
+      LayoutMode: Center;
+      Padding: (Vertical: 4, Horizontal: 3);
+
+      TextButton #TabInfo {
+        Anchor: (Width: 160, Height: 28);
+        Style: @TabActiveStyle;
+        Text: "Sawmill Info";
+      }
+      TextButton #TabInfoInactive {
+        Anchor: (Width: 160, Height: 28);
+        Visible: false;
+        Style: @TabInactiveStyle;
+        Text: "Sawmill Info";
+      }
+
+      TextButton #TabConstruction {
+        Anchor: (Left: 4, Width: 160, Height: 28);
+        Visible: false;
+        Style: @TabActiveStyle;
+        Text: "Construction";
+      }
+      TextButton #TabConstructionInactive {
+        Anchor: (Left: 4, Width: 160, Height: 28);
+        Style: @TabInactiveStyle;
+        Text: "Construction";
+      }
+    }
+
+    // ── Separator ──
+    Group {
+      Anchor: (Height: 1);
+      Background: #1e2d3a;
+    }
+
+    // ── Confirm placement phase ──
+    Group #PanelConfirm {
+      Visible: false;
+      FlexWeight: 1;
+      LayoutMode: Top;
+      Padding: (Top: 24, Bottom: 16, Left: 24, Right: 24);
+
+      Label #ConfirmInfo {
+        Anchor: (Full: 0);
+        Style: (HorizontalAlignment: Center, TextColor: #8a9eae, FontSize: 13, Wrap: true);
+      }
+
+      Label #ConfirmHint {
+        Anchor: (Top: 12, Full: 0);
+        Style: (HorizontalAlignment: Center, TextColor: #3e5060, FontSize: 10, Wrap: true);
+        Text: "The sawmill will be built where the lumbermill block is placed. Break it to move it.";
+      }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Top: 24, Height: 40);
+
+        TextButton #ConfirmButton {
+          Anchor: (Width: 220, Height: 36);
+          Style: @ConfirmBtnStyle;
+          Text: "Confirm Placement";
+        }
+      }
+    }
+
+    // ── Info tab ──
+    Group #PanelInfo {
+      FlexWeight: 1;
+      LayoutMode: TopScrolling;
+      Padding: (Top: 16, Bottom: 12, Left: 20, Right: 20);
+
+      Group {
+        Anchor: (Full: 0);
+        LayoutMode: Top;
+        Background: #0a0e14;
+        OutlineColor: #1e2a34(0.8);
+        OutlineSize: 1;
+        Padding: (Full: 12);
+
+        Group {
+          Anchor: (Height: 16);
+          LayoutMode: Left;
+
+          Label {
+            Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #807040, FontSize: 10, RenderBold: true);
+            Text: "SAWMILL STATUS";
+          }
+        }
+
+        Group {
+          Anchor: (Top: 8, Height: 1);
+          Background: #1e2a34;
+        }
+
+        Label #BuildingStatusLabel {
+          Anchor: (Top: 8, Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 13, Wrap: true);
+          Text: "Not built yet.";
+        }
+
+        Label #BuildingStatusDetail {
+          Anchor: (Top: 4, Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #4e6878, FontSize: 11, Wrap: true);
+        }
+      }
+
+      Group {
+        Anchor: (Top: 10, Full: 0);
+        LayoutMode: Top;
+        Background: #0a0e14;
+        OutlineColor: #1e2a34(0.8);
+        OutlineSize: 1;
+        Padding: (Full: 12);
+
+        Group {
+          Anchor: (Height: 16);
+          LayoutMode: Left;
+
+          Label {
+            Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #807040, FontSize: 10, RenderBold: true);
+            Text: "WORKER";
+          }
+        }
+
+        Group {
+          Anchor: (Top: 8, Height: 1);
+          Background: #1e2a34;
+        }
+
+        Label #BuildingWorkerLabel {
+          Anchor: (Top: 8, Full: 0);
+          Style: (HorizontalAlignment: Start, TextColor: #d4c080, FontSize: 13, RenderBold: true, Wrap: true);
+          Text: "—";
+        }
+      }
+    }
+
+    // ── Construction tab ──
+    Group #PanelConstruction {
+      Visible: false;
+      FlexWeight: 1;
+      LayoutMode: Top;
+      Padding: (Top: 14, Bottom: 12, Left: 20, Right: 20);
+
+      Label #ConstructionTitle {
+        Style: (HorizontalAlignment: Start, TextColor: #d4b878, FontSize: 15, RenderBold: true);
+        Text: "Sawmill";
+      }
+
+      Label #ConstructionStatus {
+        Anchor: (Top: 4);
+        Style: (HorizontalAlignment: Start, TextColor: #6a8898, FontSize: 11);
+      }
+
+      Group {
+        Anchor: (Top: 10, Height: 1);
+        Background: #1e2d3a;
+      }
+
+      Label #ResourceHeader {
+        Anchor: (Top: 10);
+        Style: (HorizontalAlignment: Start, TextColor: #7a6040, FontSize: 11, RenderBold: true);
+        Text: "REQUIRED RESOURCES";
+      }
+
+      Group {
+        Anchor: (Top: 6, Height: 180);
+        Background: #080c10;
+        OutlineColor: #1a2530(0.8);
+        OutlineSize: 1;
+
+        Group #ResourceListContainer {
+          Anchor: (Full: 0);
+          LayoutMode: TopScrolling;
+          Padding: (Vertical: 6, Horizontal: 6);
+        }
+      }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Top: 12, Height: 38);
+
+        TextButton #DepositButton {
+          Anchor: (Width: 175, Height: 34);
+          Style: @DepositBtnStyle;
+          Text: "Deposit Resources";
+        }
+
+        TextButton #StartBuildButton {
+          Anchor: (Left: 10, Width: 175, Height: 34);
+          Visible: false;
+          Style: @StartBtnStyle;
+          Text: "Start Construction";
+        }
+      }
+
+      Label #DepositHint {
+        Anchor: (Top: 6);
+        Style: (HorizontalAlignment: Center, TextColor: #2e4050, FontSize: 10);
+      }
+
+      Label #BuildProgressLabel {
+        Visible: false;
+        Anchor: (Top: 8);
+        Style: (HorizontalAlignment: Center, TextColor: #78c880, FontSize: 12, RenderBold: true);
+      }
+    }
+  }
+}

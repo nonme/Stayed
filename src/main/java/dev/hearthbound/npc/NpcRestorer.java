@@ -113,7 +113,7 @@ public final class NpcRestorer {
         }
     }
 
-    private static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
+    public static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
         NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
         if (npc == null) {
             LOGGER.warning("equipProfessionItem: NPCEntity null for " + roleName);
@@ -124,14 +124,15 @@ public final class NpcRestorer {
         String liveRole = npc.getRoleName();
         String effectiveRole = liveRole != null ? liveRole : roleName;
         String itemId = switch (effectiveRole) {
-            case "Villager_Human_Farmer" -> "Tool_Hoe_Crude";
+            case "Villager_Human_Farmer"    -> "Tool_Hoe_Crude";
+            case "Villager_Human_Lumberjack" -> "Weapon_Axe_Crude";
+            case "Villager_Human_Miner"      -> "Tool_Pickaxe_Crude";
             default -> null;
         };
         // Always clear slot 0 first, then equip profession item if any
         npc.getInventory().getHotbar().setItemStackForSlot((short) 0, null);
         if (itemId != null) {
             npc.getInventory().getHotbar().setItemStackForSlot((short) 0, new ItemStack(itemId));
-            LOGGER.info("equipProfessionItem: equipped " + itemId + " to " + effectiveRole);
         }
     }
 

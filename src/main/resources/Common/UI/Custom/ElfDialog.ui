@@ -73,7 +73,7 @@ Group {
 
     // Choice buttons
     Group #ChoiceContainer {
-      Anchor: (Height: 168);
+      Anchor: (Height: 244);
       LayoutMode: Top;
       Padding: (Horizontal: 16, Top: 12, Bottom: 10);
 
@@ -91,17 +91,31 @@ Group {
 
       TextButton #BtnChoice3 {
         Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+      }
+
+      TextButton #BtnChoice4 {
+        Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+        Visible: false;
+      }
+
+      TextButton #BtnChoice5 {
+        Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+        Visible: false;
+      }
+
+      TextButton #BtnChoice6 {
+        Anchor: (Height: 32);
         Style: (
           Default:  (Background: #141820, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4a6070, FontSize: 14)),
           Hovered:  (Background: #1e2530, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #7a9aaa, FontSize: 14)),
           Pressed:  (Background: #0e1218, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4a6070, FontSize: 14))
         );
-        Text: "";
-      }
-
-      TextButton #BtnChoice4 {
-        Anchor: (Height: 32);
-        Style: @ChoiceBtnStyle;
         Text: "";
         Visible: false;
       }

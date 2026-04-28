@@ -125,7 +125,11 @@ public class ResourceBlockPlacer {
             String normalizedType = normalizeBlockId(entry.blockType());
             boolean fast = dev.hearthbound.building.BuildingSystem.get() != null
                     && dev.hearthbound.building.BuildingSystem.get().isFastBuild();
-            boolean free = isFreeBlock(normalizedType);
+            boolean isMine = dev.hearthbound.village.BuildingType.MINE.equals(buildingRecord.getType());
+            boolean isSawmill = dev.hearthbound.village.BuildingType.SAWMILL.equals(buildingRecord.getType());
+            boolean free = isFreeBlock(normalizedType)
+                    || (isMine && isMineExcavationBlock(normalizedType))
+                    || (isSawmill && isSawmillFreeBlock(normalizedType));
             if (free || consumeResource(normalizedType)) {
                 BlockPlacer.placeBlock(world, entry);
                 currentIndex++;
@@ -302,9 +306,22 @@ public class ResourceBlockPlacer {
         return normalizedId.startsWith("Plant_")
                 || normalizedId.startsWith("Ingredient_")
                 || normalizedId.startsWith("Hearthbound_")
+                || "Empty".equals(normalizedId)
                 || "Deco_Mug".equals(normalizedId)
                 || "Deco_Inkwell".equals(normalizedId)
                 || "Deco_Scroll".equals(normalizedId)
                 || "Soil_Dirt_Tilled".equals(normalizedId);
+    }
+
+    /** Sawmill-specific free blocks: decorative sticks/branches placed by the elf for free. */
+    static boolean isSawmillFreeBlock(String normalizedId) {
+        return "Wood_Stick".equals(normalizedId);
+    }
+
+    /** Mine-specific free blocks: the stone and ore being excavated cost nothing. */
+    static boolean isMineExcavationBlock(String normalizedId) {
+        return "Rock_Stone".equals(normalizedId)
+                || normalizedId.startsWith("Ore_")
+                || normalizedId.startsWith("Rubble_");
     }
 }

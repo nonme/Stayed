@@ -61,11 +61,17 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String QUEST_FARM_OFFER        = "quest_farm_offer";
     private static final String QUEST_WAREHOUSE         = "quest_warehouse";
     private static final String QUEST_WAREHOUSE_OFFER   = "quest_warehouse_offer";
+    private static final String QUEST_SAWMILL           = "quest_sawmill";
+    private static final String QUEST_SAWMILL_OFFER     = "quest_sawmill_offer";
+    private static final String QUEST_MINE              = "quest_mine";
+    private static final String QUEST_MINE_OFFER        = "quest_mine_offer";
     private static final String BUILD_MENU              = "build_menu";
 
-    private static final String BRAZIER_ITEM_ID   = "Hearthbound_Brazier";
-    private static final String SCARECROW_ITEM_ID = "Hearthbound_Scarecrow";
-    private static final String COUNTER_ITEM_ID   = "Hearthbound_Counter";
+    private static final String BRAZIER_ITEM_ID    = "Hearthbound_Brazier";
+    private static final String SCARECROW_ITEM_ID  = "Hearthbound_Scarecrow";
+    private static final String COUNTER_ITEM_ID    = "Hearthbound_Counter";
+    private static final String LUMBERMILL_ITEM_ID = "Hearthbound_Lumbermill";
+    private static final String MINE_SIGN_ITEM_ID  = "Hearthbound_Mine_Sign";
 
     private String screen;
     private String playerName;
@@ -83,8 +89,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean farmScarecrowGiven;
     private boolean warehouseQuestOffered;
     private boolean warehouseCounterGiven;
+    private boolean sawmillQuestOffered;
+    private boolean mineQuestOffered;
     private boolean houseBuilt;
     private boolean farmBuilt;
+    private boolean warehouseBuilt;
+    private boolean sawmillBuilt;
     private int villagerCount;
 
     // Cached for quest launch (captured at build time)
@@ -121,9 +131,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         farmScarecrowGiven      = village != null && village.isFarmScarecrowGiven();
         warehouseQuestOffered   = village != null && village.isWarehouseQuestOffered();
         warehouseCounterGiven   = village != null && village.isWarehouseCounterGiven();
+        sawmillQuestOffered     = village != null && village.isSawmillQuestOffered();
+        mineQuestOffered        = village != null && village.isMineQuestOffered();
         villagerCount           = village != null ? village.getVillagerCount() : 0;
-        houseBuilt              = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.HOUSE_HUMAN) != null;
-        farmBuilt               = village != null && village.findBuilding(dev.hearthbound.village.BuildingType.FARM) != null;
+        houseBuilt     = isBuilt(village, dev.hearthbound.village.BuildingType.HOUSE_HUMAN);
+        farmBuilt      = isBuilt(village, dev.hearthbound.village.BuildingType.FARM);
+        warehouseBuilt = isBuilt(village, dev.hearthbound.village.BuildingType.WAREHOUSE);
+        sawmillBuilt   = isBuilt(village, dev.hearthbound.village.BuildingType.SAWMILL);
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
                 .countItemStacks(s -> FOUNDING_STONE_ID.equals(s.getItemId())) > 0;
 
@@ -145,6 +159,10 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 screen = QUEST_FARM;
             } else if (farmBuilt && !warehouseQuestOffered) {
                 screen = QUEST_WAREHOUSE;
+            } else if (warehouseBuilt && !sawmillQuestOffered) {
+                screen = QUEST_SAWMILL;
+            } else if (sawmillBuilt && !mineQuestOffered) {
+                screen = QUEST_MINE;
             } else {
                 screen = MENU;
             }
@@ -168,6 +186,10 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 EventData.of(DialogEventData.ACTION_KEY, "choice3"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnChoice4",
                 EventData.of(DialogEventData.ACTION_KEY, "choice4"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnChoice5",
+                EventData.of(DialogEventData.ACTION_KEY, "choice5"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnChoice6",
+                EventData.of(DialogEventData.ACTION_KEY, "choice6"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#BtnClose",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
     }
@@ -183,6 +205,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         b.set("#BtnChoice2.Visible", false);
         b.set("#BtnChoice3.Visible", false);
         b.set("#BtnChoice4.Visible", false);
+        b.set("#BtnChoice5.Visible", false);
+        b.set("#BtnChoice6.Visible", false);
         b.set("#ChoiceContainer.Visible", false);
 
         switch (screen) {
@@ -229,25 +253,21 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     } else {
                         b.set("#BtnChoice2.Text", "Any news on the survivors?");
                     }
+                    b.set("#BtnChoice2.Visible", true);
                     if (houseBuilt) {
                         b.set("#BtnChoice3.Text", "I want to build something.");
-                        b.set("#BtnChoice3.Visible", true);
-                        b.set("#BtnChoice4.Text", "That's all for now.");
-                        b.set("#BtnChoice4.Visible", true);
-                    } else {
-                        b.set("#BtnChoice3.Text", "That's all for now.");
                         b.set("#BtnChoice3.Visible", true);
                     }
                 } else if (!stoneGiven) {
                     b.set("#BtnChoice2.Text", "I want to start a settlement.");
-                    b.set("#BtnChoice3.Text", "That's all for now.");
-                    b.set("#BtnChoice3.Visible", true);
+                    b.set("#BtnChoice2.Visible", true);
                 } else {
                     b.set("#BtnChoice2.Text", "About the Founding Stone...");
-                    b.set("#BtnChoice3.Text", "That's all for now.");
-                    b.set("#BtnChoice3.Visible", true);
+                    b.set("#BtnChoice2.Visible", true);
                 }
-                b.set("#BtnChoice2.Visible", true);
+                // "That's all for now." always dimmed in BtnChoice6
+                b.set("#BtnChoice6.Text", "That's all for now.");
+                b.set("#BtnChoice6.Visible", true);
             }
             case BUILD_MENU -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -255,24 +275,28 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         "What do you need built?\n" +
                         "Tell me, and I will give you an anchor to mark the site.");
                 b.set("#ChoiceContainer.Visible", true);
-                b.set("#BtnChoice1.Text", "A house for a settler.");
-                b.set("#BtnChoice1.Visible", true);
-                if (houseBuilt && farmBuilt) {
-                    b.set("#BtnChoice2.Text", "A farm for food production.");
-                    b.set("#BtnChoice2.Visible", true);
-                    b.set("#BtnChoice3.Text", "A warehouse for storage.");
-                    b.set("#BtnChoice3.Visible", true);
-                    b.set("#BtnChoice4.Text", "Never mind.");
-                    b.set("#BtnChoice4.Visible", true);
-                } else if (houseBuilt) {
-                    b.set("#BtnChoice2.Text", "A farm for food production.");
-                    b.set("#BtnChoice2.Visible", true);
-                    b.set("#BtnChoice3.Text", "Never mind.");
-                    b.set("#BtnChoice3.Visible", true);
-                } else {
-                    b.set("#BtnChoice2.Text", "Never mind.");
-                    b.set("#BtnChoice2.Visible", true);
+                // Show all options that have been unlocked (quest offered at least once).
+                // House is always available (village needs many). Others appear once their
+                // quest was offered — so the player can re-request a lost anchor.
+                java.util.List<String[]> opts = new java.util.ArrayList<>();
+                opts.add(new String[]{"house",     "A house for a settler."});
+                if (farmQuestOffered)
+                    opts.add(new String[]{"farm",      "A farm for food production."});
+                if (warehouseQuestOffered)
+                    opts.add(new String[]{"warehouse", "A warehouse for storage."});
+                if (sawmillQuestOffered)
+                    opts.add(new String[]{"sawmill",   "A sawmill."});
+                if (mineQuestOffered)
+                    opts.add(new String[]{"mine",      "A mine."});
+                String[] btnIds = {"#BtnChoice1","#BtnChoice2","#BtnChoice3",
+                                   "#BtnChoice4","#BtnChoice5"};
+                for (int i = 0; i < opts.size() && i < btnIds.length; i++) {
+                    b.set(btnIds[i] + ".Text", opts.get(i)[1]);
+                    b.set(btnIds[i] + ".Visible", true);
                 }
+                // "Never mind" always in BtnChoice6 (dimmed style hardcoded in .ui)
+                b.set("#BtnChoice6.Text", "Never mind.");
+                b.set("#BtnChoice6.Visible", true);
             }
             case QUEST_WAREHOUSE -> {
                 b.set("#SpeakerName.Text", "Aelin");
@@ -453,6 +477,50 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#BtnChoice2.Text", "Not now.");
                 b.set("#BtnChoice2.Visible", true);
             }
+            case QUEST_SAWMILL -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "The warehouse is standing. Good — now we can actually store what we produce.\n" +
+                        "But storing raw logs is not the same as having lumber. " +
+                        "Every building we put up from here needs processed wood.\n" +
+                        "We need a sawmill.");
+                b.set("#BtnPrimary.Text", "What do we need to build it?");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_SAWMILL_OFFER -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Find open ground with room to work — sawmills need space to move timber.\n" +
+                        "Place the workbench to mark the main station. I will build around it.\n" +
+                        "Use it to manage construction once the site is chosen.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "Got it.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not now.");
+                b.set("#BtnChoice2.Visible", true);
+            }
+            case QUEST_MINE -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Wood gets us walls. Stone gets us something that lasts.\n" +
+                        "There is bedrock under this land worth cutting into. " +
+                        "A mine gives us stone, ore — the materials for real construction.\n" +
+                        "It is the kind of work that changes what a settlement can become.");
+                b.set("#BtnPrimary.Text", "How do we start?");
+                b.set("#BtnPrimary.Visible", true);
+            }
+            case QUEST_MINE_OFFER -> {
+                b.set("#SpeakerName.Text", "Aelin");
+                b.set("#DialogText.Text",
+                        "Find a hillside or a flat patch of ground — somewhere the dig will hold.\n" +
+                        "Place the mine sign to mark the entrance. I will handle the excavation.\n" +
+                        "Use the sign to manage construction once the site is set.");
+                b.set("#ChoiceContainer.Visible", true);
+                b.set("#BtnChoice1.Text", "Got it.");
+                b.set("#BtnChoice1.Visible", true);
+                b.set("#BtnChoice2.Text", "Not now.");
+                b.set("#BtnChoice2.Visible", true);
+            }
         }
     }
 
@@ -486,38 +554,38 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                             next = stoneGiven ? ANSWER_REMIND : ANSWER_STONE;
                         }
                     }
-                    case "choice3" -> {
-                        if (townHallBuilt && houseBuilt) next = BUILD_MENU;
-                        else { close(); return; }
-                    }
-                    case "choice4" -> { close(); return; }
+                    case "choice3" -> { if (townHallBuilt && houseBuilt) next = BUILD_MENU; }
+                    case "choice6" -> { close(); return; }
                 }
             }
 
             case BUILD_MENU -> {
-                if ("choice1".equals(action)) {
-                    giveBrazier(ref, store);
-                    close();
-                    return;
-                } else if ("choice2".equals(action)) {
-                    if (houseBuilt) {
-                        giveScarecrow(ref, store);
-                        close();
-                        return;
-                    } else {
-                        next = MENU;
+                // Rebuild same ordered list as render to map choice index → building
+                java.util.List<String> buildOpts = new java.util.ArrayList<>();
+                buildOpts.add("house");
+                if (farmQuestOffered)      buildOpts.add("farm");
+                if (warehouseQuestOffered) buildOpts.add("warehouse");
+                if (sawmillQuestOffered)   buildOpts.add("sawmill");
+                if (mineQuestOffered)      buildOpts.add("mine");
+                int choiceIdx = switch (action) {
+                    case "choice1" -> 0;
+                    case "choice2" -> 1;
+                    case "choice3" -> 2;
+                    case "choice4" -> 3;
+                    case "choice5" -> 4;
+                    case "choice6" -> -1; // Never mind
+                    default -> -1;
+                };
+                if (choiceIdx >= 0 && choiceIdx < buildOpts.size()) {
+                    switch (buildOpts.get(choiceIdx)) {
+                        case "house"     -> { giveBrazier(ref, store);    close(); return; }
+                        case "farm"      -> { giveScarecrow(ref, store);  close(); return; }
+                        case "warehouse" -> { giveCounter(ref, store);    close(); return; }
+                        case "sawmill"   -> { giveLumbermill(ref, store); close(); return; }
+                        case "mine"      -> { giveMineSign(ref, store);   close(); return; }
                     }
-                } else if ("choice3".equals(action)) {
-                    if (houseBuilt && farmBuilt) {
-                        giveCounter(ref, store);
-                        close();
-                        return;
-                    } else {
-                        next = MENU;
-                    }
-                } else if ("choice4".equals(action)) {
-                    next = MENU;
                 }
+                next = MENU;
             }
 
             case QUEST_WAREHOUSE -> { if ("primary".equals(action)) next = QUEST_WAREHOUSE_OFFER; }
@@ -599,6 +667,32 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 } else if ("choice2".equals(action)) {
                     // Mark offered so auto-open doesn't re-trigger next visit
                     markFarmQuestOffered(ref, store);
+                    next = MENU;
+                }
+            }
+
+            case QUEST_SAWMILL -> { if ("primary".equals(action)) next = QUEST_SAWMILL_OFFER; }
+
+            case QUEST_SAWMILL_OFFER -> {
+                if ("choice1".equals(action)) {
+                    giveLumbermill(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    markSawmillQuestOffered(ref, store);
+                    next = MENU;
+                }
+            }
+
+            case QUEST_MINE -> { if ("primary".equals(action)) next = QUEST_MINE_OFFER; }
+
+            case QUEST_MINE_OFFER -> {
+                if ("choice1".equals(action)) {
+                    giveMineSign(ref, store);
+                    close();
+                    return;
+                } else if ("choice2".equals(action)) {
+                    markMineQuestOffered(ref, store);
                     next = MENU;
                 }
             }
@@ -749,6 +843,60 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         }
     }
 
+    private void giveLumbermill(Ref<EntityStore> ref, Store<EntityStore> store) {
+        try {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) return;
+            var tx = player.getInventory().getCombinedHotbarFirst()
+                    .addItemStack(new ItemStack(LUMBERMILL_ITEM_ID, 1));
+            if (tx.succeeded()) {
+                sawmillQuestOffered = true;
+                VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+                village.setSawmillQuestOffered(true);
+                VillageManager.get().save(store, ref, village);
+                LOGGER.info("Gave Lumbermill to " + playerName);
+            } else {
+                LOGGER.warning("Could not give Lumbermill to " + playerName + " — inventory full?");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to give Lumbermill: " + e.getMessage());
+        }
+    }
+
+    private void markSawmillQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
+        sawmillQuestOffered = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setSawmillQuestOffered(true);
+        VillageManager.get().save(store, ref, village);
+    }
+
+    private void giveMineSign(Ref<EntityStore> ref, Store<EntityStore> store) {
+        try {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) return;
+            var tx = player.getInventory().getCombinedHotbarFirst()
+                    .addItemStack(new ItemStack(MINE_SIGN_ITEM_ID, 1));
+            if (tx.succeeded()) {
+                mineQuestOffered = true;
+                VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+                village.setMineQuestOffered(true);
+                VillageManager.get().save(store, ref, village);
+                LOGGER.info("Gave Mine Sign to " + playerName);
+            } else {
+                LOGGER.warning("Could not give Mine Sign to " + playerName + " — inventory full?");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to give Mine Sign: " + e.getMessage());
+        }
+    }
+
+    private void markMineQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
+        mineQuestOffered = true;
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        village.setMineQuestOffered(true);
+        VillageManager.get().save(store, ref, village);
+    }
+
     private void markWarehouseQuestOffered(Ref<EntityStore> ref, Store<EntityStore> store) {
         warehouseQuestOffered = true;
         VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
@@ -765,6 +913,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         } catch (Exception e) {
             LOGGER.warning("Failed to save elf dialog flags: " + e.getMessage());
         }
+    }
+
+    private static boolean isBuilt(VillageData village, String type) {
+        if (village == null) return false;
+        dev.hearthbound.village.BuildingRecord b = village.findBuilding(type);
+        return b != null && b.isCompleted();
     }
 
     private String nameReaction(String name) {

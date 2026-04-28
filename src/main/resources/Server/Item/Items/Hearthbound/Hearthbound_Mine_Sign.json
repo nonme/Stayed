@@ -1,0 +1,50 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Hearthbound_Mine_Sign.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Furniture_Lumberjack_Sign.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Decorative_Sets/Lumberjack/Sign.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Weight": 1,
+        "Texture": "Blocks/Decorative_Sets/Lumberjack/Sign_Texture.png"
+      }
+    ],
+    "HitboxType": "Sign_Tall",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Hearthbound_Mine_Sign"
+      }
+    },
+    "BlockParticleSetId": "Wood",
+    "BlockSoundSetId": "Wood",
+    "Support": {
+      "Down": [
+        {
+          "FaceType": "Full"
+        }
+      ]
+    },
+    "InteractionHint": "server.interactionHints.manage_mine",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Hearthbound"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

@@ -163,28 +163,71 @@ public class VillageManager {
     }
 
     /**
+     * Returns the first completed sawmill, or null.
+     */
+    public BuildingRecord findCompletedSawmill(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.SAWMILL.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Returns the first completed mine, or null.
+     */
+    public BuildingRecord findCompletedMine(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.MINE.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Assigns a profession to the first eligible (housed, no profession) villager and
+     * links them to the given building record.
+     * Returns the UUID of the assigned villager, or null if nobody eligible.
+     */
+    private UUID assignWorkProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, BuildingRecord building, String profession) {
+        for (VillagerSummary summary : data.getVillagers()) {
+            if (!VillagerData.PROF_NONE.equals(summary.getProfession())) continue;
+            UUID uuid = summary.getVillagerUuid();
+            if (uuid == null) continue;
+
+            if (!isVillagerAssignedToAnyHouse(data, uuid)) continue;
+
+            summary.setProfession(profession);
+            building.setAssignedVillagerId(uuid);
+            save(store, playerRef, data);
+
+            LOGGER.info("Assigned " + profession + " profession to villager " + uuid);
+            return uuid;
+        }
+        return null;
+    }
+
+    /**
      * Assigns PROF_FARMER to the first eligible (housed, no profession) villager and
      * links them to the given farm building record.
      * Returns the UUID of the assigned villager, or null if nobody eligible.
      */
     public UUID assignFarmerProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                        VillageData data, BuildingRecord farm) {
-        for (VillagerSummary summary : data.getVillagers()) {
-            if (!VillagerData.PROF_NONE.equals(summary.getProfession())) continue;
-            UUID uuid = summary.getVillagerUuid();
-            if (uuid == null) continue;
+        return assignWorkProfession(store, playerRef, data, farm, VillagerData.PROF_FARMER);
+    }
 
-            // Only assign if the villager has a house
-            if (!isVillagerAssignedToAnyHouse(data, uuid)) continue;
+    /**
+     * Assigns PROF_LUMBERJACK to the first eligible villager and links them to the sawmill.
+     */
+    public UUID assignLumberjackProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                           VillageData data, BuildingRecord sawmill) {
+        return assignWorkProfession(store, playerRef, data, sawmill, VillagerData.PROF_LUMBERJACK);
+    }
 
-            summary.setProfession(VillagerData.PROF_FARMER);
-            farm.setAssignedVillagerId(uuid);
-            save(store, playerRef, data);
-
-            LOGGER.info("Assigned farmer profession to villager " + uuid);
-            return uuid;
-        }
-        return null;
+    /**
+     * Assigns PROF_MASON to the first eligible villager and links them to the mine.
+     */
+    public UUID assignMinerProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, BuildingRecord mine) {
+        return assignWorkProfession(store, playerRef, data, mine, VillagerData.PROF_MASON);
     }
 
     /**

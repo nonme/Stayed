@@ -77,7 +77,7 @@ public final class GhostPreview {
                 continue;
             }
 
-            RotationTuple rt = RotationTuple.get(entry.rotation() & 0x3);
+            RotationTuple rt = RotationTuple.get(entry.rotation() & 0xFF);
             // BlockEntity meshes use -Z forward; block RotationTuple yaw is chunk-space aligned.
             // Adding π aligns the preview mesh to match the block's actual world facing.
             float yawRad = (float) (rt.yaw().getRadians() + Math.PI);

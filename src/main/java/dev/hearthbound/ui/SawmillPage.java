@@ -161,7 +161,8 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
 
         boolean allSatisfied = renderResourceList(b, required, have);
         boolean isCompleted = record != null && record.isCompleted();
-        applyConstructionState(b, isBuilding, isCompleted, allSatisfied);
+        boolean elfBusy = !isBuilding && BuildingSystem.get().isBuilding();
+        applyConstructionState(b, isBuilding, isCompleted, allSatisfied, elfBusy);
     }
 
     private boolean renderResourceList(UICommandBuilder b,
@@ -194,7 +195,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
     }
 
     private void applyConstructionState(UICommandBuilder b, boolean isBuilding,
-                                         boolean isCompleted, boolean allSatisfied) {
+                                         boolean isCompleted, boolean allSatisfied, boolean elfBusy) {
         if (isCompleted) {
             b.set("#ConstructionStatus.Text", "Complete!");
             b.set("#StartBuildButton.Visible", false);
@@ -217,6 +218,20 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
         }
 
         b.set("#BuildProgressLabel.Visible", false);
+
+        if (elfBusy) {
+            BuildingRecord activeRecord = BuildingSystem.get().getActiveRecord();
+            String busyName = activeRecord != null ? BuildingType.getDisplayName(activeRecord.getType()) : "another building";
+            String elfName = dev.hearthbound.npc.ElfSage.resolveElfName();
+            b.set("#ConstructionStatus.Text", elfName + " is busy building " + busyName + ".");
+            b.set("#DepositButton.Visible", !allSatisfied);
+            b.set("#StartBuildButton.Visible", allSatisfied);
+            b.set("#DepositHint.Text", allSatisfied
+                    ? "Waiting for " + elfName + " to finish."
+                    : "You can deposit resources in advance.");
+            return;
+        }
+
         if (allSatisfied) {
             b.set("#ConstructionStatus.Text", "All resources gathered — ready to build.");
             b.set("#StartBuildButton.Visible", true);

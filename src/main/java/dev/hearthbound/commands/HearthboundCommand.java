@@ -28,5 +28,6 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new QuestCommand());
         addSubCommand(new NpcCommand());
         addSubCommand(new TimeCommand());
+        addSubCommand(new DoorsCommand());
     }
 }

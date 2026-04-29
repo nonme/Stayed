@@ -273,15 +273,15 @@ public class BuilderBehavior {
         BlockType emptyType = emptyId != Integer.MIN_VALUE ? assetMap.getAsset(emptyId) : null;
         if (emptyType == null) return;
 
-        for (int dy = 1; dy <= 2; dy++) {
+        WorldChunk chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(bx, bz));
+        if (chunk == null) return;
+        for (int dy = 1; dy <= 3; dy++) {
             int py = by + dy;
-            WorldChunk chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(bx, bz));
-            if (chunk == null) break;
             int idx = chunk.getBlock(bx, py, bz);
             BlockType bt = assetMap.getAsset(idx);
             if (bt == null || bt == emptyType) continue;
             String id = bt.getId();
-            if (id != null && id.contains("Plant_Grass")) {
+            if (id != null && id.startsWith("Plant_")) {
                 chunk.setBlock(bx, py, bz, emptyId, emptyType, 0, 0, 10);
             }
         }

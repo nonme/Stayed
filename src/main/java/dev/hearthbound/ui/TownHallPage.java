@@ -186,14 +186,18 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     private void populateConstructionTab(UICommandBuilder builder, VillageData village) {
         BuildingRecord townHall = village.findBuilding(BuildingType.TOWN_HALL);
         boolean townHallBuilt = townHall != null && townHall.isCompleted();
-        boolean isBuilding = BuildingSystem.get().isBuilding();
-        boolean constructionFinished = village.isConstructionStarted() && townHallBuilt && !isBuilding;
 
         String nextBuildingType = townHallBuilt ? BuildingType.WAREHOUSE : BuildingType.TOWN_HALL;
+        BuildingRecord activeRecord = BuildingSystem.get().getActiveRecord();
+        boolean isBuildingThis = BuildingSystem.get().isBuilding()
+                && activeRecord != null && nextBuildingType.equals(activeRecord.getType());
+        boolean elfBusy = BuildingSystem.get().isBuilding() && !isBuildingThis;
+        boolean constructionFinished = village.isConstructionStarted() && townHallBuilt && !BuildingSystem.get().isBuilding();
+
         builder.set("#ConstructionTitle.Text", BuildingType.getDisplayName(nextBuildingType));
 
         Map<String, Integer> required;
-        if (isBuilding) {
+        if (isBuildingThis) {
             required = BuildingSystem.get().getRemainingResources();
             if (required == null) required = BuildingSystem.getRequiredResources(nextBuildingType);
         } else {
@@ -201,10 +205,9 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         }
 
         Map<String, Integer> have = readBuildingStorage(resolveTargetBuilding(village, false));
-
         boolean allSatisfied = renderResourceList(builder, required, have);
 
-        applyConstructionState(builder, isBuilding, constructionFinished, allSatisfied);
+        applyConstructionState(builder, isBuildingThis, constructionFinished, allSatisfied, elfBusy);
     }
 
     /**
@@ -268,7 +271,8 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     private void applyConstructionState(UICommandBuilder builder,
                                         boolean isBuilding,
                                         boolean constructionFinished,
-                                        boolean allSatisfied) {
+                                        boolean allSatisfied,
+                                        boolean elfBusy) {
         if (isBuilding) {
             builder.set("#ConstructionStatus.Text", "Under construction...");
             builder.set("#StartBuildButton.Visible", false);
@@ -288,6 +292,19 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
             builder.set("#StartBuildButton.Visible", false);
             builder.set("#DepositButton.Visible", false);
             builder.set("#DepositHint.Text", "");
+            return;
+        }
+
+        if (elfBusy) {
+            BuildingRecord activeRecord = BuildingSystem.get().getActiveRecord();
+            String busyName = activeRecord != null ? BuildingType.getDisplayName(activeRecord.getType()) : "another building";
+            String elfName = dev.hearthbound.npc.ElfSage.resolveElfName();
+            builder.set("#ConstructionStatus.Text", elfName + " is busy building " + busyName + ".");
+            builder.set("#DepositButton.Visible", !allSatisfied);
+            builder.set("#StartBuildButton.Visible", allSatisfied);
+            builder.set("#DepositHint.Text", allSatisfied
+                    ? "Waiting for " + elfName + " to finish."
+                    : "You can deposit resources in advance.");
             return;
         }
 

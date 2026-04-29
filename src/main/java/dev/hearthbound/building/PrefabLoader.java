@@ -45,7 +45,15 @@ public class PrefabLoader {
             "Hearthbound_Founding_Stone",
             "Soil_Grass",
             "Soil_Dirt",
-            "Soil_Ash"
+            "Soil_Ash",
+            // Doors are skipped during block-by-block construction — replaceWithPrefab places
+            // them correctly at the end via engine-native rotation. Mid-build placement
+            // produces wrong facing at certain rotations.
+            "Door_Wood_Simple",
+            "Door_Wood_Frame",
+            "Door_Wood_Rustic",
+            "Door_Wood_Thatch",
+            "Trapdoor_Wood_Simple"
     );
 
     /**
@@ -284,8 +292,6 @@ public class PrefabLoader {
             int wy = worldY + ly;
             int wz = worldZ + lz;
 
-            // Block rotation: each step adds 1 to the yaw (NESW index wraps at 4)
-            // Only rotate the yaw component (low 2 bits in most RotationTuple layouts)
             int blockRotation = rotateBlockRotation(holder.rotation(), rotationSteps);
 
             result.add(new BlockPlacer.BlockEntry(wx, wy, wz, id, blockRotation));

@@ -11,6 +11,7 @@
   "DefaultPlayerAttitude": "Neutral",
   "Appearance": "Outlander",
   "MaxHealth": 100,
+  "Invulnerable": true,
   "DisableDamageGroups": ["Self"],
   "BusyStates": ["$Interaction"],
   "KnockbackScale": 0.5,

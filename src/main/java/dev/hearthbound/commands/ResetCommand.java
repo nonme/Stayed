@@ -24,16 +24,8 @@ public class ResetCommand extends AbstractPlayerCommand {
 
     @Override
     protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> playerRef, PlayerRef player, World world) {
-        // Stop any active building and clear ghost preview
-        BuildingSystem.get().reset();
-        BuildingSystem.get().clearGhostPreview(store, playerRef, world);
-
-        // Clear orphaned ghost blocks around the player (covers server-restart case)
-        TransformComponent transform = store.getComponent(playerRef, TransformComponent.getComponentType());
-        if (transform != null) {
-            Vector3d pos = transform.getPosition();
-            BuildingSystem.get().clearOrphanedGhost(world, (int) pos.x, (int) pos.y, (int) pos.z, 20);
-        }
+        // Stop any active building and clear ghost preview entities
+        BuildingSystem.get().reset(store);
 
         // Despawn elf if exists
         VillageData oldData = store.getComponent(playerRef, VillageData.getComponentType());

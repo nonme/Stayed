@@ -30,9 +30,6 @@ public class VillageData implements Component<EntityStore> {
     private static final ArrayCodec<VillagerSummary> VILLAGERS_ARRAY_CODEC =
             ArrayCodec.ofBuilderCodec(VillagerSummary.CODEC, VillagerSummary[]::new);
 
-    private static final ObjectMapCodec<String, String, HashMap<String, String>> GHOST_SNAPSHOT_CODEC =
-            new ObjectMapCodec<>(Codec.STRING, HashMap::new, Function.identity(), Function.identity(), false);
-
     public static final BuilderCodec<VillageData> CODEC = BuilderCodec.builder(VillageData.class, VillageData::new)
             .append(new KeyedCodec<>("VillageName", Codec.STRING), VillageData::setVillageName, VillageData::getVillageName).add()
             .append(new KeyedCodec<>("Stage", Codec.INTEGER), VillageData::setStage, VillageData::getStage).add()
@@ -57,8 +54,6 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("WarehouseQuestOffered", Codec.BOOLEAN), VillageData::setWarehouseQuestOffered, VillageData::isWarehouseQuestOffered).add()
             .append(new KeyedCodec<>("SawmillQuestOffered", Codec.BOOLEAN), VillageData::setSawmillQuestOffered, VillageData::isSawmillQuestOffered).add()
             .append(new KeyedCodec<>("MineQuestOffered", Codec.BOOLEAN), VillageData::setMineQuestOffered, VillageData::isMineQuestOffered).add()
-            .append(new KeyedCodec<>("PendingGhostSnapshot", GHOST_SNAPSHOT_CODEC),
-                    VillageData::setPendingGhostSnapshot, VillageData::getPendingGhostSnapshotForCodec).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;

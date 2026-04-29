@@ -13,7 +13,7 @@ import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,10 +42,9 @@ public class BuildingSystem {
 
     private ResourceBlockPlacer activeBuilder;
     private BuildingRecord activeRecord;
-    private List<BlockPlacer.BlockEntry> activeBuildPlan;
+    private List<Ref<EntityStore>> activePreviewRefs;
     private int activeRotation = 0;
-    // Snapshot of blocks that existed before ghost preview was placed, keyed by "x,y,z"
-    private Map<String, String> ghostSnapshot = new HashMap<>();
+    private UUID activePreviewPlayerUuid;
     // Players who are currently authoring a prefab — Founding Stone place/break events
     // skip village flow for them so they can drop anchor blocks inside prefab selections
     // without triggering ghost preview or village reset.
@@ -75,7 +74,8 @@ public class BuildingSystem {
     // ========== Ghost Preview ==========
 
     /**
-     * Show ghost preview using Filter_Air_Block (passthrough, visible as ghost).
+     * Spawns BlockEntity markers for each structural block in the plan.
+     * Never writes to the chunk — no snapshot, no restore, no cascade, no collision holes.
      */
     public boolean showGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                      World world, String buildingType,
@@ -86,53 +86,23 @@ public class BuildingSystem {
             return false;
         }
 
-        // Set active plan early so hasActivePreview() returns true during block placement,
-        // preventing PlaceBlockEvent re-entrancy from triggering a second ghost preview
-        // while we are still placing the first one.
-        activeBuildPlan = plan;
+        // Set refs early so hasActivePreview() returns true during spawn,
+        // preventing PlaceBlockEvent re-entrancy from triggering a second preview.
+        activePreviewRefs = new ArrayList<>();
         activeRotation = rotation;
 
-        // Snapshot every cell we're about to overwrite so we can restore terrain when the ghost
-        // is cleared (including after a server restart — the snapshot is persisted on VillageData).
-        ghostSnapshot = new HashMap<>();
-        int placed = 0;
-        int yMin = Integer.MAX_VALUE, yMax = Integer.MIN_VALUE;
+        activePreviewRefs = GhostPreview.show(store, plan);
 
-        for (BlockPlacer.BlockEntry entry : plan) {
-            if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
-            var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
-            String existingId = (existing != null) ? existing.getId() : "Empty";
-            ghostSnapshot.put(entry.x() + "," + entry.y() + "," + entry.z(), existingId);
-            if (isPlantBlock(entry.blockType())) {
-                BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
-            } else {
-                String ghostId = toGhostBlock(entry.blockType());
-                BlockPlacer.placeBlock(world, new BlockPlacer.BlockEntry(
-                        entry.x(), entry.y(), entry.z(), ghostId, entry.rotation()));
-            }
-            placed++;
-            if (entry.y() < yMin) yMin = entry.y();
-            if (entry.y() > yMax) yMax = entry.y();
-        }
-        // Second pass: connected-block update so fences/walls/roofs orient against neighbors.
-        // Plant cells were cleared to Empty — skip them here.
-        for (BlockPlacer.BlockEntry entry : plan) {
-            if (isDoorBlock(entry.blockType()) || isDecorBlock(entry.blockType())) continue;
-            if (isPlantBlock(entry.blockType())) continue;
-            String ghostId = toGhostBlock(entry.blockType());
-            BlockPlacer.updateConnectedBlock(world, entry.x(), entry.y(), entry.z(), ghostId, entry.rotation());
-        }
-
-        // Persist the snapshot so BlockBreakHandler can restore terrain after a restart.
-        if (store != null && playerRef != null) {
-            VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
-            village.setPendingGhostSnapshot(ghostSnapshot);
-            VillageManager.get().save(store, playerRef, village);
+        // Start repeating bounding box — every 8s so it stays visible indefinitely.
+        com.hypixel.hytale.server.core.entity.entities.Player player =
+                store.getComponent(playerRef, com.hypixel.hytale.server.core.entity.entities.Player.getComponentType());
+        if (player != null) {
+            activePreviewPlayerUuid = player.getUuid();
+            GhostPreview.sendBoundingBox(activePreviewPlayerUuid, world, plan);
         }
 
         LOGGER.info("[Ghost] showGhostPreview: type=" + buildingType + " rotation=" + rotation
-                + " plan=" + plan.size() + " placed=" + placed
-                + " Y=[" + yMin + ".." + yMax + "]"
+                + " plan=" + plan.size() + " entities=" + activePreviewRefs.size()
                 + " anchor=(" + anchorX + "," + anchorY + "," + anchorZ + ")");
         return true;
     }
@@ -144,139 +114,19 @@ public class BuildingSystem {
         return showGhostPreview(store, playerRef, world, buildingType, anchorX, anchorY, anchorZ, 0);
     }
 
-    /**
-     * Removes the ghost preview and restores any terrain we temporarily overwrote.
-     *
-     * <p>Uses the in-memory snapshot first (fast path when nothing restarted). If that's empty
-     * (e.g. singleton state was lost across a restart), falls back to {@link VillageData}'s
-     * persisted snapshot.
-     */
+    /** Removes all preview entities. Must be called on the world thread. */
     public void clearGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
-        String caller = new Throwable().getStackTrace().length > 1
-                ? new Throwable().getStackTrace()[1].toString() : "unknown";
-        LOGGER.info("[Ghost] clearGhostPreview called from: " + caller
-                + " | inMemorySnapshot=" + ghostSnapshot.size());
-
-        Map<String, String> snapshot = ghostSnapshot;
-        if (snapshot.isEmpty() && store != null && playerRef != null) {
-            VillageData village = VillageManager.get().getVillageData(store, playerRef);
-            if (village != null) {
-                snapshot = village.getPendingGhostSnapshot();
-                LOGGER.info("[Ghost] using persisted snapshot, size=" + snapshot.size());
-            }
+        if (activePreviewPlayerUuid != null) {
+            GhostPreview.clearBoundingBox(activePreviewPlayerUuid, world);
+            activePreviewPlayerUuid = null;
         }
-
-        int restored = 0;
-        int skipped = 0;
-        // Count distinct block IDs found at skipped positions, and Y range of each
-        java.util.Map<String, Integer> skippedByBlock = new java.util.TreeMap<>();
-        java.util.Map<String, Integer> skippedByBlockMinY = new java.util.TreeMap<>();
-        java.util.Map<String, Integer> skippedByBlockMaxY = new java.util.TreeMap<>();
-        for (Map.Entry<String, String> e : snapshot.entrySet()) {
-            int[] xyz = parseCoordKey(e.getKey());
-            if (xyz == null) continue;
-            int x = xyz[0], y = xyz[1], z = xyz[2];
-            String original = e.getValue();
-            var bt = world.getBlockType(x, y, z);
-            String currentId = (bt != null) ? bt.getId() : "Empty";
-            boolean isEmptyNow = currentId.equals("Empty") || currentId.equals("Editor_Empty");
-            boolean hadRealBlock = original != null && !original.equals("Empty") && !original.equals("Editor_Empty");
-            if (isGhostBlockId(currentId) || (isEmptyNow && hadRealBlock)) {
-                if (original == null || original.equals("Empty") || original.equals("Editor_Empty")) {
-                    BlockPlacer.silentRemoveBlock(world, x, y, z);
-                } else {
-                    world.setBlock(x, y, z, original);
-                }
-                restored++;
-            } else {
-                String foundId = (bt != null) ? bt.getId() : "null";
-                skippedByBlock.merge(foundId, 1, Integer::sum);
-                skippedByBlockMinY.merge(foundId, y, Math::min);
-                skippedByBlockMaxY.merge(foundId, y, Math::max);
-                skipped++;
-            }
-        }
-        activeBuildPlan = null;
-        ghostSnapshot.clear();
-        if (store != null && playerRef != null) {
-            VillageData village = VillageManager.get().getVillageData(store, playerRef);
-            if (village != null) {
-                village.setPendingGhostSnapshot(new java.util.HashMap<>());
-                VillageManager.get().save(store, playerRef, village);
-            }
-        }
-        LOGGER.info("[Ghost] clearGhostPreview done: restored=" + restored + " skipped=" + skipped);
-        if (!skippedByBlock.isEmpty()) {
-            StringBuilder sb = new StringBuilder("[Ghost] skipped blocks (found at those coords): ");
-            for (Map.Entry<String, Integer> entry : skippedByBlock.entrySet()) {
-                sb.append(entry.getKey()).append("×").append(entry.getValue())
-                  .append(" Y=[").append(skippedByBlockMinY.get(entry.getKey()))
-                  .append("..").append(skippedByBlockMaxY.get(entry.getKey())).append("] ");
-            }
-            LOGGER.info(sb.toString());
-        }
-    }
-
-    private static int[] parseCoordKey(String key) {
-        String[] parts = key.split(",");
-        if (parts.length != 3) return null;
-        try {
-            return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2])};
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-
-    /**
-     * Brute-force clear every ghost block ({@code Hearthbound_Ghost_*}) and passthrough
-     * {@code Filter_Air_Block} in a cube around the given center. Use as a fallback when
-     * the in-memory build plan is gone (server restart, singleton state lost) so the player
-     * can re-place the Founding Stone without leftover phantom blocks.
-     */
-    public void clearOrphanedGhost(World world, int cx, int cy, int cz, int radius) {
-        String caller = new Throwable().getStackTrace().length > 1
-                ? new Throwable().getStackTrace()[1].toString() : "unknown";
-        LOGGER.info("[Ghost] clearOrphanedGhost called from: " + caller
-                + " | center=(" + cx + "," + cy + "," + cz + ") radius=" + radius);
-        int cleared = 0;
-        for (int x = cx - radius; x <= cx + radius; x++) {
-            for (int y = cy - 2; y <= cy + radius + 2; y++) {
-                for (int z = cz - radius; z <= cz + radius; z++) {
-                    var bt = world.getBlockType(x, y, z);
-                    if (bt == null) continue;
-                    if (isGhostBlockId(bt.getId())) {
-                        BlockPlacer.silentRemoveBlock(world, x, y, z);
-                        cleared++;
-                    }
-                }
-            }
-        }
-        LOGGER.info("[Ghost] clearOrphanedGhost done: cleared=" + cleared);
-    }
-
-    /**
-     * Matches every id we use for ghost preview:
-     * {@code Hearthbound_Ghost_*} direct ids and their state variants
-     * (e.g. {@code *Hearthbound_Ghost_Fence_State_Definitions_Corner}), plus
-     * {@code Filter_Air_Block} used as a passthrough placeholder for doors/decor.
-     */
-    private static boolean isGhostBlockId(String id) {
-        if (id == null) return false;
-        return id.contains("Hearthbound_Ghost_") || id.contains("Filter_Air");
-    }
-
-    /** True when the cell is truly empty — we should not overwrite it with a ghost otherwise. */
-    private static boolean isEmptyCell(World world, int x, int y, int z) {
-        var bt = world.getBlockType(x, y, z);
-        if (bt == null) return true;
-        String id = bt.getId();
-        return id.equals("Empty") || id.equals("Editor_Empty") || id.equals("Filter_Air_Block")
-                || isGhostBlockId(id);
+        GhostPreview.clear(store, activePreviewRefs);
+        activePreviewRefs = null;
+        activeRotation = 0;
     }
 
     public boolean hasActivePreview() {
-        return activeBuildPlan != null;
+        return activePreviewRefs != null && !activePreviewRefs.isEmpty();
     }
 
     public int getActiveRotation() {
@@ -612,56 +462,6 @@ public class BuildingSystem {
         return found[0] == Integer.MIN_VALUE ? null : found;
     }
 
-    private static boolean isDoorBlock(String blockType) {
-        return blockType.contains("Door") || blockType.contains("Trapdoor");
-    }
-
-    /** Returns true for decorative/furniture blocks that should be skipped in ghost preview. */
-    private static boolean isDecorBlock(String blockType) {
-        String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
-        if (base.equals("Furniture_Village_Planter")) return false;
-        return base.startsWith("Deco_") || base.startsWith("Furniture_");
-    }
-
-    private static boolean isPlantBlock(String blockType) {
-        String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
-        return base.startsWith("Plant_");
-    }
-
-    /** Maps a real block ID to its no-collision ghost equivalent based on shape. */
-    private static String toGhostBlock(String blockType) {
-        String base = blockType.startsWith("*") ? blockType.substring(1) : blockType;
-
-        int stateIdx = base.indexOf("_State_Definitions_");
-        String shape = stateIdx != -1 ? base.substring(0, stateIdx) : base;
-        String stateSuffix = stateIdx != -1 ? base.substring(stateIdx) : "";
-
-        String lower = shape.toLowerCase();
-
-        // For wall/fence blocks, directly map state variants to their ghost counterparts
-        // instead of letting the connected-block system auto-detect corners — the prefab's
-        // diagonal wall layouts don't always satisfy the Corner adjacency pattern.
-        if ((lower.contains("_wall") && !lower.contains("wood_village_wall"))
-                || lower.contains("_fence")) {
-            if (!stateSuffix.isEmpty()) {
-                // Preserve the state variant: Corner → *Hearthbound_Ghost_Fence_State_Definitions_Corner
-                return "*Hearthbound_Ghost_Fence" + stateSuffix;
-            }
-            return "Hearthbound_Ghost_Fence";
-        }
-
-        if (lower.contains("_stairs"))             return "Hearthbound_Ghost_Stairs";
-        if (lower.contains("_corner"))             return "Hearthbound_Ghost_Corner";
-        if (lower.contains("wood_village_wall"))   return "Hearthbound_Ghost_Cube";
-        if (lower.contains("_roof_flat"))    return "Hearthbound_Ghost_Roof_Flat";
-        if (lower.contains("_roof_shallow")) return "Hearthbound_Ghost_Roof_Shallow";
-        if (lower.contains("_roof_steep"))   return "Hearthbound_Ghost_Roof_Steep";
-        if (lower.contains("_roof_hollow"))  return "Hearthbound_Ghost_Roof_Hollow";
-        if (lower.contains("_roof"))         return "Hearthbound_Ghost_Roof";
-        if (lower.contains("_half"))         return "Hearthbound_Ghost_Half";
-        return "Hearthbound_Ghost_Cube";
-    }
-
     // ========== Build Plan ==========
 
     private List<BlockPlacer.BlockEntry> loadBelowAnchorEmptyCells(
@@ -757,14 +557,15 @@ public class BuildingSystem {
     }
 
     /** Reset all state (for /hb reset command). */
-    public void reset() {
+    public void reset(Store<EntityStore> store) {
         if (activeBuilder != null) {
             activeBuilder.cancel();
             activeBuilder = null;
         }
         activeRecord = null;
-        activeBuildPlan = null;
+        activePreviewPlayerUuid = null;
+        GhostPreview.clear(store, activePreviewRefs);
+        activePreviewRefs = null;
         activeRotation = 0;
-        ghostSnapshot.clear();
     }
 }

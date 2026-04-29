@@ -65,9 +65,6 @@ public class BlockBreakHandler extends EntityEventSystem<EntityStore, BreakBlock
             if (isFoundingStone && playerRef != null) {
                 BuildingSystem.get().resetFoundingIfPreTownHall(worldStore, playerRef, world);
             }
-            // Belt-and-braces: if somehow ghost blocks exist outside the snapshot (legacy state),
-            // brute-force remove them so the area is clean.
-            BuildingSystem.get().clearOrphanedGhost(world, pos.x, pos.y, pos.z, 20);
         });
     }
 

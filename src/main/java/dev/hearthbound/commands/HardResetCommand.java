@@ -34,14 +34,7 @@ public class HardResetCommand extends AbstractPlayerCommand {
     @Override
     protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> playerRef,
                            PlayerRef player, World world) {
-        BuildingSystem.get().reset();
-        BuildingSystem.get().clearGhostPreview(store, playerRef, world);
-
-        TransformComponent transform = store.getComponent(playerRef, TransformComponent.getComponentType());
-        if (transform != null) {
-            Vector3d pos = transform.getPosition();
-            BuildingSystem.get().clearOrphanedGhost(world, (int) pos.x, (int) pos.y, (int) pos.z, 20);
-        }
+        BuildingSystem.get().reset(store);
 
         VillageData oldData = store.getComponent(playerRef, VillageData.getComponentType());
         if (oldData != null && oldData.getElfId() != null) {

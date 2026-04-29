@@ -40,6 +40,7 @@ public class BuildingSystem {
     public static BuildingSystem get() { return instance; }
     public static void init() { instance = new BuildingSystem(); }
 
+    private SiteClearer activeClearer;
     private ResourceBlockPlacer activeBuilder;
     private BuildingRecord activeRecord;
     private List<Ref<EntityStore>> activePreviewRefs;
@@ -182,6 +183,10 @@ public class BuildingSystem {
         BuildingRecord townHall = village.findBuilding(BuildingType.TOWN_HALL);
         if (townHall != null && townHall.isCompleted()) return false;
 
+        if (activeClearer != null) {
+            activeClearer.cancel();
+            activeClearer = null;
+        }
         if (activeBuilder != null && !activeBuilder.isFinished()) {
             activeBuilder.cancel();
             activeBuilder = null;
@@ -306,16 +311,40 @@ public class BuildingSystem {
         village = VillageManager.get().getVillageData(store, playerRef);
         UUID elfUuid = village != null ? village.getElfId() : null;
 
-        activeBuilder = new ResourceBlockPlacer(world, plan, record,
-                safeX, safeY, safeZ, elfUuid, ownerUuid, () -> {
-            world.execute(() -> {
-                Store<EntityStore> worldStore = world.getEntityStore().getStore();
-                onBuildingComplete(worldStore, playerRef, world, record);
-            });
-        });
-        activeBuilder.start();
+        final double fSafeX = safeX, fSafeY = safeY, fSafeZ = safeZ;
+        final UUID fElfUuid = elfUuid;
 
-        LOGGER.info("Resource building started: " + record.getType() + " (" + plan.size() + " blocks)");
+        dev.hearthbound.npc.BuilderBehavior builderBehavior = fElfUuid != null
+                ? new dev.hearthbound.npc.BuilderBehavior(world, fElfUuid, ownerUuid)
+                : null;
+
+        // Pin the leash point to the horizontal center of the build plan so the elf
+        // stays near the construction site rather than drifting to a random corner.
+        if (builderBehavior != null && !plan.isEmpty()) {
+            double cx = plan.stream().mapToInt(BlockPlacer.BlockEntry::x).average().orElse(fSafeX);
+            double cz = plan.stream().mapToInt(BlockPlacer.BlockEntry::z).average().orElse(fSafeZ);
+            double cy = plan.stream().mapToInt(BlockPlacer.BlockEntry::y).min().orElse((int) fSafeY) + 1.0;
+            builderBehavior.setLeashPoint(cx, cy, cz);
+        }
+
+        // Phase 1: clear all occupied cells with pickaxe animation, skipping cells the
+        // player already broke. Phase 2: block-by-block construction starts on completion.
+        activeClearer = new SiteClearer(world, plan, builderBehavior, () -> {
+            activeClearer = null;
+            activeBuilder = new ResourceBlockPlacer(world, plan, record,
+                    fSafeX, fSafeY, fSafeZ, fElfUuid, ownerUuid, () -> {
+                world.execute(() -> {
+                    Store<EntityStore> worldStore = world.getEntityStore().getStore();
+                    onBuildingComplete(worldStore, playerRef, world, record);
+                });
+            });
+            activeBuilder.start();
+            LOGGER.info("Site cleared — construction started: " + record.getType()
+                    + " (" + plan.size() + " blocks)");
+        });
+        activeClearer.start();
+
+        LOGGER.info("Site clearing started: " + record.getType() + " (" + plan.size() + " blocks to scan)");
     }
 
     private void onBuildingComplete(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -496,7 +525,7 @@ public class BuildingSystem {
     // ========== Status Queries ==========
 
     public boolean isBuilding() {
-        return activeBuilder != null && !activeBuilder.isFinished();
+        return activeClearer != null || (activeBuilder != null && !activeBuilder.isFinished());
     }
 
     /** Debug: short-circuit the active build to completion. Returns false if nothing is building. */
@@ -556,8 +585,43 @@ public class BuildingSystem {
         return idx != -1 ? b.substring(0, idx) : b;
     }
 
+    /**
+     * Called on player join. If VillageData shows construction was in progress when the
+     * server stopped, resumes it from scratch — SiteClearer will skip already-cleared
+     * terrain instantly, and ResourceBlockPlacer will overwrite already-placed blocks
+     * (idempotent). The elf is respawned in builder role first.
+     */
+    public void resumeConstructionIfNeeded(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                           World world, UUID ownerUuid) {
+        if (isBuilding()) return;
+
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null || !village.isConstructionStarted()) return;
+
+        BuildingRecord inProgress = village.getBuildings().stream()
+                .filter(b -> !b.isCompleted())
+                .findFirst()
+                .orElse(null);
+        if (inProgress == null) {
+            // All buildings completed but flag wasn't cleared — fix it.
+            village.setConstructionStarted(false);
+            VillageManager.get().save(store, playerRef, village);
+            return;
+        }
+
+        LOGGER.info("[Resume] Resuming interrupted construction: " + inProgress.getType()
+                + " rotation=" + inProgress.getRotation()
+                + " pos=(" + inProgress.getPosX() + "," + inProgress.getPosY() + "," + inProgress.getPosZ() + ")"
+                + " for player " + ownerUuid);
+        startResourceBuilding(store, playerRef, world, inProgress, inProgress.getRotation(), ownerUuid);
+    }
+
     /** Reset all state (for /hb reset command). */
     public void reset(Store<EntityStore> store) {
+        if (activeClearer != null) {
+            activeClearer.cancel();
+            activeClearer = null;
+        }
         if (activeBuilder != null) {
             activeBuilder.cancel();
             activeBuilder = null;

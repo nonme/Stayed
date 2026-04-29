@@ -1,6 +1,7 @@
 package dev.hearthbound.building;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -92,7 +93,11 @@ public class BlockPlacer {
         }
         BlockType bt = assetMap.getAsset(blockId);
         int rotation = entry.rotation();
-        chunk.setBlock(entry.x(), entry.y(), entry.z(), blockId, bt, rotation, 0, 4);
+        // settings=2: skip setState (blockEntity holder) but allow setFillerBlocksAt with
+        // ChangeReason.NORMAL so the engine kills grass/plants next to the placed block.
+        // settings=4 would set changeReason=NONE and suppress that cleanup, leaving grass
+        // visually growing through floor boards.
+        chunk.setBlock(entry.x(), entry.y(), entry.z(), blockId, bt, rotation, 0, 2);
         ConnectedBlocksUtil.setConnectedBlockAndNotifyNeighbors(
                 blockId,
                 RotationTuple.get(rotation),
@@ -114,12 +119,13 @@ public class BlockPlacer {
         }
         var assetMap = BlockType.getAssetMap();
         int emptyId = assetMap.getIndex("Empty");
-        if (emptyId == Integer.MIN_VALUE) {
+        BlockType emptyType = emptyId != Integer.MIN_VALUE ? assetMap.getAsset(emptyId) : null;
+        if (emptyType == null) {
             world.breakBlock(x, y, z, 0);
             return;
         }
-        // NO_SEND_PARTICLES(4) | NO_SEND_AUDIO(1024) | NO_DROP_ITEMS(2048)
-        chunk.setBlock(x, y, z, emptyId, assetMap.getAsset(emptyId), 0, 0, 4 | 1024 | 2048);
+        // settings=10 (bits 1+3): skip setState + skip setFillerBlocksAt — correct for air/empty cells.
+        chunk.setBlock(x, y, z, emptyId, Objects.requireNonNull(emptyType), 0, 0, 10);
     }
 
     public static void updateConnectedBlock(World world, int x, int y, int z, String blockTypeKey, int rotation) {

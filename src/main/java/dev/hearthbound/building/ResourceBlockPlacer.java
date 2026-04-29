@@ -32,6 +32,10 @@ public class ResourceBlockPlacer {
     // Collapsed delay for BuildingSystem.fastBuild — just enough that we still yield between
     // placements so we don't starve the world thread.
     private static final long FAST_DELAY_MS = 10;
+    // Break timing for rogue blocks placed after site-clearing (e.g. a griefer).
+    private static final long BREAK_IMPACT_MS = 100;
+    private static final long GAP_MIN_MS = 200;
+    private static final long GAP_MAX_MS = 350;
 
     private final World world;
     private final List<BlockPlacer.BlockEntry> blocks;
@@ -45,14 +49,14 @@ public class ResourceBlockPlacer {
     private int currentIndex = 0;
     private boolean paused = false;
     private boolean cancelled = false;
+    // True when the elf has started the break animation for currentIndex and we're waiting
+    // for BREAK_DELAY before actually removing the old block and placing the new one.
+    private boolean inBreakPhase = false;
+    // True after the old block was removed — waiting GAP_DELAY before placing the new one.
+    private boolean inGapPhase = false;
     private ScheduledFuture<?> task;
     private String lastHeldBlock = null;
     private BuilderBehavior builderBehavior;
-    // Last recorded elf position, used to detect when he's walking (behavior tree Wander).
-    // While he's walking we skip the placement tick — the animation reads as "contractor
-    // inspecting the site" rather than placing a block mid-stride.
-    private com.hypixel.hytale.math.vector.Vector3d lastKnownPos;
-    private static final double MOVEMENT_EPSILON_SQ = 0.01; // ~0.1 block squared
 
     public ResourceBlockPlacer(World world, List<BlockPlacer.BlockEntry> blocks,
                                 BuildingRecord buildingRecord,
@@ -76,8 +80,37 @@ public class ResourceBlockPlacer {
             // BuilderBehavior for the lookAtBlock packet path.
             builderBehavior = new BuilderBehavior(world, elfUuid, ownerUuid);
         }
-        LOGGER.info("ResourceBlockPlacer started (" + blocks.size() + " blocks)");
+        currentIndex = computeResumeIndex();
+        if (currentIndex > 0) {
+            LOGGER.info("ResourceBlockPlacer resuming from block " + currentIndex + "/" + blocks.size());
+        } else {
+            LOGGER.info("ResourceBlockPlacer started (" + blocks.size() + " blocks)");
+        }
         scheduleNextTick(randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
+    }
+
+    /**
+     * Scans the plan from the beginning and returns the index of the first block
+     * that doesn't match what's already in the world — i.e. where construction left off.
+     * Free blocks (plants, decorations) are skipped because they may not survive a restart.
+     */
+    private int computeResumeIndex() {
+        for (int i = 0; i < blocks.size(); i++) {
+            BlockPlacer.BlockEntry entry = blocks.get(i);
+            String expected = normalizeBlockId(entry.blockType());
+            // Free/decoration blocks are unreliable markers — skip them when scanning.
+            if (isFreeBlock(expected)) continue;
+            try {
+                var bt = world.getBlockType(entry.x(), entry.y(), entry.z());
+                String actual = bt != null ? normalizeBlockId(bt.getId()) : "Empty";
+                if (!actual.equals(expected)) {
+                    return i;
+                }
+            } catch (Exception e) {
+                return i;
+            }
+        }
+        return blocks.size();
     }
 
     private void scheduleNextTick(long delayMs) {
@@ -101,15 +134,18 @@ public class ResourceBlockPlacer {
                 return;
             }
 
-            // Skip this tick if the elf is walking (Wander motion from the builder role
-            // pathing him across the construction site). Placing a block mid-stride both
-            // looks wrong visually and means lookAtBlock can't aim at the right spot.
-            if (builderBehavior != null && isElfMoving()) {
+            // Skip this tick if the elf is walking — placing mid-stride looks wrong and
+            // lookAtBlock can't aim correctly. isWalking() reads the engine's movement
+            // state flag directly, which is more reliable than position-delta sampling.
+            if (builderBehavior != null && !inBreakPhase && !inGapPhase
+                    && builderBehavior.isWalking()) {
                 scheduleNextTick(PAUSED_DELAY_MS);
                 return;
             }
 
             BlockPlacer.BlockEntry entry = blocks.get(currentIndex);
+            boolean fast = dev.hearthbound.building.BuildingSystem.get() != null
+                    && dev.hearthbound.building.BuildingSystem.get().isFastBuild();
 
             if (builderBehavior != null) {
                 builderBehavior.lookAtBlock(entry.x(), entry.y(), entry.z());
@@ -123,31 +159,61 @@ public class ResourceBlockPlacer {
 
             long nextDelay;
             String normalizedType = normalizeBlockId(entry.blockType());
-            boolean fast = dev.hearthbound.building.BuildingSystem.get() != null
-                    && dev.hearthbound.building.BuildingSystem.get().isFastBuild();
-            boolean isMine = dev.hearthbound.village.BuildingType.MINE.equals(buildingRecord.getType());
-            boolean isSawmill = dev.hearthbound.village.BuildingType.SAWMILL.equals(buildingRecord.getType());
-            boolean free = isFreeBlock(normalizedType)
-                    || (isMine && isMineExcavationBlock(normalizedType))
-                    || (isSawmill && isSawmillFreeBlock(normalizedType));
-            if (free || consumeResource(normalizedType)) {
+
+            // ── Gap phase completion ────────────────────────────────────────────────
+            // Old block is already gone — now equip block item, play Build anim, place.
+            if (inGapPhase) {
+                inGapPhase = false;
+                if (builderBehavior != null) {
+                    builderBehavior.equipBlock(normalizedType);
+                    builderBehavior.playBuildAnimation();
+                }
                 BlockPlacer.placeBlock(world, entry);
                 currentIndex++;
-                if (paused) {
-                    paused = false;
-                    LOGGER.info("ResourceBlockPlacer resumed at block " + currentIndex);
-                }
-                nextDelay = fast ? FAST_DELAY_MS : (switchingMaterial
-                        ? randomInRange(SWITCH_DELAY_MIN_MS, SWITCH_DELAY_MAX_MS)
-                        : randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
-            } else {
-                if (!paused) {
-                    paused = true;
-                    LOGGER.info("ResourceBlockPlacer paused — need " + normalizedType +
-                            " (block " + currentIndex + "/" + blocks.size() + ")");
-                }
-                nextDelay = fast ? FAST_DELAY_MS : PAUSED_DELAY_MS;
+                nextDelay = fast ? FAST_DELAY_MS : randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS);
+                scheduleNextTick(nextDelay);
+                return;
             }
+
+            // ── Break phase completion ──────────────────────────────────────────────
+            // Mine animation finished — remove the old block, enter gap phase so the
+            // player briefly sees the empty cell before the new block appears.
+            if (inBreakPhase) {
+                inBreakPhase = false;
+                if (builderBehavior != null) {
+                    builderBehavior.clearVegetationAbove(entry.x(), entry.y(), entry.z());
+                    builderBehavior.clearEntitiesOnBlock(entry.x(), entry.y(), entry.z());
+                }
+                BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
+                inGapPhase = true;
+                scheduleNextTick(fast ? FAST_DELAY_MS : randomInRange(GAP_MIN_MS, GAP_MAX_MS));
+                return;
+            }
+
+            // All resources were deposited before construction started — no per-block consume needed.
+            // ── Break phase start ─────────────────────────────────────────────────────────────────
+            // Only break terrain blocks (stone, soil, etc.) — never break blocks that are already
+            // part of the building (e.g. on resume after server restart).
+            if (!fast && builderBehavior != null
+                    && isTerrainAtPos(entry.x(), entry.y(), entry.z())) {
+                inBreakPhase = true;
+                builderBehavior.equipPickaxe();
+                builderBehavior.playBreakAnimation();
+                scheduleNextTick(fast ? FAST_DELAY_MS : BREAK_IMPACT_MS);
+                return;
+            }
+
+            // No existing block — or fast mode — go straight to place.
+            if (builderBehavior != null) {
+                builderBehavior.clearVegetationAbove(entry.x(), entry.y(), entry.z());
+                builderBehavior.clearEntitiesOnBlock(entry.x(), entry.y(), entry.z());
+                builderBehavior.playBuildAnimation();
+            }
+            BlockPlacer.placeBlock(world, entry);
+            currentIndex++;
+            nextDelay = fast ? FAST_DELAY_MS : (switchingMaterial
+                    ? randomInRange(SWITCH_DELAY_MIN_MS, SWITCH_DELAY_MAX_MS)
+                    : randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
             scheduleNextTick(nextDelay);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "ResourceBlockPlacer tick failed at index " + currentIndex, e);
@@ -155,31 +221,18 @@ public class ResourceBlockPlacer {
         }
     }
 
+    private boolean isTerrainAtPos(int x, int y, int z) {
+        try {
+            var bt = world.getBlockType(x, y, z);
+            return SiteClearer.isTerrainBlock(bt != null ? bt.getId() : null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Returns true when 1 unit of the resource was removed from the building's storage. */
     private boolean consumeResource(String normalizedItemId) {
         return buildingRecord.removeResource(normalizedItemId, 1) == 1;
-    }
-
-    /**
-     * Detects motion by sampling the elf's position across ticks — if it shifted by more
-     * than {@link #MOVEMENT_EPSILON_SQ}, he's mid-stride. Falls back to "not moving" when
-     * we can't read a position (chunk unloaded, entity gone).
-     */
-    private boolean isElfMoving() {
-        com.hypixel.hytale.math.vector.Vector3d now = builderBehavior.getPosition();
-        if (now == null) {
-            lastKnownPos = null;
-            return false;
-        }
-        boolean moving = false;
-        if (lastKnownPos != null) {
-            double dx = now.x - lastKnownPos.x;
-            double dy = now.y - lastKnownPos.y;
-            double dz = now.z - lastKnownPos.z;
-            moving = dx * dx + dy * dy + dz * dz > MOVEMENT_EPSILON_SQ;
-        }
-        lastKnownPos = new com.hypixel.hytale.math.vector.Vector3d(now.x, now.y, now.z);
-        return moving;
     }
 
     public double getSafeX() { return safeX; }
@@ -211,6 +264,8 @@ public class ResourceBlockPlacer {
 
     public void cancel() {
         cancelled = true;
+        inBreakPhase = false;
+        inGapPhase = false;
         if (task != null) {
             task.cancel(false);
             task = null;

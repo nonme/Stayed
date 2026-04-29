@@ -1,5 +1,5 @@
 {
-  "$Comment": "Elf sage while actively building. Wanders a small radius (rest/walk cycle, radius 4) so he doesn't get buried when the floor is placed under him. Has NO HeadMotion so our lookAtBlock packet can steer his head toward each placed block without the behavior tree overwriting it.",
+  "$Comment": "Elf sage while actively building. Leash point is updated from Java to the center of the build bbox — he wanders near it and Seeks back if he drifts past 3 blocks. No HeadMotion so lookAtBlock packets steer his head toward each placed block.",
   "Type": "Generic",
   "Parameters": {
     "NameTranslationKey": {
@@ -33,6 +33,16 @@
           "Sensor": { "Type": "State", "State": "Idle" },
           "Instructions": [
             {
+              "Sensor": { "Type": "Leash", "Range": 3 },
+              "BodyMotion": {
+                "Type": "Seek",
+                "StopDistance": 1.0,
+                "SlowDownDistance": 2.0,
+                "RelativeSpeed": 0.4,
+                "UsePathfinder": true
+              }
+            },
+            {
               "Sensor": { "Type": "Any" },
               "BodyMotion": {
                 "Type": "Sequence",
@@ -40,17 +50,17 @@
                 "Motions": [
                   {
                     "Type": "Timer",
-                    "Time": [4, 8],
+                    "Time": [3, 6],
                     "Motion": { "Type": "Nothing" }
                   },
                   {
                     "Type": "Timer",
-                    "Time": [2, 4],
+                    "Time": [1, 2],
                     "Motion": {
                       "Type": "Wander",
-                      "Radius": 4,
-                      "RelativeSpeed": 0.35,
-                      "MaxHeadingChange": 90
+                      "Radius": 2,
+                      "RelativeSpeed": 0.3,
+                      "MaxHeadingChange": 60
                     }
                   }
                 ]

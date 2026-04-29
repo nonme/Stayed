@@ -8,6 +8,7 @@ import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.HearthboundPlugin;
+import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.npc.ElfSage;
 
 import java.util.logging.Logger;
@@ -26,6 +27,11 @@ public class PlayerJoinHandler {
             Ref<EntityStore> playerRef = event.getPlayerRef();
 
             ElfSage.spawnIfNeeded(store, playerRef, world);
+
+            // Resume construction that was interrupted by a server restart.
+            Player playerObj = event.getPlayer();
+            BuildingSystem.get().resumeConstructionIfNeeded(
+                    store, playerRef, world, playerObj.getUuid());
 
             // Start village tick handler (HUD, settler spawning)
             @SuppressWarnings("removal")

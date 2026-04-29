@@ -1,55 +1,92 @@
-# Hytale Plugin Template
+<p align="center">
+  <img src="logo.jpg" alt="Stayed logo" width="256"/>
+</p>
 
-A ready-to-use starting point for creating Hytale server plugins with Java, _or Kotlin_. If you've
-been using the Asset Editor and want to start writing server-side logic — custom commands, event
-handling, gameplay systems — this is the simplest place to begin.
+<h1 align="center">Stayed</h1>
 
-## How to start?
+<p align="center">A Hytale mod.</p>
 
-1. Copy the template by downloading it or using the "Use this template" button.
-2. [Configure or Install the Java SDK](https://hytalemodding.dev/en/docs/guides/plugin/setting-up-env)
-   to use the latest 25 from JetBrains or similar.
-3. Open the project in your favorite IDE, we
-   recommend [IntelliJ IDEA](https://www.jetbrains.com/idea/download).
-4. Optionally, run `./gradlew` if your IDE does not automtically synchronizes.
-5. Run the devserver with the Run Configuration created, or `./gradlew devServer`.
+---
 
-> On Windows, use `.\gradlew.bat` instead of `./gradlew`, this script is here to run the
-> Gradle without you needing to install the tooling itself, only the Java is required.
+## Concept
 
-With that you will be prompted in the output to authorize your server, and then you can start
-developing your plugin while the server is live reloading the code changes.
+You arrive in an untamed world. Near spawn you find an old elven sage — Aelin — who has spent his life studying the architecture and cultures of every race in Orbis. He is frail, cannot fight or mine, but he knows how to build. Together you found a village.
 
-From here,
-the [HytaleModding guides](https://hytalemodding.dev/en/docs/guides/plugin/build-and-test) cover
-more details!
+Villagers are not tools. They are survivors — refugees who lost their homes to The Shattering. They have names, professions, and daily lives. They go to work in the morning, eat lunch at the warehouse, return home at night, and open the door themselves on the way out.
 
-## Scaffoldit Plugin
+## How to play
 
-While there are multiple plugins made for Hytale, the template currently uses a zero-boilerplate one
-where you only need the absolute minimum to start. However, you do have access to everything as
-normal if you know what you are doing.
+**1. Find Aelin** near spawn and press F to talk to him. Ask about starting a settlement — he will give you a Founding Stone.
 
-For in-depth configuration, you can visit the [ScaffoldIt Plugin Docs](https://scaffoldit.dev).
+**2. Place the Founding Stone** on flat ground. A ghost preview of the Town Hall appears. If you want a different location, break the stone to cancel. When you're happy with the placement, press F on the stone and confirm.
 
-## Troubleshooting
+> Place the stone 1 block above the ground — the building floor sits one block up.
 
-- **Gradle sync fails in IntelliJ** –
-  _Check that Java 25 is installed and configured under File → Project Structure → SDKs._
-- **Build fails with missing dependencies** –
-  _Run `./gradlew build --refresh-dependencies`. Make sure you have internet access!_
-- **Permission denied on `./gradlew`** –
-  _Run `chmod +x gradlew` (macOS/Linux)._
-- **Hot-reload doesn't work** –
-  _Verify you're using JetBrains Runtime, not a regular JDK._
+**3. Deposit resources** into the stone's container via the GUI, then press "Start Construction". Aelin walks to the site and builds block by block, consuming materials as he goes.
 
-## Resources
+> Use `/hb fastbuild` or `/hb instabuild` to speed up construction during testing.
 
-- [Hytale Modding Guides](https://hytalemodding.dev)
-- [Hytale Modding Discord](https://discord.gg/hytalemodding)
-- [ScaffoldIt Plugin Docs](https://scaffoldit.dev)
+**4. Rescue survivors.** After the Town Hall is built, talk to Aelin — *"We need settlers"*. Follow the quest marker to find a trapped villager, press F to invite them, then lead them back to the village.
+
+**5. Build more.** Talk to Aelin → *"I want to build something"*. Recommended order: House → Farm → Warehouse → Sawmill → Mine. Each building unlocks new gameplay:
+
+- **House** — villager moves in, starts following a day schedule
+- **Farm / Sawmill / Mine** — assigns a worker, produces resources automatically into Warehouse chests
+- **Warehouse** — villagers take lunch and dinner breaks to eat here
+
+**6. Watch your village live.** Press F on any villager to see their stats. Unhappy villagers (no house, no food) are less productive. Villagers greet each other, open doors, and wander around their workplaces.
+
+## Features
+
+- Anchor block → ghost preview → block-by-block construction with resource consumption
+- Elf sage with custom appearance, idle behavior, and branching dialogue
+- Villager daily schedule: work, eat, rest — with door open/close animations
+- Random villager appearance from archetype pools (hair, skin tone, clothing)
+- Multi-building progression: Town Hall, Houses, Farm, Warehouse, Sawmill, Mine, Guard Tower
+- Village HUD with live resource counts
+- Full building rotation based on player facing direction at placement
+- NPC persistence across server restarts
+
+## Building from source
+
+Requires Java 25 (OpenJDK 25.0.2 or JetBrains Runtime 25).
+
+```bash
+./gradlew build        # compile check
+./gradlew devServer    # start local dev server
+```
+
+On Windows use `gradlew.bat`.
+
+## Project structure
+
+```
+src/main/java/dev/hearthbound/
+  HearthboundPlugin.java      — plugin entry point
+  village/                    — data model (VillageData, VillagerData, BuildingRecord)
+  building/                   — construction pipeline (ghost → site clear → block-by-block)
+  npc/                        — NPC management, appearance, schedules, persistence
+  events/                     — event handlers (anchor placement, F-key, chunk load)
+  ui/                         — UI pages and HUD
+  quest/                      — rescue quest
+  commands/                   — /hb debug commands
+
+src/main/resources/
+  Common/UI/Custom/*.ui       — UI layout files
+  Server/Prefabs/*.prefab.json — building blueprints
+  Server/NPC/Roles/*.json     — NPC behavior trees
+  Server/Item/                — custom block and interaction definitions
+```
+
+## What's coming
+
+- Second rescue quest
+- Guard Tower with patrol behavior
+- Tavern — villagers gather to eat together
+- Brickyard — clay and brick production
+- Market — recruit villagers without questing
+- Building leveling (prefabs up to lvl 3 already exist)
 
 ## License
 
-Add your own after copying the template, though we recommend using MIT, BSD, or Apache to keep
-the modding community open!
+MIT — see [LICENSE](LICENSE).

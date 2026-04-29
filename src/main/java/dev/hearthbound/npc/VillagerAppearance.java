@@ -375,9 +375,8 @@ public final class VillagerAppearance {
     // ---------------------------------------------------------------
 
     /**
-     * After ModelComponent is put, the engine may
-     * write PersistentModel with scale=0, which crashes chunk loading on a restart.
-     * Rewriting it with the actual model reference and scale=1 keeps the NPC loadable.
+     * After ModelComponent is put, the engine may write PersistentModel with scale=0,
+     * which crashes chunk loading on restart. Rewriting it with scale=1 keeps the NPC loadable.
      */
     private static void fixPersistentModelScale(Ref<EntityStore> npcRef, Store<EntityStore> store, Model model) {
         try {

@@ -18,12 +18,10 @@ import dev.hearthbound.util.TickScheduler;
 /**
  * In-memory registry of all Hearthbound NPCs, independent of BSON.
  *
- * In-memory registry of all Hearthbound NPCs, independent of BSON.
  * - NPC state stored here, not in BSON
  * - ChunkPreLoadProcessEvent triggers restore polling via scheduleRestoreOne()
- * - reconcileTask() runs every 1s and re-restores any NPC whose ref became invalid
- *   reconcileTask() re-restores any NPC whose ref became invalid — fix for
- *   getEntityRef() timeout when player is far from the NPC chunk at chunk load time
+ * - reconcileTask() runs every 1s and re-restores any NPC whose ref became invalid —
+ *   this is the fix for getEntityRef() timeout when the player is far from the NPC chunk
  * - pendingRemovals: deferred deletion for NPCs in unloaded chunks
  */
 public final class NpcRegistry {
@@ -36,11 +34,8 @@ public final class NpcRegistry {
         return INSTANCE;
     }
 
-    private static final long POLL_INTERVAL_MS = 200;
-    private static final long POLL_INTERVAL_MS  = 200;
-    private static final long POLL_TIMEOUT_MS   = 12_000;
-
-    private static final long RECONCILE_INTERVAL_MS = 1_000;
+    private static final long POLL_INTERVAL_MS      = 200;
+    private static final long POLL_TIMEOUT_MS       = 12_000;
     private static final long RECONCILE_INTERVAL_MS = 1_000;
 
     public enum InteractionType { ELF, RESCUE, FOLLOWER, VILLAGER, NONE }
@@ -77,7 +72,7 @@ public final class NpcRegistry {
     private final ConcurrentHashMap<UUID, NpcRecord> records = new ConcurrentHashMap<>();
 
     // uuid → chunkIndex: NPCs that must be deleted when their chunk next loads.
-    // uuid → chunkIndex: stores chunkIndex for O(1) chunk matching on ChunkPreLoadProcessEvent.
+    // Stores chunkIndex for O(1) chunk matching on ChunkPreLoadProcessEvent.
     private final ConcurrentHashMap<UUID, Long> pendingRemovals = new ConcurrentHashMap<>();
 
     // World reference for reconcile task — set when first scheduleRestoreOne is called.
@@ -172,7 +167,6 @@ public final class NpcRegistry {
      * On timeout: does NOT give up — reconcileTask() will retry every 1s until entity
      * is found. This handles the case where the player is far from the NPC chunk when
      * the chunk loads, so getEntityRef() returns null during the initial polling window.
-     * Polls world.getEntityRef(uuid) every 200ms until entity appears (or 12s timeout),
      */
     public void scheduleRestoreOne(NpcRecord record, World world) {
         if (record.restorePending) return; // already polling
@@ -220,9 +214,8 @@ public final class NpcRegistry {
      * Background task that runs every 1s and re-restores any registered NPC whose
      * ref is not currently valid and is not already being polled.
      *
-     * Background task that runs every 1s and re-restores any registered NPC —
-     * makes NPCs recover even when their chunk was loaded while the player was far away
-     * (causing the initial 12s poll to time out without finding the entity).
+     * Handles NPCs whose chunk was loaded while the player was far away, causing
+     * the initial 12s poll to time out before the entity became accessible.
      */
     private void ensureReconcileTask(World world) {
         reconcileWorld = world;

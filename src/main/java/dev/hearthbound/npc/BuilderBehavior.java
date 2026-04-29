@@ -44,7 +44,6 @@ import java.util.logging.Logger;
  * - Unfreeze when construction ends
  *
  * Rotation is sent as a client packet (TransformUpdate) to the village owner.
-
  */
 public class BuilderBehavior {
 
@@ -79,8 +78,8 @@ public class BuilderBehavior {
             Store<EntityStore> store = npcRef.getStore();
             store.addComponent(npcRef, Frozen.getComponentType(), Frozen.get());
 
-            // Stop movement animation to prevent "running in place"
-            // Frozen alone doesn't stop the walk animation — must be stopped explicitly.
+            // Stop movement animation to prevent "running in place" — Frozen alone
+            // doesn't stop the walk animation, must be stopped explicitly.
             try {
                 AnimationUtils.stopAnimation(npcRef, AnimationSlot.Movement, store);
             } catch (Exception animEx) {

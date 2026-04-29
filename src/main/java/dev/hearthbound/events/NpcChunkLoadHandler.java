@@ -49,8 +49,8 @@ public class NpcChunkLoadHandler {
         World world = chunk.getWorld();
         if (world == null) return;
 
-        // Sanitize before any NPC processing — prevents "Scale must be > 0" crash on chunk load.
-        // Prevents "Scale must be > 0" world crash when engine wrote a bad PersistentModel to BSON.
+        // Sanitize before any NPC processing — prevents "Scale must be > 0" world crash
+        // when the engine wrote a bad PersistentModel to BSON.
         sanitizeChunkPersistentModels(event);
 
         long chunkIndex = chunk.getIndex();
@@ -62,8 +62,7 @@ public class NpcChunkLoadHandler {
             toRestore.add(r.entityUuid);
         }
 
-        // Pass 2: physical entity scan —
-        // pendingNpcRemovals handling. Scans every NPC entity in this chunk's EntityChunk:
+        // Pass 2: physical entity scan — scans every NPC entity in this chunk's EntityChunk:
         // - if UUID is in pendingRemovals: delete it (deferred removal from when chunk was unloaded)
         // - if UUID is in registry but NOT in toRestore yet: add to restore set
         // NOTE: do NOT update record.chunkIndex here. Physical EntityChunk scan reflects
@@ -115,8 +114,7 @@ public class NpcChunkLoadHandler {
 
     /**
      * Scans all entities in the loading chunk and repairs invalid PersistentModel scale values.
-     * Scans all entities in the loading chunk and repairs invalid PersistentModel scale values —
-     * "Scale must be > 0" world crash caused by the engine writing scale=0 to BSON after spawn.
+     * Prevents the "Scale must be > 0" world crash caused by the engine writing scale=0 to BSON after spawn.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void sanitizeChunkPersistentModels(ChunkPreLoadProcessEvent event) {
@@ -158,7 +156,6 @@ public class NpcChunkLoadHandler {
 
     /**
      * Polls world.getEntityRef(uuid) every 100ms until found, then removes via
-     * Polls world.getEntityRef(uuid) until found, then removes via
      * store.removeEntity(ref, RemoveReason.REMOVE). Polling is needed because
      * ChunkPreLoadProcessEvent fires before BSON entities are deserialized,
      * so the entity ref isn't valid yet at the time of the event.

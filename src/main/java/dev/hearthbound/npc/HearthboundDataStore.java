@@ -19,7 +19,6 @@ import java.util.logging.Logger;
 /**
  * Persists NPC registry data to disk so it survives server restarts.
  *
- * Persists NPC registry data across server restarts:
  * - File: mods/HearthboundData/data.json
  * - Written atomically via temp file to avoid partial writes on crash
  * - Loaded at plugin startup to populate NpcRegistry before any chunks load

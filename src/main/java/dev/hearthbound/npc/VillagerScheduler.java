@@ -231,7 +231,6 @@ public class VillagerScheduler {
 
     /**
      * Called every tick while NPC is still traveling — rebinds marker so Seek stays active.
-     * Called every tick while NPC is still traveling — rebinds marker so Seek stays active.
      */
     private void maintainTraveling(Ref<EntityStore> ref, Store<EntityStore> store,
                                    ScheduleTarget target, World world, UUID uuid) {
@@ -247,7 +246,6 @@ public class VillagerScheduler {
     }
 
     /**
-     * Spawns or repositions the invisible marker entity that the Seek motion tracks.
      * Spawns or repositions the invisible marker entity that the Seek motion tracks.
      */
     private Ref<EntityStore> ensureMarker(UUID uuid, Ref<EntityStore> npcRef,

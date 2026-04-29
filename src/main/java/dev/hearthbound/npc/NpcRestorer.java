@@ -18,15 +18,11 @@ import dev.hearthbound.util.TickScheduler;
 /**
  * Applies skin and interaction to an NPC entity that has just appeared in the world
  * after chunk load. Called by NpcRegistry once polling confirms the entity exists.
- *
- * Applies skin and interaction to an NPC entity after chunk load.
- * Called by NpcRegistry once polling confirms the entity exists.
  */
 public final class NpcRestorer {
 
     private static final Logger LOGGER = Logger.getLogger(NpcRestorer.class.getName());
 
-    // Delay between entity appearing in registry and skin apply.
     // Skin apply is delayed so the client receives the entity spawn packet first, then retried.
     private static final long SKIN_DELAY_MS  = 500;
     private static final long SKIN_RETRY_MS  = 2000;
@@ -64,9 +60,8 @@ public final class NpcRestorer {
 
     public static void restore(Ref<EntityStore> ref, Store<EntityStore> store,
                                World world, NpcRegistry.NpcRecord record) {
-        // Step 1: Interaction — always putComponent unconditionally so client gets the packet.
-        // Always putComponent unconditionally so the client gets a fresh packet after chunk load
-        // "already exists", because the client needs a fresh packet after chunk load.
+        // Step 1: Interaction — always putComponent unconditionally so the client gets
+        // a fresh packet after chunk load (guarding on "already exists" would skip it).
         applyInteraction(ref, store, record.interaction);
 
         // Step 2: Skin — delayed so client receives entity spawn packet first.
@@ -74,7 +69,6 @@ public final class NpcRestorer {
     }
 
     private static void scheduleSkins(Ref<EntityStore> ref, World world, NpcRegistry.NpcRecord record) {
-
         if (record.skinSeed != 0L) {
             TickScheduler.getExecutor().schedule(() ->
                 world.execute(() -> {

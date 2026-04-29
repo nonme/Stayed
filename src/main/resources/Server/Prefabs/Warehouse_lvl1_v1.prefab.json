@@ -1988,7 +1988,7 @@
       "x": -3,
       "y": 1,
       "z": -3,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "components": {
         "Components": {
           "PlacedByInteraction": {
@@ -2068,7 +2068,7 @@
       "x": -3,
       "y": 1,
       "z": -2,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "filler": 32,
       "rotation": 1
     },
@@ -2378,7 +2378,7 @@
       "x": -3,
       "y": 1,
       "z": 3,
-      "name": "Hearthbound_Counter",
+      "name": "Stayed_Counter",
       "filler": 31
     },
     {
@@ -2816,7 +2816,7 @@
       "x": -2,
       "y": 1,
       "z": -4,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "filler": 31
     },
     {
@@ -3252,7 +3252,7 @@
       "x": -2,
       "y": 1,
       "z": 3,
-      "name": "Hearthbound_Counter"
+      "name": "Stayed_Counter"
     },
     {
       "x": -2,
@@ -3685,7 +3685,7 @@
       "x": -1,
       "y": 1,
       "z": -4,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "components": {
         "Components": {
           "PlacedByInteraction": {
@@ -5459,7 +5459,7 @@
       "x": 1,
       "y": 1,
       "z": -4,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "filler": 31
     },
     {
@@ -6328,7 +6328,7 @@
       "x": 2,
       "y": 1,
       "z": -4,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "components": {
         "Components": {
           "PlacedByInteraction": {
@@ -7281,7 +7281,7 @@
       "x": 3,
       "y": 1,
       "z": -3,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "filler": 992,
       "rotation": 3
     },
@@ -7345,7 +7345,7 @@
       "x": 3,
       "y": 1,
       "z": -2,
-      "name": "*Hearthbound_Storage_Chest_State_Definitions_CloseWindow",
+      "name": "*Stayed_Storage_Chest_State_Definitions_CloseWindow",
       "components": {
         "Components": {
           "PlacedByInteraction": {

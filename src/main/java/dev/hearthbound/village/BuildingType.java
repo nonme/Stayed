@@ -16,15 +16,13 @@ public final class BuildingType {
     public static final String MINE = "mine";
 
     // Anchor block IDs (custom Hearthbound blocks)
-    public static final String FOUNDING_STONE_BLOCK = "Hearthbound_Founding_Stone";
-    public static final String BRAZIER_BLOCK = "Hearthbound_Brazier";
-    public static final String SCARECROW_BLOCK = "Hearthbound_Scarecrow";
-    public static final String COUNTER_BLOCK = "Hearthbound_Counter";
-    public static final String LUMBERMILL_BLOCK = "Hearthbound_Lumbermill";
-    public static final String MINE_SIGN_BLOCK = "Hearthbound_Mine_Sign";
+    public static final String FOUNDING_STONE_BLOCK = "Stayed_Founding_Stone";
+    public static final String BRAZIER_BLOCK = "Stayed_Brazier";
+    public static final String SCARECROW_BLOCK = "Stayed_Scarecrow";
+    public static final String COUNTER_BLOCK = "Stayed_Counter";
+    public static final String LUMBERMILL_BLOCK = "Stayed_Lumbermill";
+    public static final String MINE_SIGN_BLOCK = "Stayed_Mine_Sign";
 
-    // Ghost preview block (transparent, no collision)
-    public static final String GHOST_BLOCK = "Hearthbound_Ghost";
 
     private BuildingType() {}
 

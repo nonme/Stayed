@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Reads ItemContainerBlock contents from all Hearthbound_Storage_Chest blocks
+ * Reads ItemContainerBlock contents from all Stayed_Storage_Chest blocks
  * that belong to a completed Warehouse.
  *
  * Chest positions are derived from known prefab-relative offsets (anchor = Counter),

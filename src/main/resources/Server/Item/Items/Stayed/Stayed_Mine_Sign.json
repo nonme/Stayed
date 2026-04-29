@@ -1,6 +1,6 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Hearthbound_Mine_Sign.name"
+    "Name": "server.items.Stayed_Mine_Sign.name"
   },
   "Icon": "Icons/ItemsGenerated/Furniture_Lumberjack_Sign.png",
   "Categories": ["Blocks.Deco"],
@@ -24,7 +24,7 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Hearthbound_Mine_Sign"
+        "ItemId": "Stayed_Mine_Sign"
       }
     },
     "BlockParticleSetId": "Wood",
@@ -44,7 +44,7 @@
   "PlayerAnimationsId": "Block",
   "Tags": {
     "Type": ["Furniture"],
-    "Family": ["Hearthbound"]
+    "Family": ["Stayed"]
   },
   "ItemSoundSetId": "ISS_Blocks_Wood"
 }

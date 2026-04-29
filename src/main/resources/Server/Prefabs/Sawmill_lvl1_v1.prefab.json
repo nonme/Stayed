@@ -9078,7 +9078,7 @@
       "x": -2,
       "y": 2,
       "z": 9,
-      "name": "Hearthbound_Lumbermill",
+      "name": "Stayed_Lumbermill",
       "rotation": 2
     },
     {
@@ -10377,7 +10377,7 @@
       "x": -1,
       "y": 2,
       "z": 9,
-      "name": "Hearthbound_Lumbermill",
+      "name": "Stayed_Lumbermill",
       "filler": 1,
       "rotation": 2
     },

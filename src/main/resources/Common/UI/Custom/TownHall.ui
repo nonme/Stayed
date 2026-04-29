@@ -142,26 +142,22 @@ Group {
           Style: (HorizontalAlignment: Center, TextColor: #3e5060, FontSize: 10, Wrap: true);
         }
 
-        // Name picker row
+        // Name input row
         Group {
-          LayoutMode: Center;
+          LayoutMode: Left;
           Anchor: (Top: 20, Height: 36);
 
-          TextButton #NamePrevButton {
-            Anchor: (Width: 36, Height: 32);
-            Style: @NavBtnStyle;
-            Text: "<";
+          TextField #VillageNameInput {
+            FlexWeight: 1;
+            Anchor: (Height: 32);
+            MaxLength: 24;
+            AutoFocus: true;
           }
 
-          Label #SelectedNameLabel {
-            Anchor: (Left: 10, Width: 220);
-            Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4a84a, FontSize: 16, RenderBold: true);
-          }
-
-          TextButton #NameNextButton {
-            Anchor: (Left: 10, Width: 36, Height: 32);
+          TextButton #SuggestButton {
+            Anchor: (Left: 8, Width: 80, Height: 32);
             Style: @NavBtnStyle;
-            Text: ">";
+            Text: "Suggest";
           }
         }
 

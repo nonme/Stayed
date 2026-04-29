@@ -7,14 +7,14 @@ interactionHints.manage_lumbermill = Press [{key}] to manage sawmill
 interactionHints.manage_mine = Press [{key}] to manage mine
 
 # === Hearthbound items ===
-items.Hearthbound_Founding_Stone.name = Founding Stone
-items.Hearthbound_Brazier.name = Hearth Brazier
-items.Hearthbound_Scarecrow.name = Farm Scarecrow
-items.Hearthbound_Counter.name = Warehouse Counter
-items.Hearthbound_Storage_Chest.name = Village Storage Chest
-items.Hearthbound_Ghost.name = Ghost Block
-items.Hearthbound_Lumbermill.name = Sawmill
-items.Hearthbound_Mine_Sign.name = Mine Sign
+items.Stayed_Founding_Stone.name = Founding Stone
+items.Stayed_Brazier.name = Hearth Brazier
+items.Stayed_Scarecrow.name = Farm Scarecrow
+items.Stayed_Counter.name = Warehouse Counter
+items.Stayed_Storage_Chest.name = Village Storage Chest
+items.Stayed_Ghost.name = Ghost Block
+items.Stayed_Lumbermill.name = Sawmill
+items.Stayed_Mine_Sign.name = Mine Sign
 
 # === Hearthbound NPCs ===
 npcRoles.Elf_Sage.name = Aelin

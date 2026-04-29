@@ -1,19 +1,19 @@
 {
-    "Group": "Hearthbound",
-    "Name": "Hearthbound",
-    "Version": "0.1.0",
-    "Description": "Build a multi-racial village with unique NPC races, happiness system, and narrative quests",
+    "Group": "AelinElf",
+    "Name": "Stayed",
+    "Version": "0.8.1",
+    "Description": "A settlement-builder where an elven architect and rescued survivors turn a campfire into a village.",
     "Authors": [
         {
-            "Name": "nonme",
+            "Name": "AelinElf",
             "Url": ""
         }
     ],
     "Website": "",
     "DisabledByDefault": false,
-    "IncludesAssetPack": false,
+    "IncludesAssetPack": true,
     "Dependencies": {},
     "OptionalDependencies": {},
-    "ServerVersion": "2026.02.19-1a311a592",
+    "ServerVersion": "2026.03.26-89796e57b",
     "Main": "dev.hearthbound.HearthboundPlugin"
 }

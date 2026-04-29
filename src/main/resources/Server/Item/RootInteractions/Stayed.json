@@ -1,6 +1,6 @@
 {
   "$Comment": "RootInteraction for Hearthbound NPC dialogs",
   "Interactions": [
-    "Hearthbound_OpenUI"
+    "Stayed_OpenUI"
   ]
 }

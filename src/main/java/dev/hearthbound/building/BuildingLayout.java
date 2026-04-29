@@ -169,7 +169,7 @@ public final class BuildingLayout {
         if (id == null || id.isBlank()) return false;
         if (id.equals("Empty") || id.equals("Filter_Air_Block")) return false;
         // Skip anchor/custom blocks
-        if (id.startsWith("Hearthbound_")) return false;
+        if (id.startsWith("Stayed_")) return false;
         String lower = id.toLowerCase();
         return !lower.contains("fence") && !lower.contains("wall")
                 && !lower.contains("door") && !lower.contains("gate")

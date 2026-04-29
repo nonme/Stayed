@@ -360,7 +360,7 @@ public class ResourceBlockPlacer {
     static boolean isFreeBlock(String normalizedId) {
         return normalizedId.startsWith("Plant_")
                 || normalizedId.startsWith("Ingredient_")
-                || normalizedId.startsWith("Hearthbound_")
+                || normalizedId.startsWith("Stayed_")
                 || "Empty".equals(normalizedId)
                 || "Deco_Mug".equals(normalizedId)
                 || "Deco_Inkwell".equals(normalizedId)

@@ -1,6 +1,6 @@
 {
   "$Comment": "RootInteraction for rescue victim NPC dialogs",
   "Interactions": [
-    "Hearthbound_RescueUI"
+    "Stayed_RescueUI"
   ]
 }

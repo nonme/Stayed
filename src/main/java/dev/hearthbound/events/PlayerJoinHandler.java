@@ -19,8 +19,6 @@ public class PlayerJoinHandler {
 
     public static void onPlayerReady(PlayerReadyEvent event) {
         Player player = event.getPlayer();
-        player.sendMessage(Message.raw("Welcome to Hearthbound, " + player.getDisplayName() + "!"));
-
         try {
             World world = player.getWorld();
             Store<EntityStore> store = world.getEntityStore().getStore();

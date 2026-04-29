@@ -30,19 +30,10 @@ public class PrefabLoader {
             "Editor_Empty",
             "Editor_Anchor",
             "Filter_Air_Block",
-            "Hearthbound_Ghost_Cube",
-            "Hearthbound_Ghost_Stairs",
-            "Hearthbound_Ghost_Roof",
-            "Hearthbound_Ghost_Roof_Flat",
-            "Hearthbound_Ghost_Roof_Shallow",
-            "Hearthbound_Ghost_Roof_Steep",
-            "Hearthbound_Ghost_Roof_Hollow",
-            "Hearthbound_Ghost_Fence",
-            "Hearthbound_Ghost_Half",
             // The player places the Founding Stone themselves; it must never end up in a
             // build plan (otherwise ghost preview would erase it) even if a prefab author
             // left one inside the selection.
-            "Hearthbound_Founding_Stone",
+            "Stayed_Founding_Stone",
             "Soil_Grass",
             "Soil_Dirt",
             "Soil_Ash",

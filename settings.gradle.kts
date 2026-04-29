@@ -1,4 +1,4 @@
-rootProject.name = "dev.hearthbound"
+rootProject.name = "Stayed"
 
 plugins {
     // See documentation on https://scaffoldit.dev
@@ -16,8 +16,8 @@ hytale {
     }
 
     manifest {
-        Group = "Hearthbound"
-        Name = "Hearthbound"
+        Group = "AelinElf"
+        Name = "Stayed"
         Main = "dev.hearthbound.HearthboundPlugin"
     }
 }

@@ -1,9 +1,9 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Hearthbound_Founding_Stone.name"
+    "Name": "server.items.Stayed_Founding_Stone.name"
   },
   "PlayerAnimationsId": "Block",
-  "Categories": ["Blocks.Structural"],
+  "Categories": ["Blocks.Deco"],
   "MaxStack": 1,
   "BlockType": {
     "Material": "Solid",
@@ -31,14 +31,14 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Rocks",
-        "ItemId": "Hearthbound_Founding_Stone"
+        "ItemId": "Stayed_Founding_Stone"
       }
     }
   },
   "Icon": "Icons/ItemsGenerated/Furniture_Village_Statue.png",
   "Tags": {
     "Type": ["Furniture"],
-    "Family": ["Hearthbound"]
+    "Family": ["Stayed"]
   },
   "ItemSoundSetId": "ISS_Blocks_Stone"
 }

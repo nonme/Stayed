@@ -143,21 +143,21 @@ public final class NpcRestorer {
             case ELF -> {
                 store.putComponent(ref, Interactable.getComponentType(), Interactable.INSTANCE);
                 Interactions interactions = new Interactions();
-                interactions.setInteractionId(InteractionType.Use, "Hearthbound");
+                interactions.setInteractionId(InteractionType.Use, "Stayed");
                 interactions.setInteractionHint("server.interactionHints.talk");
                 store.putComponent(ref, Interactions.getComponentType(), interactions);
             }
             case RESCUE -> {
                 store.putComponent(ref, Interactable.getComponentType(), Interactable.INSTANCE);
                 Interactions interactions = new Interactions();
-                interactions.setInteractionId(InteractionType.Use, "HearthboundRescue");
+                interactions.setInteractionId(InteractionType.Use, "StayedRescue");
                 interactions.setInteractionHint("server.interactionHints.talk");
                 store.putComponent(ref, Interactions.getComponentType(), interactions);
             }
             case VILLAGER -> {
                 store.putComponent(ref, Interactable.getComponentType(), Interactable.INSTANCE);
                 Interactions interactions = new Interactions();
-                interactions.setInteractionId(InteractionType.Use, "HearthboundVillager");
+                interactions.setInteractionId(InteractionType.Use, "StayedVillager");
                 interactions.setInteractionHint("server.interactionHints.talk");
                 store.putComponent(ref, Interactions.getComponentType(), interactions);
             }

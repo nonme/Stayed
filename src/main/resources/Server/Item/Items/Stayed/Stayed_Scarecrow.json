@@ -1,22 +1,23 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Hearthbound_Lumbermill.name"
+    "Name": "server.items.Stayed_Scarecrow.name"
   },
-  "Icon": "Icons/ItemsGenerated/Bench_Lumbermill.png",
+  "Icon": "Icons/ItemsGenerated/Deco_Scarecrow.png",
   "Categories": ["Blocks.Deco"],
   "MaxStack": 1,
+  "Scale": 0.6,
   "BlockType": {
     "Material": "Solid",
     "DrawType": "Model",
     "Opacity": "Transparent",
-    "CustomModel": "Blocks/Benches/Lumbermill.blockymodel",
+    "CustomModel": "Blocks/Farming/Scarecrow.blockymodel",
     "CustomModelTexture": [
       {
         "Weight": 1,
-        "Texture": "Blocks/Benches/Lumbermill_Texture.png"
+        "Texture": "Blocks/Farming/Scarecrow_Texture.png"
       }
     ],
-    "HitboxType": "Bench_Lumbermill",
+    "HitboxType": "Scarecrow",
     "VariantRotation": "NESW",
     "Flags": {
       "IsUsable": true
@@ -24,27 +25,20 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Hearthbound_Lumbermill"
+        "ItemId": "Stayed_Scarecrow"
       }
+    },
+    "Interactions": {
+      "Use": "Open_Container"
     },
     "BlockParticleSetId": "Wood",
     "BlockSoundSetId": "Wood",
-    "Support": {
-      "Down": [
-        {
-          "FaceType": "Full"
-        }
-      ]
-    },
-    "InteractionHint": "server.interactionHints.manage_lumbermill",
-    "Interactions": {
-      "Use": "Open_Container"
-    }
+    "InteractionHint": "server.interactionHints.manage_farm"
   },
   "PlayerAnimationsId": "Block",
   "Tags": {
     "Type": ["Furniture"],
-    "Family": ["Hearthbound"]
+    "Family": ["Stayed"]
   },
   "ItemSoundSetId": "ISS_Blocks_Wood"
 }

@@ -41,10 +41,12 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private static final Logger LOGGER = Logger.getLogger(TownHallPage.class.getName());
 
+    // Suggested names: real GoT minor settlements + originals in the same vein
     private static final String[] VILLAGE_NAMES = {
-            "Hearthstone", "Oakvale", "Willowbrook", "Ashford",
-            "Thornfield", "Ravenmoor", "Brighthollow", "Stonebridge",
-            "Ferndale", "Maplecrest", "Windmere", "Duskwood"
+            "Maidenpool", "Saltpans", "Wickenden", "Pinkmaiden",
+            "Stony Sept", "Hayford", "Ryamsport", "Sow's Horn",
+            "Ashford", "Greywater", "Ironpool", "Saltmere",
+            "Westmark", "Dunwater", "Millhaven", "Thornwick",
     };
 
     private final Ref<EntityStore> playerRef;
@@ -53,7 +55,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     private final int stoneX, stoneY, stoneZ;
     private boolean founded;
     private String activeTab = "village";
-    private int nameIndex = 0;
+    private String currentVillageName = VILLAGE_NAMES[0];
 
     public TownHallPage(PlayerRef player, Ref<EntityStore> playerRef, World world,
                          int stoneX, int stoneY, int stoneZ) {
@@ -89,11 +91,11 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         events.addEventBinding(CustomUIEventBindingType.Activating, "#TabConstructionInactive",
                 EventData.of(DialogEventData.ACTION_KEY, "tab_construction"), false);
 
-        // Pre-founding: name picker + confirm
-        events.addEventBinding(CustomUIEventBindingType.Activating, "#NamePrevButton",
-                EventData.of(DialogEventData.ACTION_KEY, "name_prev"), false);
-        events.addEventBinding(CustomUIEventBindingType.Activating, "#NameNextButton",
-                EventData.of(DialogEventData.ACTION_KEY, "name_next"), false);
+        // Pre-founding: name text field + suggest + confirm
+        events.addEventBinding(CustomUIEventBindingType.ValueChanged, "#VillageNameInput",
+                EventData.of(DialogEventData.VILLAGE_NAME_KEY, "#VillageNameInput.Value"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#SuggestButton",
+                EventData.of(DialogEventData.ACTION_KEY, "suggest"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#ConfirmButton",
                 EventData.of(DialogEventData.ACTION_KEY, "confirm"), false);
 
@@ -127,7 +129,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         builder.set("#PreFoundingHint.Text",
                 "You can break the Founding Stone and move it before confirming.");
 
-        builder.set("#SelectedNameLabel.Text", VILLAGE_NAMES[nameIndex]);
+        builder.set("#VillageNameInput.Value", currentVillageName);
 
         builder.set("#PreFoundingGroup.Visible", true);
         builder.set("#PostFoundingGroup.Visible", false);
@@ -327,6 +329,12 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     public void handleDataEvent(Ref<EntityStore> ref, Store<EntityStore> store, DialogEventData data) {
         String action = data.getAction();
 
+        // ValueChanged events carry no action — just update the stored name
+        String incomingName = data.getVillageName();
+        if (incomingName != null && !incomingName.isEmpty()) {
+            currentVillageName = incomingName;
+        }
+
         switch (action) {
             case "close" -> close();
 
@@ -354,24 +362,18 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 sendUpdate(builder, false);
             }
 
-            case "name_prev" -> {
-                nameIndex = (nameIndex - 1 + VILLAGE_NAMES.length) % VILLAGE_NAMES.length;
+            case "suggest" -> {
+                currentVillageName = VILLAGE_NAMES[(int) (Math.random() * VILLAGE_NAMES.length)];
                 UICommandBuilder b = new UICommandBuilder();
-                b.set("#SelectedNameLabel.Text", VILLAGE_NAMES[nameIndex]);
-                sendUpdate(b, false);
-            }
-
-            case "name_next" -> {
-                nameIndex = (nameIndex + 1) % VILLAGE_NAMES.length;
-                UICommandBuilder b = new UICommandBuilder();
-                b.set("#SelectedNameLabel.Text", VILLAGE_NAMES[nameIndex]);
+                b.set("#VillageNameInput.Value", currentVillageName);
                 sendUpdate(b, false);
             }
 
             case "confirm" -> {
                 if (founded) return;
 
-                String villageName = VILLAGE_NAMES[nameIndex];
+                String typed = data.getVillageName();
+                String villageName = (typed != null && !typed.isBlank()) ? typed.strip() : currentVillageName;
 
                 int rotation = BuildingSystem.get().getActiveRotation();
 

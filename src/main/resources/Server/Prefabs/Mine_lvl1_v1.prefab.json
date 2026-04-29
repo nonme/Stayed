@@ -52500,14 +52500,14 @@
       "x": 4,
       "y": 10,
       "z": 1,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "rotation": 1
     },
     {
       "x": 4,
       "y": 11,
       "z": 1,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "filler": 1024,
       "rotation": 1
     },
@@ -52515,7 +52515,7 @@
       "x": 4,
       "y": 12,
       "z": 1,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "filler": 2048,
       "rotation": 1
     },
@@ -52607,7 +52607,7 @@
       "x": 4,
       "y": 10,
       "z": 2,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "filler": 32,
       "rotation": 1
     },
@@ -52615,7 +52615,7 @@
       "x": 4,
       "y": 11,
       "z": 2,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "filler": 1056,
       "rotation": 1
     },
@@ -52623,7 +52623,7 @@
       "x": 4,
       "y": 12,
       "z": 2,
-      "name": "Hearthbound_Mine_Sign",
+      "name": "Stayed_Mine_Sign",
       "filler": 2080,
       "rotation": 1
     },

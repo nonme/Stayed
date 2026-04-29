@@ -39,7 +39,7 @@ import java.util.logging.Logger;
 public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private static final Logger LOGGER = Logger.getLogger(ElfDialogPage.class.getName());
-    private static final String FOUNDING_STONE_ID = "Hearthbound_Founding_Stone";
+    private static final String FOUNDING_STONE_ID = "Stayed_Founding_Stone";
 
     // Screen constants
     private static final String INTRO_1             = "intro_1";
@@ -67,11 +67,11 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String QUEST_MINE_OFFER        = "quest_mine_offer";
     private static final String BUILD_MENU              = "build_menu";
 
-    private static final String BRAZIER_ITEM_ID    = "Hearthbound_Brazier";
-    private static final String SCARECROW_ITEM_ID  = "Hearthbound_Scarecrow";
-    private static final String COUNTER_ITEM_ID    = "Hearthbound_Counter";
-    private static final String LUMBERMILL_ITEM_ID = "Hearthbound_Lumbermill";
-    private static final String MINE_SIGN_ITEM_ID  = "Hearthbound_Mine_Sign";
+    private static final String BRAZIER_ITEM_ID    = "Stayed_Brazier";
+    private static final String SCARECROW_ITEM_ID  = "Stayed_Scarecrow";
+    private static final String COUNTER_ITEM_ID    = "Stayed_Counter";
+    private static final String LUMBERMILL_ITEM_ID = "Stayed_Lumbermill";
+    private static final String MINE_SIGN_ITEM_ID  = "Stayed_Mine_Sign";
 
     private String screen;
     private String playerName;

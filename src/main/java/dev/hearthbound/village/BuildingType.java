@@ -46,7 +46,7 @@ public final class BuildingType {
     /** Prefab filename without extension, or null if using programmatic generation. */
     public static String getPrefabName(String type) {
         return switch (type) {
-            case TOWN_HALL -> "Townhall_lvl1_v1";
+            case TOWN_HALL -> "Townhall_lvl1_v3";
             case HOUSE_HUMAN -> "VillagerHouse_lvl1_v1";
             case FARM -> "Farm_lvl1_v1";
             case WAREHOUSE -> "Warehouse_lvl1_v1";
@@ -80,7 +80,7 @@ public final class BuildingType {
      */
     public static int getAnchorPrefabY(String type) {
         return switch (type) {
-            case TOWN_HALL -> 2;
+            case TOWN_HALL -> 1;
             case HOUSE_HUMAN -> 1;
             case FARM -> 2;
             case WAREHOUSE -> 1;
@@ -110,7 +110,7 @@ public final class BuildingType {
      *
      * Base offsets are in prefab-native coords (before any rotation):
      *   HOUSE_HUMAN: Brazier at prefab (x=2,z=3), door center at (x=1,z=-4) → dx=-1, dz=-7
-     *   TOWN_HALL:   anchor at (0,0), door at z=-4 → dx=0, dz=-4
+     *   TOWN_HALL:   anchor at (-5,1,1), door at (0,-2) facing -Z; stand at (0,-3) → dx=5, dz=-4
      *
      * The prefab anchor block has its own rotation baked in (Brazier rotation=2 in prefab).
      * Actual rotation steps = (record.rotation - anchorPrefabRotation + 4) % 4.
@@ -120,7 +120,8 @@ public final class BuildingType {
         switch (type) {
             // Brazier anchor at prefab (2,1,3); stand two blocks in front at (2,1,1) → offset (0,-2).
             case HOUSE_HUMAN -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
-            case TOWN_HALL   -> { dx =  0; dz = -4; anchorPrefabRotation = 0; }
+            // Anchor at prefab (-5,1,1); main door at (0,1,-2) facing -Z; stand at (0,-3) → dx=5, dz=-4.
+            case TOWN_HALL   -> { dx =  5; dz = -4; anchorPrefabRotation = 0; }
             case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
             // Farm: scarecrow anchor at prefab (0,2,4), gate at (0,1,-4) → dz = -4-4 = -8.
             // Stand just outside the gate (one block in front) → dz = -9.

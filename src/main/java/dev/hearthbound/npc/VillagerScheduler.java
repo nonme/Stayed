@@ -435,13 +435,7 @@ public class VillagerScheduler {
      * Returns {wx_offset, wy_offset, wz_offset} to add to the anchor world position.
      */
     private static int[] rotateLocalOffset(int lx, int ly, int lz, int rotation) {
-        int steps = rotation % 4;
-        for (int i = 0; i < steps; i++) {
-            int tmp = lx;
-            lx = lz;
-            lz = -tmp;
-        }
-        return new int[]{lx, ly, lz};
+        return dev.hearthbound.building.BuildingLayout.rotateLocalOffset(lx, ly, lz, rotation);
     }
 
     private ScheduleTarget warehouseTarget(BuildingRecord warehouse) {

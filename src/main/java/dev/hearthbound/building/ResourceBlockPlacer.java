@@ -358,14 +358,19 @@ public class ResourceBlockPlacer {
 
     /** Blocks that are placed for free — no player deposit needed. */
     static boolean isFreeBlock(String normalizedId) {
-        return normalizedId.startsWith("Plant_")
+        if (normalizedId.startsWith("Plant_")
                 || normalizedId.startsWith("Ingredient_")
                 || normalizedId.startsWith("Stayed_")
                 || "Empty".equals(normalizedId)
                 || "Deco_Mug".equals(normalizedId)
                 || "Deco_Inkwell".equals(normalizedId)
                 || "Deco_Scroll".equals(normalizedId)
-                || "Soil_Dirt_Tilled".equals(normalizedId);
+                || "Deco_Book_Pile_Small".equals(normalizedId)
+                || "Soil_Dirt_Tilled".equals(normalizedId)) {
+            return true;
+        }
+        // Additionally, any item with no obtainable source in the game is free.
+        return !CraftabilityIndex.isEmpty() && CraftabilityIndex.isFree(normalizedId);
     }
 
     /** Sawmill-specific free blocks: decorative sticks/branches placed by the elf for free. */

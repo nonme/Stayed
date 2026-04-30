@@ -7,6 +7,7 @@ import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.server.core.entity.Entity;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.npc.BuilderBehavior;
 import dev.hearthbound.npc.ElfSage;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
@@ -356,14 +357,13 @@ public class BuildingSystem {
         // engine's connected-block resolver has the full neighborhood available.
         replaceWithPrefab(world, store, record, record.getRotation());
 
-        // After building a residential house the elf returns to the Town Hall (wanderer role).
-        // After building the Town Hall itself he also uses wanderer so he stands near the entrance.
-        // ROLE_VILLAGER was used while wander-radius pointed at the new house — no longer needed.
+        // After any build the elf moves inside the Town Hall and wanders there.
         if (activeBuilder != null) {
             Vector3d returnPos = elfReturnPos(store, playerRef, record,
                     activeBuilder.getSafeX(), activeBuilder.getSafeY(), activeBuilder.getSafeZ());
-            ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_WANDERER,
+            ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_VILLAGER,
                     returnPos, new Vector3f(0, 0, 0));
+
         }
 
         VillageManager mgr = VillageManager.get();
@@ -388,8 +388,8 @@ public class BuildingSystem {
     }
 
     /**
-     * Where the elf should stand after finishing a build.
-     * For any building type: the Town Hall door (founding stone + door offset).
+     * Where the elf should stand after finishing a build — inside the Town Hall.
+     * Uses BuildingLayout interior center so the elf ends up inside, not at the door.
      * Falls back to the builder's safe spot if village data is missing.
      */
     private Vector3d elfReturnPos(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -401,8 +401,12 @@ public class BuildingSystem {
         int sy = village.getFoundingStoneY();
         int sz = village.getFoundingStoneZ();
         int rot = village.getRotation();
-        int[] doorOffset = BuildingType.getDoorOffset(BuildingType.TOWN_HALL, rot);
-        return new Vector3d(sx + doorOffset[0] + 0.5, sy + 1, sz + doorOffset[1] + 0.5);
+
+        BuildingLayout.Layout layout = BuildingLayout.get(BuildingType.TOWN_HALL);
+        int steps = layout.rotationSteps(rot);
+        int[] center = BuildingLayout.rotateLocalOffset(
+                layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
+        return new Vector3d(sx + center[0] + 0.5, sy + layout.floorLY() + 1.0, sz + center[2] + 0.5);
     }
 
     /**

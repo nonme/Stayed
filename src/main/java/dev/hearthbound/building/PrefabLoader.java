@@ -37,9 +37,14 @@ public class PrefabLoader {
             "Soil_Grass",
             "Soil_Dirt",
             "Soil_Ash",
-            // Doors are skipped during block-by-block construction — replaceWithPrefab places
-            // them correctly at the end via engine-native rotation. Mid-build placement
+            // Doors and gates are skipped during block-by-block construction — BuildingSystem
+            // places them at the end via BlockPlacer with correct rotation. Mid-build placement
             // produces wrong facing at certain rotations.
+            "Furniture_Village_Door",
+            "Furniture_Crude_Door",
+            "Furniture_Village_Trapdoor",
+            "Wood_Softwood_Fence_Gate",
+            // Legacy names kept in case older prefabs use them.
             "Door_Wood_Simple",
             "Door_Wood_Frame",
             "Door_Wood_Rustic",
@@ -263,7 +268,7 @@ public class PrefabLoader {
                 return;
             }
 
-            if (SKIP_BLOCKS.contains(id)) return;
+            if (SKIP_BLOCKS.contains(id) || isDoorOrGate(id)) return;
             if (id.equals(anchorBlockId)) return;
 
             // Below the floor (ly < -1): skip background fill blocks that already exist in
@@ -409,6 +414,13 @@ public class PrefabLoader {
     }
 
     /** Background fill blocks that exist in natural terrain and need not be placed by the elf. */
+    // Doors and gates may appear as base IDs ("Furniture_Village_Door") or full state strings
+    // ("*Furniture_Village_Door_State_Definitions_CloseDoorIn") depending on how the engine
+    // resolves holder.blockId(). contains() covers both forms.
+    private static boolean isDoorOrGate(String id) {
+        return id.contains("Door") || id.contains("Trapdoor") || id.contains("Fence_Gate");
+    }
+
     private static boolean isMineBackfill(String id) {
         return "Rock_Stone".equals(id)
                 || id.startsWith("Ore_")

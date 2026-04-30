@@ -184,6 +184,17 @@ public final class BuildingLayout {
                 && !lower.contains("sign") && !lower.contains("ore_");
     }
 
+    /** Rotates native-local coords (lx, ly, lz) by the given number of 90° CCW steps. */
+    public static int[] rotateLocalOffset(int lx, int ly, int lz, int steps) {
+        steps = ((steps % 4) + 4) % 4;
+        for (int i = 0; i < steps; i++) {
+            int tmp = lx;
+            lx = lz;
+            lz = -tmp;
+        }
+        return new int[]{lx, ly, lz};
+    }
+
     private static Layout fallback() {
         return new Layout(0, 0, 0, 0, null, null, null, null, null, null);
     }

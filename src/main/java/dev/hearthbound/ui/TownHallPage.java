@@ -19,6 +19,7 @@ import dev.hearthbound.building.ResourceBlockPlacer;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
+import dev.hearthbound.building.CraftabilityIndex;
 import dev.hearthbound.village.VillageManager;
 
 import java.util.Map;
@@ -255,7 +256,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
             String countColor = satisfied ? "#78c880" : "#c87878";
             String nameColor = satisfied ? "#8ab8a0" : "#9ab0bc";
-            String displayName = itemId.replace("_", " ");
+            String displayName = CraftabilityIndex.getDisplayName(itemId);
 
             builder.appendInline("#ResourceListContainer",
                     "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 2); Padding: (Horizontal: 4); " +

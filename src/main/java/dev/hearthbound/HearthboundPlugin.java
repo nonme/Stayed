@@ -1,11 +1,16 @@
 package dev.hearthbound;
 
+import com.hypixel.hytale.assetstore.event.LoadedAssetsEvent;
+import com.hypixel.hytale.assetstore.map.DefaultAssetMap;
+import com.hypixel.hytale.server.core.asset.type.item.config.Item;
+import com.hypixel.hytale.server.core.asset.type.item.config.ItemDropList;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.server.OpenCustomUIInteraction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.world.events.ChunkPreLoadProcessEvent;
 import dev.hearthbound.building.BuildingSystem;
+import dev.hearthbound.building.CraftabilityIndex;
 import dev.hearthbound.commands.HearthboundCommand;
 import dev.hearthbound.events.BlockBreakHandler;
 import dev.hearthbound.events.BlockPlaceHandler;
@@ -104,6 +109,8 @@ public class HearthboundPlugin extends JavaPlugin {
         );
 
         // Register events
+        this.getEventRegistry().register(LoadedAssetsEvent.class, Item.class, CraftabilityIndex::onItemsLoaded);
+        this.getEventRegistry().register(LoadedAssetsEvent.class, ItemDropList.class, CraftabilityIndex::onDropListsLoaded);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, PlayerJoinHandler::onPlayerReady);
         this.getEventRegistry().registerGlobal(ChunkPreLoadProcessEvent.class, NpcChunkLoadHandler::onChunkLoad);
 

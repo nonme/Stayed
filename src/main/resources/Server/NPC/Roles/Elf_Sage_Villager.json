@@ -34,7 +34,7 @@
           "Sensor": { "Type": "State", "State": "Idle" },
           "Instructions": [
             {
-              "Sensor": { "Type": "Player", "Range": 4 },
+              "Sensor": { "Type": "Player", "Range": 10 },
               "HeadMotion": { "Type": "Watch" },
               "BodyMotion": { "Type": "Nothing" }
             },
@@ -54,8 +54,7 @@
                     "Time": [2, 4],
                     "Motion": {
                       "Type": "Wander",
-                      "Radius": 5,
-                      "RelativeSpeed": 0.4,
+                      "RelativeSpeed": 0.6,
                       "MaxHeadingChange": 60
                     }
                   }

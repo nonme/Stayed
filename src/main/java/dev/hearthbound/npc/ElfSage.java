@@ -21,6 +21,7 @@ import com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter;
 import com.hypixel.hytale.server.core.universe.world.spawn.ISpawnProvider;
 import com.hypixel.hytale.server.core.modules.i18n.I18nModule;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.building.TerrainBlender;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.npc.HearthboundDataStore;
@@ -165,6 +166,11 @@ public class ElfSage {
      * position where the elf should stand — one block away from the campfire that the
      * prefab contains. Returns null if placement failed.
      */
+    // Tent footprint offsets from the campfire anchor (2,1,1 in prefab-local coords).
+    // Block extents: X[-5..5], Z[-3..4], maxY=4. Relative to campfire: X[-7..3], Z[-4..3], maxY=3.
+    // maxPrefabY=4 (+1 clearFloating safety margin so the thatched roof is not trimmed).
+    private static final int[] TENT_FOOTPRINT = {-7, 3, -4, 3, 5};
+
     private static Vector3d placeWandererTent(World world, Store<EntityStore> store, Vector3d desiredSpawn) {
         try {
             com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection selection =
@@ -183,9 +189,19 @@ public class ElfSage {
             int campfireWorldZ = (int) Math.floor(desiredSpawn.getZ());
             com.hypixel.hytale.math.vector.Vector3i campfirePos =
                     new com.hypixel.hytale.math.vector.Vector3i(campfireWorldX, campfireWorldY, campfireWorldZ);
-            selection.placeNoReturn(world, campfirePos, store);
-            LOGGER.info("Elf tent placed, campfire at " + campfirePos);
 
+            // blendTerrain expects groundY = Y of the surface block (not standing position).
+            // Campfire is at local Y=1 in the prefab; prefab floor (Y=0) sits at campfireWorldY-1.
+            // surfaceY() returns solidGroundAt+1 (standing pos), so the surface block is at campfireWorldY-1.
+            int blendGroundY = campfireWorldY - 1;
+
+            TerrainBlender.clearVegetation(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
+            selection.placeNoReturn(world, campfirePos, store);
+            TerrainBlender.blendTerrain(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
+            TerrainBlender.clearFloating(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
+            TerrainBlender.restoreGrassDecor(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
+
+            LOGGER.info("Elf tent placed, campfire at " + campfirePos);
             return new Vector3d(campfireWorldX - 0.5, campfireWorldY, campfireWorldZ + 0.5);
         } catch (Exception e) {
             LOGGER.log(java.util.logging.Level.WARNING, "Failed to place Elf_tent prefab", e);
@@ -325,7 +341,7 @@ public class ElfSage {
                     }
                 }
             }
-            int bestY = findSurfaceY(world, bestX, bestZ);
+            int bestY = surfaceY(world, bestX, bestZ);
             Vector3d tentPos = new Vector3d(bestX, bestY, bestZ);
             LOGGER.info("Tent spot chosen: " + tentPos + " variance=" + bestVariance);
 
@@ -530,46 +546,36 @@ public class ElfSage {
         return new Vector3d(worldSpawn.getX(), 0, worldSpawn.getZ());
     }
 
-    // Tent footprint with 1-block margin: X[-6..6], Z[-4..5] = 13×10.
-    private static final int TENT_HALF_X = 6;
-    private static final int TENT_Z_MIN  = -4;
-    private static final int TENT_Z_MAX  =  5;
+    // Scoring footprint matches TENT_FOOTPRINT with +1 margin on each side.
+    // Campfire-relative: X[-8..4], Z[-5..4].
+    private static final int TENT_SCORE_MIN_X = -8;
+    private static final int TENT_SCORE_MAX_X =  4;
+    private static final int TENT_SCORE_MIN_Z = -5;
+    private static final int TENT_SCORE_MAX_Z =  4;
 
-    // Scans downward to find Y of the topmost solid (non-empty, non-fluid) block.
-    // Returns Y+1 (standing position), or -1 if the column contains fluid (water/lava).
-    private static int findSurfaceY(World world, int x, int z) {
-        int emptyId = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY_ID;
-        com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk chunk =
-                world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(x, z));
-        for (int y = 320; y >= 0; y--) {
-            // Fluid check — same approach as RescueQuestManager.solidGroundAt()
-            if (chunk != null) {
-                try {
-                    int fluidId = chunk.getFluidId(x, y, z);
-                    if (fluidId != Integer.MIN_VALUE && fluidId != 0) return -1;
-                } catch (Throwable ignored) {}
-            }
-            if (world.getBlock(x, y, z) != emptyId) {
-                return y + 1;
-            }
-        }
-        return 64;
-    }
-
-    // Returns total Y-variance of the tent footprint centered at (cx, cz).
-    // Returns Integer.MAX_VALUE if any column in the footprint contains water/lava.
-    // Lower variance = flatter and drier = better spot for the tent.
+    // Returns total Y-variance of the tent footprint centered at campfire position (cx, cz).
+    // Returns Integer.MAX_VALUE if any column contains water/lava or is unloaded.
+    // Lower variance = flatter and drier = better placement spot.
     private static int tentVariance(World world, int cx, int cz) {
-        int centerY = findSurfaceY(world, cx, cz);
+        int centerY = surfaceY(world, cx, cz);
         if (centerY == -1) return Integer.MAX_VALUE;
         int variance = 0;
-        for (int fx = -TENT_HALF_X; fx <= TENT_HALF_X; fx++) {
-            for (int fz = TENT_Z_MIN; fz <= TENT_Z_MAX; fz++) {
-                int y = findSurfaceY(world, cx + fx, cz + fz);
+        for (int fx = TENT_SCORE_MIN_X; fx <= TENT_SCORE_MAX_X; fx++) {
+            for (int fz = TENT_SCORE_MIN_Z; fz <= TENT_SCORE_MAX_Z; fz++) {
+                int y = surfaceY(world, cx + fx, cz + fz);
                 if (y == -1) return Integer.MAX_VALUE;
                 variance += Math.abs(y - centerY);
             }
         }
         return variance;
+    }
+
+    // Standing-position Y for a column: TerrainBlender.solidGroundAt + 1.
+    // Returns -1 if the column contains fluid or is unloaded.
+    private static int surfaceY(World world, int x, int z) {
+        var chunk = world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(x, z));
+        int topY = chunk != null ? chunk.getHeight(x & 31, z & 31) : 64;
+        int ground = TerrainBlender.solidGroundAt(world, x, topY, z);
+        return ground == -1 ? -1 : ground + 1;
     }
 }

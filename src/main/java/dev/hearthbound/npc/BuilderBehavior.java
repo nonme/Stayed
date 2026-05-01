@@ -280,7 +280,7 @@ public class BuilderBehavior {
             BlockType bt = assetMap.getAsset(idx);
             if (bt == null || bt == emptyType) continue;
             String id = bt.getId();
-            if (id != null && id.startsWith("Plant_")) {
+            if (id != null && (id.startsWith("Plant_") || id.contains("_Roots"))) {
                 chunk.setBlock(bx, py, bz, emptyId, emptyType, 0, 0, 10);
             }
         }

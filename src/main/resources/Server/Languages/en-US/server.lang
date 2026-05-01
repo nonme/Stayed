@@ -23,13 +23,34 @@ npcRoles.Villager_Human_Lumberjack.name = Lumberjack
 npcRoles.Villager_Human_Miner.name = Miner
 
 # === Hearthbound Quests — Objective Lines ===
-objectivelines.ObjectiveLine_RescueQuest_1.title = Calls for help
-objectivelines.ObjectiveLine_RescueQuest_1.desc = Someone nearby is calling for help. Go see what's happening.
+objectivelines.ObjectiveLine_RescueQuest_1.title = Step Right In
+objectivelines.ObjectiveLine_RescueQuest_1.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+
+objectivelines.ObjectiveLine_RescueQuest_Cabin.title = Don't Come Out
+objectivelines.ObjectiveLine_RescueQuest_Cabin.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+
+objectivelines.ObjectiveLine_RescueQuest_Ruins.title = Stuck Up There
+objectivelines.ObjectiveLine_RescueQuest_Ruins.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+
+objectivelines.ObjectiveLine_RescueQuest_Camp.title = Hospitality
+objectivelines.ObjectiveLine_RescueQuest_Camp.desc = Aelin sensed someone nearby is in trouble. I need to find them.
 
 # === Hearthbound Quests — Objective: Reach the source ===
-objectives.Objective_RescueTrap_Reach.title = Calls for help
-objectives.Objective_RescueTrap_Reach.desc = Follow the calls for help to their source.
+objectives.Objective_RescueTrap_Reach.title = Step Right In
+objectives.Objective_RescueTrap_Reach.desc = Aelin sensed someone nearby is in trouble. I need to find them.
 objectives.Objective_RescueTrap_Reach.taskSet.0.task.0 = Find the source of the calls
+
+objectives.Objective_RescueTrap_Reach_Cabin.title = Don't Come Out
+objectives.Objective_RescueTrap_Reach_Cabin.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+objectives.Objective_RescueTrap_Reach_Cabin.taskSet.0.task.0 = Find the source of the calls
+
+objectives.Objective_RescueTrap_Reach_Ruins.title = Stuck Up There
+objectives.Objective_RescueTrap_Reach_Ruins.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+objectives.Objective_RescueTrap_Reach_Ruins.taskSet.0.task.0 = Find the source of the calls
+
+objectives.Objective_RescueTrap_Reach_Camp.title = Hospitality
+objectives.Objective_RescueTrap_Reach_Camp.desc = Aelin sensed someone nearby is in trouble. I need to find them.
+objectives.Objective_RescueTrap_Reach_Camp.taskSet.0.task.0 = Find the source of the calls
 
 # === Hearthbound Quests — Objective: Help ===
 objectives.Objective_RescueTrap_Rescue.title = Lend a hand

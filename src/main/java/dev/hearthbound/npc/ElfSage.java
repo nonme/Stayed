@@ -535,10 +535,20 @@ public class ElfSage {
     private static final int TENT_Z_MIN  = -4;
     private static final int TENT_Z_MAX  =  5;
 
-    // Scans downward to find Y of the topmost non-empty block. Returns Y+1 (standing position).
+    // Scans downward to find Y of the topmost solid (non-empty, non-fluid) block.
+    // Returns Y+1 (standing position), or -1 if the column contains fluid (water/lava).
     private static int findSurfaceY(World world, int x, int z) {
         int emptyId = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY_ID;
+        com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk chunk =
+                world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(x, z));
         for (int y = 320; y >= 0; y--) {
+            // Fluid check — same approach as RescueQuestManager.solidGroundAt()
+            if (chunk != null) {
+                try {
+                    int fluidId = chunk.getFluidId(x, y, z);
+                    if (fluidId != Integer.MIN_VALUE && fluidId != 0) return -1;
+                } catch (Throwable ignored) {}
+            }
             if (world.getBlock(x, y, z) != emptyId) {
                 return y + 1;
             }
@@ -547,13 +557,17 @@ public class ElfSage {
     }
 
     // Returns total Y-variance of the tent footprint centered at (cx, cz).
-    // Lower = flatter.
+    // Returns Integer.MAX_VALUE if any column in the footprint contains water/lava.
+    // Lower variance = flatter and drier = better spot for the tent.
     private static int tentVariance(World world, int cx, int cz) {
         int centerY = findSurfaceY(world, cx, cz);
+        if (centerY == -1) return Integer.MAX_VALUE;
         int variance = 0;
         for (int fx = -TENT_HALF_X; fx <= TENT_HALF_X; fx++) {
             for (int fz = TENT_Z_MIN; fz <= TENT_Z_MAX; fz++) {
-                variance += Math.abs(findSurfaceY(world, cx + fx, cz + fz) - centerY);
+                int y = findSurfaceY(world, cx + fx, cz + fz);
+                if (y == -1) return Integer.MAX_VALUE;
+                variance += Math.abs(y - centerY);
             }
         }
         return variance;

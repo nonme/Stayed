@@ -229,7 +229,7 @@ public class SiteClearer {
         if (id.startsWith("Plant_Bush") || id.startsWith("Plant_Fern")
                 || id.startsWith("Plant_Flower") || id.startsWith("Plant_Mushroom")
                 || id.startsWith("Plant_Vine") || id.startsWith("Plant_Crop_Mushroom")
-                || id.startsWith("Plant_Leaves")) return true;
+                || id.startsWith("Plant_Leaves") || id.contains("_Roots")) return true;
         // Tree trunks that generate naturally
         if (id.endsWith("_Trunk")) return true;
         // Water/liquid terrain

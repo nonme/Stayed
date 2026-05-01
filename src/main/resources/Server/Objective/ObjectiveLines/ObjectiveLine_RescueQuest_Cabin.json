@@ -1,0 +1,8 @@
+{
+  "Category": "Rescue",
+  "ObjectiveIds": [
+    "Objective_RescueTrap_Reach_Cabin",
+    "Objective_RescueTrap_Rescue",
+    "Objective_RescueTrap_Return"
+  ]
+}

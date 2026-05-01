@@ -20,7 +20,7 @@ import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.VillagerScheduler;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
-import dev.hearthbound.quest.RescueQuest1;
+import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.ui.VillageHud;
 import dev.hearthbound.util.TickScheduler;
@@ -202,7 +202,7 @@ public class VillageTickHandler {
 
             // changeAppearance=false — keep the PlayerSkin assigned at rescue time
             RoleChangeSystem.requestRoleChange(followerRef, npcEntity.getRole(), villagerRoleIndex, false, store);
-            RescueQuest1.unregisterNpc(followerRef);
+            RescueQuestManager.unregisterNpc(followerRef);
 
             // Save village data immediately — before the deferred moveTo
             VillagerData villagerData = store.getComponent(followerRef, VillagerData.getComponentType());

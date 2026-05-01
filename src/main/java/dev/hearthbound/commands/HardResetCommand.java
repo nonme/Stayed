@@ -14,7 +14,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.npc.ElfSage;
 import dev.hearthbound.npc.NpcRegistry;
-import dev.hearthbound.quest.RescueQuest1;
+import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
 
 import java.util.UUID;
@@ -59,7 +59,7 @@ public class HardResetCommand extends AbstractPlayerCommand {
 
         // Remove all active quest NPCs (rescue victim, guard, follower).
         // Handles unloaded chunks via markForRemoval.
-        RescueQuest1.cleanup(store);
+        RescueQuestManager.cleanup(store);
 
         // Clear only NPC records — pending removals must survive to delete unloaded entities.
         NpcRegistry.get().clearRecords();

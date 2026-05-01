@@ -12,6 +12,7 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalArg;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractCommandCollection;
@@ -26,80 +27,123 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.WorldConfig;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import dev.hearthbound.quest.RescueQuest1;
+import dev.hearthbound.quest.RescueQuestManager;
+import dev.hearthbound.quest.RescueQuestManager.QuestVariant;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
+import java.util.Arrays;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class QuestCommand extends AbstractCommandCollection {
 
     public QuestCommand() {
         super("quest", "Quest testing commands");
-        addSubCommand(new StartQuest1Command());
-        addSubCommand(new ResetQuest1Command());
+        addSubCommand(new StartQuestCommand());
+        addSubCommand(new StartVariantCommand());
+        addSubCommand(new ResetQuestCommand());
         addSubCommand(new AddMarkerCommand());
         addSubCommand(new StartLineCommand());
         addSubCommand(new EnableMarkersCommand());
     }
 
-    /** Clears rescueQuestStarted so the elf dialog shows the "We need settlers" button again. */
-    private static class ResetQuest1Command extends AbstractPlayerCommand {
-        ResetQuest1Command() {
-            super("reset", "Reset rescue quest flag so elf offers it again");
+    /** Start next quest in rotation (same as clicking "We need settlers" in dialog). */
+    private static class StartQuestCommand extends AbstractPlayerCommand {
+        StartQuestCommand() {
+            super("start", "Start next rescue quest variant (follows rotation)");
         }
 
         @Override
         protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref,
                                PlayerRef playerRef, World world) {
-            Player player = store.getComponent(ref, Player.getComponentType());
-            RescueQuest1.cancelAllObjectives(store, ref, player);
-            RescueQuest1.removeAllMarkers(store);
-            RescueQuest1.cleanup(store);
-
-            VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
-            village.setRescueQuestStarted(false);
-            VillageManager.get().save(store, ref, village);
-
-            ctx.sendMessage(Message.raw("Rescue quest reset — talk to the elf to start again"));
+            launchVariant(ctx, store, ref, playerRef, world, null);
         }
     }
 
-    private static class StartQuest1Command extends AbstractPlayerCommand {
-        StartQuest1Command() {
-            super("start", "Reset and start rescue quest 1 at a random point 300-500 blocks away");
+    /**
+     * /hb quest variant <trap|cabin|ruins|camp> — force a specific variant for testing.
+     * Bypasses rotation but still records the play in history.
+     */
+    private static class StartVariantCommand extends AbstractPlayerCommand {
+        private final RequiredArg<String> variantArg =
+                withRequiredArg("variant", "trap | cabin | ruins | camp", ArgTypes.STRING);
+
+        StartVariantCommand() {
+            super("variant", "Start a specific rescue quest variant (trap/cabin/ruins/camp)");
         }
 
         @Override
         protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref,
                                PlayerRef playerRef, World world) {
-            TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
-            if (transform == null) {
-                ctx.sendMessage(Message.raw("Could not read player transform"));
+            String raw = ctx.get(variantArg).toUpperCase();
+            QuestVariant variant;
+            try {
+                variant = QuestVariant.valueOf(raw);
+            } catch (IllegalArgumentException e) {
+                String valid = Arrays.stream(QuestVariant.values())
+                        .map(v -> v.name().toLowerCase())
+                        .collect(Collectors.joining(", "));
+                ctx.sendMessage(Message.raw("Unknown variant '" + raw + "'. Valid: " + valid));
                 return;
             }
-            UUIDComponent uuid = store.getComponent(ref, UUIDComponent.getComponentType());
-            if (uuid == null) {
-                ctx.sendMessage(Message.raw("Player UUID not found"));
-                return;
+            launchVariant(ctx, store, ref, playerRef, world, variant);
+        }
+    }
+
+    private static void launchVariant(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref,
+                                      PlayerRef playerRef, World world, QuestVariant forced) {
+        TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
+        if (transform == null) { ctx.sendMessage(Message.raw("Could not read player transform")); return; }
+        UUIDComponent uuidComp = store.getComponent(ref, UUIDComponent.getComponentType());
+        if (uuidComp == null) { ctx.sendMessage(Message.raw("Player UUID not found")); return; }
+        Player player = store.getComponent(ref, Player.getComponentType());
+
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        QuestVariant variant = forced != null ? forced : RescueQuestManager.pickNextVariant(village);
+        RescueQuestManager.recordVariantPlayed(village, variant);
+        village.setRescueQuestStarted(true);
+        VillageManager.get().save(store, ref, village);
+
+        Vector3d fromPos = transform.getPosition();
+        UUID playerUuid = uuidComp.getUuid();
+        ctx.sendMessage(Message.raw("Starting variant " + variant.name() + "..."));
+
+        RescueQuestManager.startForPlayer(world, store, ref, player, playerUuid, fromPos, variant, spawned -> {
+            if (spawned == null) {
+                playerRef.sendMessage(Message.raw("Failed to start quest (prefab error or no valid location)"));
+            } else {
+                playerRef.sendMessage(Message.raw(String.format(
+                        "Quest started [%s]. Victim at (%.0f, %.0f, %.0f)",
+                        variant.name(),
+                        spawned.victimPos().getX(),
+                        spawned.victimPos().getY(),
+                        spawned.victimPos().getZ())));
             }
+        });
+    }
+
+    /** Reset quest state fully — clears started flag, trap-done flag, and history. */
+    private static class ResetQuestCommand extends AbstractPlayerCommand {
+        ResetQuestCommand() {
+            super("reset", "Reset all rescue quest state (started, trap-done, history)");
+        }
+
+        @Override
+        protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref,
+                               PlayerRef playerRef, World world) {
             Player player = store.getComponent(ref, Player.getComponentType());
+            RescueQuestManager.cancelAllObjectives(store, ref, player);
+            RescueQuestManager.removeAllMarkers(store);
+            RescueQuestManager.cleanup(store);
 
-            Vector3d fromPos = transform.getPosition();
-            UUID playerUuid = uuid.getUuid();
-            ctx.sendMessage(Message.raw("Searching for quest spawn location (up to 5 attempts)..."));
+            VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+            village.setRescueQuestStarted(false);
+            village.setRescueQuestTrapDone(false);
+            village.getRescueQuestHistory().clear();
+            VillageManager.get().save(store, ref, village);
 
-            RescueQuest1.startForPlayer(world, store, ref, player, playerUuid, fromPos, spawned -> {
-                if (spawned == null) {
-                    playerRef.sendMessage(Message.raw("Failed to start quest (prefab error or no valid location)"));
-                } else {
-                    playerRef.sendMessage(Message.raw(String.format(
-                            "Quest started. Trap at (%.0f, %.0f, %.0f)",
-                            spawned.victimPos().getX(),
-                            spawned.victimPos().getY(),
-                            spawned.victimPos().getZ())));
-                }
-            });
+            ctx.sendMessage(Message.raw("Rescue quest fully reset. Talk to the elf to start again."));
         }
     }
 
@@ -150,7 +194,7 @@ public class QuestCommand extends AbstractCommandCollection {
         @Override
         protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref,
                                PlayerRef playerRef, World world) {
-            RescueQuest1.applyMarkerIconOnce();
+            RescueQuestManager.applyMarkerIconOnce();
             String lineId = ctx.get(lineIdArg);
             UUIDComponent uuid = store.getComponent(ref, UUIDComponent.getComponentType());
             if (uuid == null) {

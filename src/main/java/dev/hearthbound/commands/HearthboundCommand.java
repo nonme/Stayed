@@ -30,5 +30,6 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new TimeCommand());
         addSubCommand(new DoorsCommand());
         addSubCommand(new CraftabilityCommand());
+        addSubCommand(new WarpCommand());
     }
 }

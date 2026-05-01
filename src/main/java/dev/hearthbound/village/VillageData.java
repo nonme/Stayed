@@ -4,7 +4,6 @@ import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.codec.codecs.array.ArrayCodec;
-import com.hypixel.hytale.codec.codecs.map.ObjectMapCodec;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistryProxy;
 import com.hypixel.hytale.component.ComponentType;
@@ -16,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 
 /**
  * Persistent village data stored on the player entity ref.
@@ -29,6 +27,9 @@ public class VillageData implements Component<EntityStore> {
 
     private static final ArrayCodec<VillagerSummary> VILLAGERS_ARRAY_CODEC =
             ArrayCodec.ofBuilderCodec(VillagerSummary.CODEC, VillagerSummary[]::new);
+
+    private static final ArrayCodec<String> STRING_ARRAY_CODEC =
+            new ArrayCodec<>(Codec.STRING, String[]::new);
 
     public static final BuilderCodec<VillageData> CODEC = BuilderCodec.builder(VillageData.class, VillageData::new)
             .append(new KeyedCodec<>("VillageName", Codec.STRING), VillageData::setVillageName, VillageData::getVillageName).add()
@@ -54,6 +55,8 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("WarehouseQuestOffered", Codec.BOOLEAN), VillageData::setWarehouseQuestOffered, VillageData::isWarehouseQuestOffered).add()
             .append(new KeyedCodec<>("SawmillQuestOffered", Codec.BOOLEAN), VillageData::setSawmillQuestOffered, VillageData::isSawmillQuestOffered).add()
             .append(new KeyedCodec<>("MineQuestOffered", Codec.BOOLEAN), VillageData::setMineQuestOffered, VillageData::isMineQuestOffered).add()
+            .append(new KeyedCodec<>("RescueQuestTrapDone", Codec.BOOLEAN), VillageData::setRescueQuestTrapDone, VillageData::isRescueQuestTrapDone).add()
+            .append(new KeyedCodec<>("RescueQuestHistory", STRING_ARRAY_CODEC), VillageData::setRescueQuestHistoryArray, VillageData::getRescueQuestHistoryArray).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;
@@ -93,6 +96,8 @@ public class VillageData implements Component<EntityStore> {
     private boolean warehouseQuestOffered = false;
     private boolean sawmillQuestOffered = false;
     private boolean mineQuestOffered = false;
+    private boolean rescueQuestTrapDone = false;
+    private List<String> rescueQuestHistory = new ArrayList<>();
     /**
      * Snapshot of blocks overwritten by the active ghost preview, keyed by "x,y,z" → original
      * block id ("Empty" for empty cells). Persisted so a server restart doesn't orphan the
@@ -205,6 +210,20 @@ public class VillageData implements Component<EntityStore> {
     public boolean isMineQuestOffered() { return mineQuestOffered; }
     public void setMineQuestOffered(boolean offered) { this.mineQuestOffered = offered; }
 
+    // --- Rescue quest rotation ---
+    public boolean isRescueQuestTrapDone() { return rescueQuestTrapDone; }
+    public void setRescueQuestTrapDone(boolean done) { this.rescueQuestTrapDone = done; }
+
+    public List<String> getRescueQuestHistory() { return rescueQuestHistory; }
+
+    private String[] getRescueQuestHistoryArray() {
+        return rescueQuestHistory.toArray(new String[0]);
+    }
+
+    private void setRescueQuestHistoryArray(String[] arr) {
+        this.rescueQuestHistory = arr != null ? new ArrayList<>(Arrays.asList(arr)) : new ArrayList<>();
+    }
+
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
     public Map<String, String> getPendingGhostSnapshot() { return pendingGhostSnapshot; }
     public void setPendingGhostSnapshot(Map<String, String> snapshot) {
@@ -250,6 +269,8 @@ public class VillageData implements Component<EntityStore> {
         copy.warehouseQuestOffered = this.warehouseQuestOffered;
         copy.sawmillQuestOffered = this.sawmillQuestOffered;
         copy.mineQuestOffered = this.mineQuestOffered;
+        copy.rescueQuestTrapDone = this.rescueQuestTrapDone;
+        copy.rescueQuestHistory = new ArrayList<>(this.rescueQuestHistory);
         copy.pendingGhostSnapshot = new HashMap<>(this.pendingGhostSnapshot);
         return copy;
     }

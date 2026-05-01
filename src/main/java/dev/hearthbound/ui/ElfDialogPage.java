@@ -15,7 +15,7 @@ import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import dev.hearthbound.quest.RescueQuest1;
+import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
@@ -696,9 +696,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             return;
         }
 
+        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
+        RescueQuestManager.QuestVariant variant = RescueQuestManager.pickNextVariant(village);
+        RescueQuestManager.recordVariantPlayed(village, variant);
+
         // Mark quest as started immediately so repeated dialog opens show QUEST_ACTIVE
         rescueQuestStarted = true;
-        VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
         village.setRescueQuestStarted(true);
         VillageManager.get().save(store, ref, village);
 
@@ -708,9 +711,9 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             return;
         }
 
-        RescueQuest1.startForPlayer(
+        RescueQuestManager.startForPlayer(
                 cachedWorld, store, ref, cachedPlayer, cachedPlayerUuid,
-                transform.getPosition(),
+                transform.getPosition(), variant,
                 spawned -> {
                     if (spawned == null) {
                         LOGGER.warning("launchRescueQuest: startForPlayer failed");

@@ -51,6 +51,10 @@ public class VillagerData implements Component<EntityStore> {
             .append(new KeyedCodec<>("LastName", Codec.STRING), VillagerData::setLastName, VillagerData::getLastName).add()
             .append(new KeyedCodec<>("SkinSeed", Codec.LONG), VillagerData::setSkinSeed, VillagerData::getSkinSeed).add()
             .append(new KeyedCodec<>("HasHouse", Codec.BOOLEAN), VillagerData::setHasHouse, VillagerData::isHasHouse).add()
+            // Empty string = TRAP (legacy) or any pre-variant save — safe default.
+            .append(new KeyedCodec<>("QuestVariant", Codec.STRING), VillagerData::setQuestVariant, VillagerData::getQuestVariant).add()
+            // True once player reached the final dialog screen — reopen skips straight to Follow me.
+            .append(new KeyedCodec<>("VillagerResqueDialogReachedFinal", Codec.BOOLEAN), VillagerData::setDialogReachedFinal, VillagerData::isDialogReachedFinal).add()
             .build();
 
     private static ComponentType<EntityStore, VillagerData> componentType;
@@ -74,6 +78,9 @@ public class VillagerData implements Component<EntityStore> {
     // 0 = unseeded (legacy). A non-zero seed means the skin has been rolled and must be
     // reproducible across server restarts by feeding this seed back into Random.
     private long skinSeed = 0L;
+    // Empty string = TRAP (legacy) or pre-variant save. CABIN/RUINS/CAMP stored by QuestVariant.name().
+    private String questVariant = "";
+    private boolean dialogReachedFinal = false;
 
     public VillagerData() {}
 
@@ -140,6 +147,12 @@ public class VillagerData implements Component<EntityStore> {
     public long getSkinSeed() { return skinSeed; }
     public void setSkinSeed(long skinSeed) { this.skinSeed = skinSeed; }
 
+    public String getQuestVariant() { return questVariant; }
+    public void setQuestVariant(String questVariant) { this.questVariant = questVariant != null ? questVariant : ""; }
+
+    public boolean isDialogReachedFinal() { return dialogReachedFinal; }
+    public void setDialogReachedFinal(boolean dialogReachedFinal) { this.dialogReachedFinal = dialogReachedFinal; }
+
     public boolean hasHome() {
         return hasHouse;
     }
@@ -159,6 +172,8 @@ public class VillagerData implements Component<EntityStore> {
         copy.firstName = this.firstName;
         copy.lastName = this.lastName;
         copy.skinSeed = this.skinSeed;
+        copy.questVariant = this.questVariant;
+        // dialogReachedFinal intentionally not copied — follower/villager starts fresh
         return copy;
     }
 }

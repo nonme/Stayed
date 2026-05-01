@@ -1,0 +1,12 @@
+{
+  "TaskSets": [
+    {
+      "Tasks": [
+        {
+          "Type": "ReachLocation",
+          "TargetLocation": "RescueTrap_Marker_Cabin"
+        }
+      ]
+    }
+  ]
+}

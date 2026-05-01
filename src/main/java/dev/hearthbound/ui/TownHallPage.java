@@ -1,5 +1,10 @@
 package dev.hearthbound.ui;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -14,18 +19,13 @@ import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
 import dev.hearthbound.building.BuildingSystem;
-import dev.hearthbound.building.ResourceBlockPlacer;
+import dev.hearthbound.building.CraftabilityIndex;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
-import dev.hearthbound.building.CraftabilityIndex;
 import dev.hearthbound.village.VillageManager;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Town Hall management page — the main UI for the Founding Stone.
@@ -56,7 +56,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     private final int stoneX, stoneY, stoneZ;
     private boolean founded;
     private String activeTab = "village";
-    private String currentVillageName = VILLAGE_NAMES[0];
+    private String currentVillageName = VILLAGE_NAMES[(int) (Math.random() * VILLAGE_NAMES.length)];
 
     public TownHallPage(PlayerRef player, Ref<EntityStore> playerRef, World world,
                          int stoneX, int stoneY, int stoneZ) {
@@ -116,8 +116,9 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         boolean villageActive = "village".equals(tab);
         builder.set("#TabVillage.Visible", villageActive);
         builder.set("#TabVillageInactive.Visible", !villageActive);
-        builder.set("#TabConstruction.Visible", !villageActive);
-        builder.set("#TabConstructionInactive.Visible", villageActive);
+        // Construction tab buttons are only shown after founding
+        builder.set("#TabConstruction.Visible", founded && !villageActive);
+        builder.set("#TabConstructionInactive.Visible", founded && villageActive);
     }
 
     private void populatePreFounding(UICommandBuilder builder) {
@@ -126,7 +127,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
         builder.set("#PreFoundingInfo.Text",
                 "Choose a name for your village and confirm to begin your journey. " +
-                "The elf sage will join you to help build your settlement.");
+                "Aelin will join you to help build your settlement.");
         builder.set("#PreFoundingHint.Text",
                 "You can break the Founding Stone and move it before confirming.");
 
@@ -136,12 +137,9 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         builder.set("#PostFoundingGroup.Visible", false);
         builder.set("#PanelConstruction.Visible", false);
 
-        // Hide both construction tab buttons before founding
-        builder.set("#TabConstruction.Visible", false);
-        builder.set("#TabConstructionInactive.Visible", false);
-        // Village tab — active by default
-        builder.set("#TabVillage.Visible", true);
-        builder.set("#TabVillageInactive.Visible", false);
+        // Hide tab bar entirely before founding — no tabs needed with a single panel
+        builder.set("#TabBar.Visible", false);
+        builder.set("#TabSeparator.Visible", false);
     }
 
     // ========== Post-founding UI ==========
@@ -158,6 +156,8 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         };
         builder.set("#StageLabel.Text", stageName);
 
+        builder.set("#TabBar.Visible", true);
+        builder.set("#TabSeparator.Visible", true);
         builder.set("#PreFoundingGroup.Visible", false);
         builder.set("#PostFoundingGroup.Visible", true);
         setTabActive(builder, activeTab);
@@ -175,7 +175,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         int total = village.getVillagerCount() + (hasElf ? 1 : 0);
         builder.set("#PopulationCount.Text", "— " + total + " residents");
         StringBuilder pop = new StringBuilder();
-        if (hasElf) pop.append(getElfName(village)).append(" (Elf Sage)\n");
+        if (hasElf) pop.append(getElfName(village)).append("\n");
         for (dev.hearthbound.village.VillagerSummary v : village.getVillagers()) {
             pop.append(v.getFullName()).append("\n");
         }

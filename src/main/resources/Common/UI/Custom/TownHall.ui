@@ -63,11 +63,12 @@ Group {
         LayoutMode: MiddleCenter;
 
         Label #VillageName {
+          Anchor: (Top: 8);
           Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4a84a, FontSize: 18, RenderBold: true);
         }
 
         Label #StageLabel {
-          Anchor: (Top: 2);
+          Anchor: (Top: 0);
           Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4e6070, FontSize: 10);
         }
       }
@@ -81,7 +82,7 @@ Group {
     }
 
     // ── Tab bar ──
-    Group {
+    Group #TabBar {
       Anchor: (Height: 38);
       Background: #0a1018;
       LayoutMode: Center;
@@ -115,7 +116,7 @@ Group {
     }
 
     // ── Separator ──
-    Group {
+    Group #TabSeparator {
       Anchor: (Height: 1);
       Background: #1e2d3a;
     }
@@ -125,7 +126,7 @@ Group {
     // --- Village tab ---
     Group #PanelVillage {
       FlexWeight: 1;
-      LayoutMode: TopScrolling;
+      LayoutMode: Top;
       Padding: (Top: 16, Bottom: 12, Left: 20, Right: 20);
 
       // Pre-founding
@@ -137,11 +138,6 @@ Group {
           Style: (HorizontalAlignment: Center, TextColor: #8a9eae, FontSize: 12, Wrap: true);
         }
 
-        Label #PreFoundingHint {
-          Anchor: (Top: 8, Full: 0);
-          Style: (HorizontalAlignment: Center, TextColor: #3e5060, FontSize: 10, Wrap: true);
-        }
-
         // Name input row
         Group {
           LayoutMode: Left;
@@ -149,22 +145,34 @@ Group {
 
           TextField #VillageNameInput {
             FlexWeight: 1;
-            Anchor: (Height: 32);
+            Anchor: (Height: 36);
             MaxLength: 24;
             AutoFocus: true;
+            Padding: (Vertical: 0, Horizontal: 10);
+            Style: (FontSize: 14, TextColor: #e8f0f8, RenderBold: false);
+            PlaceholderStyle: (FontSize: 14, TextColor: #3a5060);
+            Decoration: (
+              Default: (Background: #0d1520, OutlineColor: #2a3a4a, OutlineSize: 1),
+              Focused: (Background: #111e2c, OutlineColor: #4a7090, OutlineSize: 1)
+            );
           }
 
           TextButton #SuggestButton {
-            Anchor: (Left: 8, Width: 80, Height: 32);
+            Anchor: (Left: 8, Width: 80, Height: 36);
             Style: @NavBtnStyle;
             Text: "Suggest";
           }
         }
+        Label #PreFoundingHint {
+          Anchor: (Top: 8, Full: 0);
+          Padding: (Top: 8);
+          Style: (HorizontalAlignment: Center, TextColor: #3e5060, FontSize: 10, Wrap: true);
+        }
 
         // Confirm button centered
         Group {
-          LayoutMode: Center;
-          Anchor: (Top: 20, Height: 40);
+          LayoutMode: MiddleCenter;
+          Anchor: (Top: 16, Height: 40);
 
           TextButton #ConfirmButton {
             Anchor: (Width: 220, Height: 36);

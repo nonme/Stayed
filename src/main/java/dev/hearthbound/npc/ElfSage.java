@@ -310,11 +310,10 @@ public class ElfSage {
 
             VillageData liveVillage = VillageManager.get().getOrCreateVillageData(liveStore, playerRef);
             if (liveVillage.getElfId() != null) {
-                Ref<EntityStore> existing = world.getEntityRef(liveVillage.getElfId());
-                if (existing != null && existing.isValid()) {
-                    LOGGER.fine("doSpawn: elf already exists (" + liveVillage.getElfId() + "), skipping");
-                    return;
-                }
+                // elfId is recorded — elf was already spawned. If the chunk isn't loaded yet,
+                // NpcChunkLoadHandler will restore it. Don't spawn a duplicate.
+                LOGGER.fine(() -> "doSpawn: elfId already set (" + liveVillage.getElfId() + "), skipping");
+                return;
             }
 
             // Find the flattest tent spot across all loaded candidate chunks.

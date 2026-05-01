@@ -1,5 +1,9 @@
 package dev.hearthbound.ui;
 
+import java.util.Set;
+import java.util.UUID;
+import java.util.logging.Logger;
+
 import com.hypixel.hytale.builtin.adventure.objectives.Objective;
 import com.hypixel.hytale.builtin.adventure.objectives.ObjectivePlugin;
 import com.hypixel.hytale.component.Ref;
@@ -14,6 +18,7 @@ import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
@@ -22,10 +27,6 @@ import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
-
-import java.util.Set;
-import java.util.UUID;
-import java.util.logging.Logger;
 
 /**
  * Dialog shown when the player presses F on a rescue-quest trapped villager.
@@ -148,7 +149,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 // TRAP — original dialog, no INTRO_3
                 b.set("#DialogText.Text",
                         "Careful — spikes at the bottom. I didn't see them until I was already in.\n" +
-                        "Goblins. Three nights ago. They came at night, no warning.\n" +
+                        "Goblins. Three nights ago. They came at night, we had no warning.\n" +
                         "By the time I understood what was happening, the fires were already past saving.");
                 b.set("#BtnPrimary.Text", "What happened to the others?");
             }
@@ -181,9 +182,9 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 // TRAP
                 b.set("#DialogText.Text",
                         "I don't know. I ran.\n" +
-                        "They set this trap on the main trail out — knew people would flee that way. " +
+                        "I've been wandering through the forest. Then I saw food just... hanging there. Don't look at me like that, I was starving.\n" +
                         "I've been down here since. The one watching me comes around every few hours.\n" +
-                        "There is no village to go back to.");
+                        "I don't know what to do.");
                 b.set("#BtnPrimary.Text", "I'm building a settlement nearby. You could come.");
             }
         }
@@ -206,7 +207,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 case "CAMP"  -> b.set("#DialogText.Text", "Who?\nGet me out of here. Tell me on the way.");
                 default      -> b.set("#DialogText.Text",
                         "A settlement.\n" +
-                        "I know how to work. I'm not looking for charity. " +
+                        "I know how to work. " +
                         "I'll carry my weight, whatever needs doing.\n" +
                         "If you mean it, then yes. I'll come.");
             }

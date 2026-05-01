@@ -1,5 +1,8 @@
 package dev.hearthbound.ui;
 
+import java.util.UUID;
+import java.util.logging.Logger;
+
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -15,12 +18,10 @@ import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
 import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
-
-import java.util.UUID;
-import java.util.logging.Logger;
 
 /**
  * Dialog with the elf sage Aelin.
@@ -213,9 +214,9 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case INTRO_1 -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "Oh, you found my fire.\n" +
-                        "Grab a spot if you want.\n" +
-                        "Aelin. I used to be an Architect — before the Sundering tore everything apart.\n" +
+                        "Oh. You found my fire.\n" +
+                        "Grab a spot, if you want.\n" +
+                        "Aelin. I was an Architect, back before all this.\n" +
                         "Who are you?");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "I am " + playerName + ".");
@@ -240,13 +241,13 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             }
             case MENU -> {
                 b.set("#SpeakerName.Text", "Aelin");
-                b.set("#DialogText.Text", "Ask. I have time — more than I would like.");
+                b.set("#DialogText.Text", "Ask. I have plenty of time.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "What's your story?");
                 b.set("#BtnChoice1.Visible", true);
                 if (townHallBuilt) {
                     if (!rescueQuestStarted) {
-                        b.set("#BtnChoice2.Text", "We need settlers.");
+                        b.set("#BtnChoice2.Text", "We need people.");
                     } else {
                         b.set("#BtnChoice2.Text", "Any news on the survivors?");
                     }
@@ -307,7 +308,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case QUEST_WAREHOUSE_OFFER -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "Somewhere central — people need to get to it easily.\n" +
+                        "Somewhere central. People need to get to it easily.\n" +
                         "Place the counter where you want the front desk. I'll build around it.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "Got it.");
@@ -319,8 +320,8 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
                         "Where do I start. Four centuries of building things for people who mostly didn't deserve them.\n" +
-                        "Temples, keeps, granaries — whoever paid, mostly. A few things I actually believed in.\n" +
-                        "Then the Sundering. City gone. I grabbed my tools and walked until I stopped here.");
+                        "Temples, keeps, granaries. A few things I actually believed in.\n" +
+                        "Then the Sundering. City gone. I took my tools and walked until I stopped here.");
                 b.set("#BtnPrimary.Text", "So you're still looking.");
                 b.set("#BtnPrimary.Visible", true);
             }
@@ -328,7 +329,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
                         "For a long time, yes. Land worth building on. Someone worth building with.\n" +
-                        "I stopped thinking of it that way some time ago.\n" +
+                        "At some point I stopped expecting either.\n" +
                         "Now I just... keep the tools close. Old habit, I suppose.");
                 b.set("#BtnPrimary.Text", "Back");
                 b.set("#BtnPrimary.Visible", true);
@@ -339,7 +340,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         "I can put up walls. That's the part I know.\n" +
                         "But someone has to find the people. Bring the wood and stone. " +
                         "Make the calls when neither option is good.\n" +
-                        "That part's on you. You up for that?");
+                        "That part is yours.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "Yes. Let's do it.");
                 b.set("#BtnChoice1.Visible", true);
@@ -349,7 +350,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case ANSWER_STONE_OFFER -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "Then find ground that works — flat, water nearby, somewhere you can " +
+                        "Then find ground that works. Flat, water nearby, somewhere you can " +
                         "defend if it comes to that.\n" +
                         "Place the Founding Stone when you have the spot. " +
                         "I'll feel where it lands and come to you. " +
@@ -370,8 +371,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     b.set("#BtnChoice2.Visible", true);
                 } else {
                     b.set("#DialogText.Text",
-                            "Find a spot. Place the stone on the ground — not in a chest, " +
-                            "not in your pack, on the ground. I will feel it.\n" +
+                            "Find a spot. Place the stone on the ground when you are ready. I will feel it.\n" +
                             "Town Hall first. Then the rest.");
                     b.set("#BtnPrimary.Text", "Right.");
                     b.set("#BtnPrimary.Visible", true);
@@ -388,20 +388,18 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case POST_FOUNDED -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "Stone is down. That is the easy part.\n" +
-                        "Bring what we need to the stone — wood, rock, the rest — and put it inside. " +
-                        "Once it is all there, I will start on the Town Hall.");
+                        "Stone is down. This place will do.\n" +
+                        "Bring wood, rock, the rest. Set it all inside the stone.\n" +
+                        "Once it is there, I will start on the Town Hall.");
                 b.set("#BtnPrimary.Text", "On my way.");
                 b.set("#BtnPrimary.Visible", true);
             }
             case QUEST_RESCUE -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "There are people still out in these woods. Some since the Sundering — " +
-                        "no village to go back to, nowhere left to go.\n" +
-                        "Go east. There's something there — movement, maybe a fire. " +
-                        "I'm not always sure where that comes from anymore, but it's been right before.\n" +
-                        "Find whoever it is. Bring them back if they'll come.");
+                        "There are people still out in these woods. Some since the Sundering, nowhere left to go.\n" +
+                        "I keep feeling like someone is out there. I cannot explain it.\n" +
+                        "Find whoever needs help. Bring them back if they'll come.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "I'll go look.");
                 b.set("#BtnChoice1.Visible", true);
@@ -429,7 +427,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
                         "I'll build it. You find the spot.\n" +
-                        "Put the brazier where the hearth should be — on the ground, inside where the walls will go.\n" +
+                        "Put the brazier where the hearth should be. On the ground, inside where the walls will go.\n" +
                         "House goes up around it.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "Got it.");
@@ -441,7 +439,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
                         "House is done.\n" +
-                        "Food. One bad season and people leave — we've seen it before.\n" +
+                        "Food. One bad season and people leave. We've seen it before.\n" +
                         "We need a farm.");
                 b.set("#BtnPrimary.Text", "How do we set it up?");
                 b.set("#BtnPrimary.Visible", true);
@@ -469,7 +467,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             case QUEST_SAWMILL_OFFER -> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
-                        "Find open ground — workers need room.\n" +
+                        "Find open ground. Workers need room.\n" +
                         "Set the stump where you want the center. I'll build out from there.");
                 b.set("#ChoiceContainer.Visible", true);
                 b.set("#BtnChoice1.Text", "Got it.");
@@ -481,7 +479,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 b.set("#SpeakerName.Text", "Aelin");
                 b.set("#DialogText.Text",
                         "Sawmill's been running.\n" +
-                        "Wood we have. Stone we don't — not enough of it anyway.\n" +
+                        "Wood we have. Stone we don't. Not enough of it anyway.\n" +
                         "We need a mine. People to dig full time.");
                 b.set("#BtnPrimary.Text", "How do we start?");
                 b.set("#BtnPrimary.Visible", true);
@@ -904,14 +902,14 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         char first = Character.toLowerCase(name.isEmpty() ? 'a' : name.charAt(0));
         if ("aeiou".indexOf(first) >= 0) {
             return name + ".\n" +
-                   "I knew an Outlander general with a name that started the same way. " +
-                   "Difficult person. Built three keeps nobody commissioned.\n" +
+                   "I knew an Outlander general whose name began the same way. " +
+                   "Difficult person. Built three keeps nobody asked for.\n" +
                    "Two of them are still standing. Make of that what you will.";
         } else {
             return name + ".\n" +
-                   "Short. I have spent enough years in places where names take longer to say " +
-                   "than the conversation that follows. Yours will do fine.\n" +
-                   "This land does not have a name yet. That part is yours to fix, if you want it.";
+                   "I have spent enough years in places where names take longer to say " +
+                   "than the conversation that follows. Yours suits you.\n" +
+                   "This land has no name yet. That part is yours, if you want it.";
         }
     }
 }

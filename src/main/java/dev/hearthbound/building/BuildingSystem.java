@@ -465,6 +465,17 @@ public class BuildingSystem {
         VillageManager mgr = VillageManager.get();
         mgr.completeBuilding(store, playerRef, record);
 
+        // After completion, draw a pathway from this building's door to the nearest existing
+        // completed building's door — gives the village an organic road network as it grows.
+        VillageData villageForPath = mgr.getVillageData(store, playerRef);
+        if (villageForPath != null) {
+            int placed = PathwayBuilder.connectNewBuilding(world, villageForPath, record);
+            if (placed > 0) {
+                mgr.save(store, playerRef, villageForPath);
+                LOGGER.info("Pathway placed: " + placed + " blocks from " + record.getType());
+            }
+        }
+
         // When a farm is built, assign farmer profession to the first eligible villager
         if (BuildingType.FARM.equals(record.getType())) {
             dev.hearthbound.village.VillageData village = mgr.getVillageData(store, playerRef);

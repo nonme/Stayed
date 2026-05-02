@@ -13,6 +13,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.HearthboundPlugin;
 import dev.hearthbound.building.BuildingSystem;
+import dev.hearthbound.building.PathwayBuilder;
 import dev.hearthbound.npc.ElfSage;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcRegistry;
@@ -70,6 +71,12 @@ public class ResetCommand extends AbstractPlayerCommand {
                     removeNpc(store, world, uuid);
                 }
             }
+        }
+
+        // Restore grass over registered pathway blocks before we wipe VillageData. Otherwise
+        // the registry vanishes and the pathway tiles linger in the world without an undo handle.
+        if (oldData != null && !oldData.getPathwayBlocks().isEmpty()) {
+            PathwayBuilder.clearAll(world, oldData);
         }
 
         // Break anchor blocks of every building. Without this F-key on a leftover anchor

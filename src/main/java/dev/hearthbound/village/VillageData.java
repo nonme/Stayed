@@ -63,6 +63,9 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("RescueQuestSiteX", INT_ARRAY_CODEC), VillageData::setRescueQuestSiteXArray, VillageData::getRescueQuestSiteXArray).add()
             .append(new KeyedCodec<>("RescueQuestSiteZ", INT_ARRAY_CODEC), VillageData::setRescueQuestSiteZArray, VillageData::getRescueQuestSiteZArray).add()
             .append(new KeyedCodec<>("SelectedHouseVariant", Codec.INTEGER), VillageData::setSelectedHouseVariant, VillageData::getSelectedHouseVariant).add()
+            .append(new KeyedCodec<>("PathwayX", INT_ARRAY_CODEC), VillageData::setPathwayXArray, VillageData::getPathwayXArray).add()
+            .append(new KeyedCodec<>("PathwayY", INT_ARRAY_CODEC), VillageData::setPathwayYArray, VillageData::getPathwayYArray).add()
+            .append(new KeyedCodec<>("PathwayZ", INT_ARRAY_CODEC), VillageData::setPathwayZArray, VillageData::getPathwayZArray).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;
@@ -123,6 +126,12 @@ public class VillageData implements Component<EntityStore> {
      * ghost — the player can break the Founding Stone and we restore the original terrain.
      */
     private Map<String, String> pendingGhostSnapshot = new HashMap<>();
+    /**
+     * World coordinates of every block we converted to Soil_Pathway. Persisted so we can
+     * remove or regenerate the network across restarts. Stored as parallel int arrays in
+     * BSON because that's the pattern already used elsewhere in this codec.
+     */
+    private List<int[]> pathwayBlocks = new ArrayList<>();
 
     public VillageData() {}
 
@@ -279,6 +288,57 @@ public class VillageData implements Component<EntityStore> {
     public int getSelectedHouseVariant() { return selectedHouseVariant; }
     public void setSelectedHouseVariant(int variant) { this.selectedHouseVariant = variant; }
 
+    // --- Pathway blocks ---
+    public List<int[]> getPathwayBlocks() { return pathwayBlocks; }
+
+    public void addPathwayBlock(int x, int y, int z) {
+        // Idempotent — repeated generate calls shouldn't double-register the same cell.
+        for (int[] p : pathwayBlocks) {
+            if (p[0] == x && p[1] == y && p[2] == z) return;
+        }
+        pathwayBlocks.add(new int[]{x, y, z});
+    }
+
+    public void clearPathwayBlocks() { pathwayBlocks.clear(); }
+
+    private int[] getPathwayXArray() {
+        int[] out = new int[pathwayBlocks.size()];
+        for (int i = 0; i < out.length; i++) out[i] = pathwayBlocks.get(i)[0];
+        return out;
+    }
+
+    private int[] getPathwayYArray() {
+        int[] out = new int[pathwayBlocks.size()];
+        for (int i = 0; i < out.length; i++) out[i] = pathwayBlocks.get(i)[1];
+        return out;
+    }
+
+    private int[] getPathwayZArray() {
+        int[] out = new int[pathwayBlocks.size()];
+        for (int i = 0; i < out.length; i++) out[i] = pathwayBlocks.get(i)[2];
+        return out;
+    }
+
+    // Codec calls X first, then Y, then Z. X seeds the list with placeholders; Y and Z fill
+    // their slots. If lengths differ (corrupt data), excess entries keep their 0 default.
+    private void setPathwayXArray(int[] arr) {
+        this.pathwayBlocks = new ArrayList<>();
+        if (arr == null) return;
+        for (int x : arr) pathwayBlocks.add(new int[]{x, 0, 0});
+    }
+
+    private void setPathwayYArray(int[] arr) {
+        if (arr == null) return;
+        int n = Math.min(arr.length, pathwayBlocks.size());
+        for (int i = 0; i < n; i++) pathwayBlocks.get(i)[1] = arr[i];
+    }
+
+    private void setPathwayZArray(int[] arr) {
+        if (arr == null) return;
+        int n = Math.min(arr.length, pathwayBlocks.size());
+        for (int i = 0; i < n; i++) pathwayBlocks.get(i)[2] = arr[i];
+    }
+
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
     public Map<String, String> getPendingGhostSnapshot() { return pendingGhostSnapshot; }
     public void setPendingGhostSnapshot(Map<String, String> snapshot) {
@@ -330,6 +390,8 @@ public class VillageData implements Component<EntityStore> {
         for (int[] site : this.rescueQuestSites) copy.rescueQuestSites.add(site.clone());
         copy.pendingGhostSnapshot = new HashMap<>(this.pendingGhostSnapshot);
         copy.selectedHouseVariant = this.selectedHouseVariant;
+        copy.pathwayBlocks = new ArrayList<>();
+        for (int[] p : this.pathwayBlocks) copy.pathwayBlocks.add(p.clone());
         return copy;
     }
 }

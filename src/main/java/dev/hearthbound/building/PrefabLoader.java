@@ -176,6 +176,87 @@ public class PrefabLoader {
         return result;
     }
 
+    /**
+     * Returns the set of world-space packed coordinates where the prefab specifies any
+     * non-empty block — regardless of whether that block ends up in the placement plan.
+     *
+     * <p>The placement plan filters out a lot of blocks: SKIP_BLOCKS (Soil_Grass, Soil_Dirt,
+     * Soil_Ash, doors, etc.), the anchor block itself, and isMineBackfill cells deep below
+     * the floor. Those cells are still "occupied" from the prefab's point of view — the
+     * author drew a block there because they want one to remain. SiteClearer needs to know
+     * that, otherwise it sweeps the cell to Empty and ResourceBlockPlacer never refills it,
+     * leaving a hole (especially visible under mines and houses with Soil_Ash floors).
+     *
+     * <p>Cells in the set are produced from the rotated prefab — coordinates match what the
+     * placement pass would output, so a Long-packed lookup against bbox cells is exact.
+     */
+    public static java.util.Set<Long> loadOccupiedCells(
+            String prefabName, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int worldRotation) {
+        try {
+            BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
+            int prefabRotation = readAnchorRotation(selection, anchorBlockId, anchorPrefabY);
+            int rotationSteps = (worldRotation - prefabRotation + 4) % 4;
+            return extractOccupiedCells(selection, anchorBlockId, anchorPrefabY,
+                    worldX, worldY, worldZ, rotationSteps);
+        } catch (Exception e) {
+            LOGGER.warning("Failed to load prefab '" + prefabName + "' for occupied cells: " + e.getMessage());
+            return java.util.Set.of();
+        }
+    }
+
+    private static java.util.Set<Long> extractOccupiedCells(
+            BlockSelection selection, String anchorBlockId, int anchorPrefabY,
+            int worldX, int worldY, int worldZ, int rotationSteps) {
+
+        var assetMap = BlockType.getAssetMap();
+
+        int prefabOriginX = selection.getX();
+        int prefabOriginY = selection.getY();
+        int prefabOriginZ = selection.getZ();
+
+        int[] anchorLocal = findAnchorLocal(selection, anchorBlockId, anchorPrefabY,
+                prefabOriginX, prefabOriginY, prefabOriginZ);
+        int anchorLX = anchorLocal[0];
+        int anchorLZ = anchorLocal[1];
+
+        java.util.Set<Long> occupied = new java.util.HashSet<>();
+
+        selection.forEachBlock((bx, by, bz, holder) -> {
+            if (holder.filler() != 0) return;
+            BlockType blockType = assetMap.getAsset(holder.blockId());
+            if (blockType == null) return;
+            String id = blockType.getId();
+            // Only "implicit air" cells are unoccupied — anything else (terrain, soil,
+            // anchor, doors) means the prefab author wants something to be there.
+            if (id.equals("Empty") || id.equals("Editor_Empty")
+                    || id.equals("Editor_Anchor") || id.equals("Filter_Air_Block")) {
+                return;
+            }
+
+            int lx = (bx - prefabOriginX) - anchorLX;
+            int ly = (by - prefabOriginY) - anchorPrefabY;
+            int lz = (bz - prefabOriginZ) - anchorLZ;
+
+            for (int i = 0; i < rotationSteps; i++) {
+                int tmp = lx;
+                lx = lz;
+                lz = -tmp;
+            }
+
+            int wx = worldX + lx;
+            int wy = worldY + ly;
+            int wz = worldZ + lz;
+            occupied.add(packCoord(wx, wy, wz));
+        });
+
+        return occupied;
+    }
+
+    private static long packCoord(int x, int y, int z) {
+        return ((long)(x & 0xFFFFF) << 40) | ((long)(y & 0xFFFFF) << 20) | (z & 0xFFFFF);
+    }
+
     /** Returns the anchor block's local [lx, lz] relative to the selection corner. */
     private static int[] findAnchorLocal(BlockSelection selection, String anchorBlockId, int anchorPrefabY,
                                           int prefabOriginX, int prefabOriginY, int prefabOriginZ) {

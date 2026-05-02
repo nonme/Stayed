@@ -4,6 +4,7 @@ import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.codec.codecs.array.ArrayCodec;
+import com.hypixel.hytale.codec.codecs.array.IntArrayCodec;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentRegistryProxy;
 import com.hypixel.hytale.component.ComponentType;
@@ -31,6 +32,8 @@ public class VillageData implements Component<EntityStore> {
     private static final ArrayCodec<String> STRING_ARRAY_CODEC =
             new ArrayCodec<>(Codec.STRING, String[]::new);
 
+    private static final IntArrayCodec INT_ARRAY_CODEC = new IntArrayCodec();
+
     public static final BuilderCodec<VillageData> CODEC = BuilderCodec.builder(VillageData.class, VillageData::new)
             .append(new KeyedCodec<>("VillageName", Codec.STRING), VillageData::setVillageName, VillageData::getVillageName).add()
             .append(new KeyedCodec<>("Stage", Codec.INTEGER), VillageData::setStage, VillageData::getStage).add()
@@ -57,6 +60,9 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("MineQuestOffered", Codec.BOOLEAN), VillageData::setMineQuestOffered, VillageData::isMineQuestOffered).add()
             .append(new KeyedCodec<>("RescueQuestTrapDone", Codec.BOOLEAN), VillageData::setRescueQuestTrapDone, VillageData::isRescueQuestTrapDone).add()
             .append(new KeyedCodec<>("RescueQuestHistory", STRING_ARRAY_CODEC), VillageData::setRescueQuestHistoryArray, VillageData::getRescueQuestHistoryArray).add()
+            .append(new KeyedCodec<>("RescueQuestSiteX", INT_ARRAY_CODEC), VillageData::setRescueQuestSiteXArray, VillageData::getRescueQuestSiteXArray).add()
+            .append(new KeyedCodec<>("RescueQuestSiteZ", INT_ARRAY_CODEC), VillageData::setRescueQuestSiteZArray, VillageData::getRescueQuestSiteZArray).add()
+            .append(new KeyedCodec<>("SelectedHouseVariant", Codec.INTEGER), VillageData::setSelectedHouseVariant, VillageData::getSelectedHouseVariant).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;
@@ -98,6 +104,19 @@ public class VillageData implements Component<EntityStore> {
     private boolean mineQuestOffered = false;
     private boolean rescueQuestTrapDone = false;
     private List<String> rescueQuestHistory = new ArrayList<>();
+    /**
+     * Centers (block X/Z) of every rescue-quest structure already spawned for this village.
+     * Used to reject new spawn candidates that would overlap an existing site.
+     * Old saves with no field set deserialize to empty arrays — first quest still spawns normally.
+     */
+    private List<int[]> rescueQuestSites = new ArrayList<>();
+    /**
+     * Last house variant the player picked while placing a Brazier. Persists between
+     * placements so re-placing a brazier shows the same variant the player liked.
+     * 0 matches the original VillagerHouse_lvl1_v1 prefab — old saves with no field set
+     * keep rendering the same building they always did.
+     */
+    private int selectedHouseVariant = 0;
     /**
      * Snapshot of blocks overwritten by the active ghost preview, keyed by "x,y,z" → original
      * block id ("Empty" for empty cells). Persisted so a server restart doesn't orphan the
@@ -224,6 +243,42 @@ public class VillageData implements Component<EntityStore> {
         this.rescueQuestHistory = arr != null ? new ArrayList<>(Arrays.asList(arr)) : new ArrayList<>();
     }
 
+    public List<int[]> getRescueQuestSites() { return rescueQuestSites; }
+
+    public void addRescueQuestSite(int x, int z) {
+        rescueQuestSites.add(new int[]{x, z});
+    }
+
+    private int[] getRescueQuestSiteXArray() {
+        int[] out = new int[rescueQuestSites.size()];
+        for (int i = 0; i < out.length; i++) out[i] = rescueQuestSites.get(i)[0];
+        return out;
+    }
+
+    private int[] getRescueQuestSiteZArray() {
+        int[] out = new int[rescueQuestSites.size()];
+        for (int i = 0; i < out.length; i++) out[i] = rescueQuestSites.get(i)[1];
+        return out;
+    }
+
+    // Codec calls SiteX setter first, then SiteZ. SiteX seeds the list with x,0 placeholders;
+    // SiteZ fills in z. If lengths differ (corrupt data), excess entries keep their 0 default.
+    private void setRescueQuestSiteXArray(int[] arr) {
+        this.rescueQuestSites = new ArrayList<>();
+        if (arr == null) return;
+        for (int x : arr) rescueQuestSites.add(new int[]{x, 0});
+    }
+
+    private void setRescueQuestSiteZArray(int[] arr) {
+        if (arr == null) return;
+        int n = Math.min(arr.length, rescueQuestSites.size());
+        for (int i = 0; i < n; i++) rescueQuestSites.get(i)[1] = arr[i];
+    }
+
+    // --- Selected house variant ---
+    public int getSelectedHouseVariant() { return selectedHouseVariant; }
+    public void setSelectedHouseVariant(int variant) { this.selectedHouseVariant = variant; }
+
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
     public Map<String, String> getPendingGhostSnapshot() { return pendingGhostSnapshot; }
     public void setPendingGhostSnapshot(Map<String, String> snapshot) {
@@ -271,7 +326,10 @@ public class VillageData implements Component<EntityStore> {
         copy.mineQuestOffered = this.mineQuestOffered;
         copy.rescueQuestTrapDone = this.rescueQuestTrapDone;
         copy.rescueQuestHistory = new ArrayList<>(this.rescueQuestHistory);
+        copy.rescueQuestSites = new ArrayList<>();
+        for (int[] site : this.rescueQuestSites) copy.rescueQuestSites.add(site.clone());
         copy.pendingGhostSnapshot = new HashMap<>(this.pendingGhostSnapshot);
+        copy.selectedHouseVariant = this.selectedHouseVariant;
         return copy;
     }
 }

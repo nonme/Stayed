@@ -15,7 +15,6 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new DialogCommand());
         addSubCommand(new HudCommand());
         addSubCommand(new ResetCommand());
-        addSubCommand(new HardResetCommand());
         addSubCommand(new CosmeticsCommand());
         addSubCommand(new SkinCommand());
         addSubCommand(new DebugCommand());

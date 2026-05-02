@@ -23,6 +23,7 @@ public class BuildingRecord {
             .append(new KeyedCodec<>("Completed", Codec.BOOLEAN), BuildingRecord::setCompleted, BuildingRecord::isCompleted).add()
             .append(new KeyedCodec<>("AssignedVillager", Codec.UUID_STRING), BuildingRecord::setAssignedVillagerId, BuildingRecord::getAssignedVillagerId).add()
             .append(new KeyedCodec<>("Storage", STORAGE_CODEC), BuildingRecord::setStorage, BuildingRecord::getStorage).add()
+            .append(new KeyedCodec<>("Variant", Codec.INTEGER), BuildingRecord::setVariant, BuildingRecord::getVariant).add()
             .build();
 
     private String type = "";
@@ -32,6 +33,11 @@ public class BuildingRecord {
     private boolean completed = false;
     private java.util.UUID assignedVillagerId;
     private Object2IntMap<String> storage = new Object2IntOpenHashMap<>();
+    /**
+     * Prefab variant for buildings that have multiple alternatives (currently HOUSE_HUMAN).
+     * 0 = original prefab, matches old saves where this field is absent.
+     */
+    private int variant = 0;
 
     public BuildingRecord() {}
 
@@ -70,6 +76,9 @@ public class BuildingRecord {
     public void setStorage(Object2IntMap<String> storage) {
         this.storage = storage != null ? new Object2IntOpenHashMap<>(storage) : new Object2IntOpenHashMap<>();
     }
+
+    public int getVariant() { return variant; }
+    public void setVariant(int variant) { this.variant = variant; }
 
     /** Adds {@code amount} of {@code itemId} to the local storage. Returns the new total. */
     public int addResource(String itemId, int amount) {

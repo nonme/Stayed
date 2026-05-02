@@ -65,9 +65,19 @@ if (BuildingType.TOWN_HALL.equals(buildingType)) {
             }
         }
 
-        if (BuildingSystem.get().hasActivePreview()) {
+        if (BuildingSystem.get().hasActivePreview(store, playerRef)) {
             LOGGER.info("Ghost preview already active, ignoring");
             return;
+        }
+
+        // Resolve initial variant for HOUSE_HUMAN from the village's last-picked variant.
+        // Other building types ignore the variant slot.
+        int initialVariant = 0;
+        if (BuildingType.HOUSE_HUMAN.equals(buildingType)) {
+            VillageData village = VillageManager.get().getVillageData(store, playerRef);
+            if (village != null) {
+                initialVariant = BuildingType.wrapHouseVariant(village.getSelectedHouseVariant());
+            }
         }
 
         Vector3i pos = event.getTargetBlock();
@@ -78,6 +88,7 @@ if (BuildingType.TOWN_HALL.equals(buildingType)) {
 
         String buildingTypeFinal = buildingType;
         Ref<EntityStore> refForLater = playerRef;
+        int variantFinal = initialVariant;
         world.execute(() -> {
             int rotation = 0;
             try {
@@ -92,8 +103,9 @@ if (BuildingType.TOWN_HALL.equals(buildingType)) {
 
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
             BuildingSystem.get().showGhostPreview(liveStore, refForLater, world,
-                    buildingTypeFinal, pos.x, pos.y, pos.z, rotation);
-            LOGGER.info("Ghost preview shown for " + buildingTypeFinal + " rotation=" + rotation);
+                    buildingTypeFinal, pos.x, pos.y, pos.z, rotation, variantFinal);
+            LOGGER.info("Ghost preview shown for " + buildingTypeFinal + " rotation=" + rotation
+                    + " variant=" + variantFinal);
         });
     }
 

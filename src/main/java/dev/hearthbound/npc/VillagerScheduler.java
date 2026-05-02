@@ -90,6 +90,29 @@ public class VillagerScheduler {
     public static final String ACTIVITY_GOING_HOME     = "Going home";
     public static final String ACTIVITY_RESTING        = "Resting";
 
+    /**
+     * Clears all per-villager schedule state. Called from /hb reset so the scheduler
+     * does not leak references to villagers that were just removed from the village.
+     * Best-effort despawns invisible Seek-target marker entities — if a marker is in an
+     * unloaded chunk the ref is silently dropped (the entity gets garbage-collected by
+     * the engine on next chunk load with no live reference holding it).
+     */
+    public void clear(Store<EntityStore> store) {
+        for (Ref<EntityStore> markerRef : markerRefs.values()) {
+            if (markerRef != null && markerRef.isValid()) {
+                try {
+                    store.removeEntity(markerRef, RemoveReason.REMOVE);
+                } catch (RuntimeException e) {
+                    LOGGER.warning("VillagerScheduler.clear: failed to remove marker: " + e.getMessage());
+                }
+            }
+        }
+        lastTarget.clear();
+        markerRefs.clear();
+        activityLabel.clear();
+        fedThisMeal.clear();
+        LOGGER.info("VillagerScheduler cleared");
+    }
 
     // null gateX means "no gate/door to manage"
     private record ScheduleTarget(double x, double y, double z, String arrivedRole, String activity,
@@ -348,7 +371,7 @@ public class VillagerScheduler {
 
     private ScheduleTarget homeTarget(BuildingRecord house, VillageData village) {
         if (house != null) {
-            BuildingLayout.Layout layout = BuildingLayout.get(house.getType());
+            BuildingLayout.Layout layout = BuildingLayout.get(house.getType(), house.getVariant());
             int steps = layout.rotationSteps(house.getRotation());
             int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
             double targetY = house.getPosY() + layout.floorLY() + 1.0;
@@ -378,7 +401,7 @@ public class VillagerScheduler {
     }
 
     private ScheduleTarget workTarget(BuildingRecord building, String arrivedRole) {
-        BuildingLayout.Layout layout = BuildingLayout.get(building.getType());
+        BuildingLayout.Layout layout = BuildingLayout.get(building.getType(), building.getVariant());
         int steps = layout.rotationSteps(building.getRotation());
         int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
         double targetY = building.getPosY() + layout.floorLY() + 1.0;
@@ -407,7 +430,7 @@ public class VillagerScheduler {
     }
 
     private ScheduleTarget farmTarget(BuildingRecord farm) {
-        BuildingLayout.Layout layout = BuildingLayout.get(farm.getType());
+        BuildingLayout.Layout layout = BuildingLayout.get(farm.getType(), farm.getVariant());
         int steps = layout.rotationSteps(farm.getRotation());
         int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
         double targetY = farm.getPosY() + layout.floorLY() + 1.0;
@@ -439,7 +462,7 @@ public class VillagerScheduler {
     }
 
     private ScheduleTarget warehouseTarget(BuildingRecord warehouse) {
-        BuildingLayout.Layout layout = BuildingLayout.get(warehouse.getType());
+        BuildingLayout.Layout layout = BuildingLayout.get(warehouse.getType(), warehouse.getVariant());
         int steps = layout.rotationSteps(warehouse.getRotation());
         int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
         double targetY = warehouse.getPosY() + layout.floorLY() + 1.0;

@@ -43,6 +43,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     private static final Logger LOGGER = Logger.getLogger(VillagerHousePage.class.getName());
 
     private final Ref<EntityStore> playerRef;
+    private final PlayerRef networkPlayerRef;
     private final UUID ownerUuid;
     private final World world;
     private final int brazierX, brazierY, brazierZ;
@@ -54,6 +55,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                               int brazierX, int brazierY, int brazierZ) {
         super(player, CustomPageLifetime.CanDismissOrCloseThroughInteraction, DialogEventData.CODEC);
         this.playerRef = playerRef;
+        this.networkPlayerRef = player;
         this.ownerUuid = player.getUuid();
         this.world = world;
         this.brazierX = brazierX;
@@ -89,19 +91,23 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#RecallButton",
                 EventData.of(DialogEventData.ACTION_KEY, "recall"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#VariantPrev",
+                EventData.of(DialogEventData.ACTION_KEY, "variant_prev"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#VariantNext",
+                EventData.of(DialogEventData.ACTION_KEY, "variant_next"), false);
     }
 
     // ========== Render ==========
 
     private void populate(UICommandBuilder b, Store<EntityStore> store, BuildingRecord record) {
         if (!confirmed) {
-            showConfirmPhase(b);
+            showConfirmPhase(b, store);
             return;
         }
         showPostConfirm(b, store, record);
     }
 
-    private void showConfirmPhase(UICommandBuilder b) {
+    private void showConfirmPhase(UICommandBuilder b, Store<EntityStore> store) {
         b.set("#HouseSubtitle.Text", "Ghost preview");
         b.set("#PanelConfirm.Visible", true);
         b.set("#PanelResidents.Visible", false);
@@ -114,6 +120,14 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 "A preview of the house is shown.\n" +
                 "Place the brazier where you want the fireplace to be inside the house, " +
                 "then confirm to designate this as a building site.");
+        renderVariantSwitcher(b, store);
+    }
+
+    /** Updates the variant switcher label to match the player's currently-active preview. */
+    private void renderVariantSwitcher(UICommandBuilder b, Store<EntityStore> store) {
+        int variant = BuildingSystem.get().getActiveVariant(store, playerRef);
+        b.set("#VariantName.Text", BuildingType.getHouseVariantName(variant)
+                + " (" + (variant + 1) + " / " + BuildingType.getHouseVariantCount() + ")");
     }
 
     private void showPostConfirm(UICommandBuilder b, Store<EntityStore> store, BuildingRecord record) {
@@ -167,7 +181,8 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 && record != null && record == active;
         boolean elfBusy = BuildingSystem.get().isBuilding() && !isBuilding;
 
-        Map<String, Integer> required = BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN);
+        int variant = record != null ? record.getVariant() : 0;
+        Map<String, Integer> required = BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN, variant);
         Map<String, Integer> have = readStorage(record);
 
         boolean allSatisfied = renderResourceList(b, required, have);
@@ -187,30 +202,9 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     private boolean renderResourceList(UICommandBuilder b,
                                         Map<String, Integer> required,
                                         Map<String, Integer> have) {
-        b.clear("#ResourceListContainer");
-        boolean allSatisfied = true;
-        int rowIndex = 0;
-        for (Map.Entry<String, Integer> entry : required.entrySet()) {
-            String itemId = entry.getKey();
-            int need = entry.getValue();
-            int got = have.getOrDefault(itemId, 0);
-            boolean satisfied = got >= need;
-            if (!satisfied) allSatisfied = false;
-
-            String countColor = satisfied ? "#78c880" : "#c87878";
-            String nameColor = satisfied ? "#8ab8a0" : "#9ab0bc";
-            String displayName = itemId.replace("_", " ");
-
-            b.appendInline("#ResourceListContainer",
-                    "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 2); Padding: (Horizontal: 4); " +
-                    "  ItemIcon { Anchor: (Width: 24, Height: 24); } " +
-                    "  Label { Anchor: (Left: 8); FlexWeight: 1; Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: " + nameColor + ", FontSize: 11); Text: \"" + displayName + "\"; } " +
-                    "  Label { Anchor: (Width: 60); Style: (HorizontalAlignment: End, VerticalAlignment: Center, TextColor: " + countColor + ", FontSize: 11, RenderBold: true); Text: \"" + got + " / " + need + "\"; } " +
-                    "}");
-            b.set("#ResourceListContainer[" + rowIndex + "][0].ItemId", itemId);
-            rowIndex++;
-        }
-        return allSatisfied;
+        String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+        return dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                b, "#ResourceListContainer", required, have, language);
     }
 
     private void applyConstructionState(UICommandBuilder b, boolean isBuilding,
@@ -300,8 +294,15 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
 
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
                 BuildingRecord record = new BuildingRecord(BuildingType.HOUSE_HUMAN, brazierX, brazierY, brazierZ);
-                record.setRotation(BuildingSystem.get().getActiveRotation());
+                record.setRotation(BuildingSystem.get().getActiveRotation(store, playerRef));
+                // Pin the chosen variant to the record so construction always uses the prefab
+                // the player saw in the ghost preview, even if they later cycle the global
+                // selectedHouseVariant for the next house.
+                int chosenVariant = BuildingSystem.get().getActiveVariant(store, playerRef);
+                record.setVariant(chosenVariant);
                 village.addBuilding(record);
+                // Persist the choice so re-placing a brazier later shows the same variant.
+                village.setSelectedHouseVariant(chosenVariant);
                 VillageManager.get().save(store, playerRef, village);
 
                 // Clear the ghost preview now that site is locked
@@ -315,6 +316,9 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 sendUpdate(b, false);
             }
 
+            case "variant_prev" -> handleVariantCycle(store, -1);
+            case "variant_next" -> handleVariantCycle(store, +1);
+
             case "deposit" -> {
                 if (!confirmed) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
 
@@ -327,12 +331,13 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 Player player = store.getComponent(ref, Player.getComponentType());
                 if (player == null) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
 
+                int recordVariant = record.getVariant();
                 Map<String, Integer> required = BuildingSystem.get().isBuilding()
                         && BuildingType.HOUSE_HUMAN.equals(BuildingSystem.get().getActiveRecord() != null
                                 ? BuildingSystem.get().getActiveRecord().getType() : "")
                         ? BuildingSystem.get().getRemainingResources()
-                        : BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN);
-                if (required == null) required = BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN);
+                        : BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN, recordVariant);
+                if (required == null) required = BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN, recordVariant);
 
                 com.hypixel.hytale.protocol.GameMode gm = player.getGameMode();
                 boolean isCreative = gm != null && "Creative".equals(gm.name());
@@ -388,6 +393,35 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
 
     // ========== Helpers ==========
 
+    /**
+     * Cycles the active ghost preview to the next/prev house variant, persists the choice
+     * in VillageData (so re-placing brazier later remembers it), and refreshes the UI label.
+     */
+    private void handleVariantCycle(Store<EntityStore> store, int delta) {
+        if (confirmed) {
+            // Variant is locked once the placement is confirmed — silently ignore.
+            sendUpdate(new UICommandBuilder(), false);
+            return;
+        }
+        int newVariant = BuildingSystem.get().cycleHouseVariant(store, playerRef, world, delta);
+        if (newVariant < 0) {
+            // Preview was somehow gone — ignore.
+            sendUpdate(new UICommandBuilder(), false);
+            return;
+        }
+
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village != null) {
+            village.setSelectedHouseVariant(newVariant);
+            VillageManager.get().save(store, playerRef, village);
+        }
+
+        UICommandBuilder b = new UICommandBuilder();
+        b.set("#VariantName.Text", BuildingType.getHouseVariantName(newVariant)
+                + " (" + (newVariant + 1) + " / " + BuildingType.getHouseVariantCount() + ")");
+        sendUpdate(b, false);
+    }
+
     /** Finds the house_human BuildingRecord anchored at the brazier's position. */
     private BuildingRecord findHouseRecord(Store<EntityStore> store) {
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
@@ -425,7 +459,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     }
 
     private void recallVillager(UUID villagerUuid, BuildingRecord house) {
-        int[] doorOffset = BuildingType.getDoorOffset(house.getType(), house.getRotation());
+        int[] doorOffset = BuildingType.getDoorOffset(house.getType(), house.getRotation(), house.getVariant());
         double doorX = house.getPosX() + doorOffset[0] + 0.5;
         double doorY = house.getPosY() + 1;
         double doorZ = house.getPosZ() + doorOffset[1] + 0.5;

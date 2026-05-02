@@ -23,6 +23,24 @@ public final class BuildingType {
     public static final String LUMBERMILL_BLOCK = "Stayed_Lumbermill";
     public static final String MINE_SIGN_BLOCK = "Stayed_Mine_Sign";
 
+    // Per-variant tables for HOUSE_HUMAN. variant=0 maps to the original v1 prefab so
+    // existing village data (which has no variant field, defaults to 0) keeps rendering
+    // the same building.
+    private static final String[] HOUSE_HUMAN_PREFABS = {
+            "VillagerHouse_lvl1_v1",
+            "VillagerHouse_lvl1_v1_alt1",
+            "VillagerHouse_lvl1_v1_alt2",
+            "VillagerHouse_lvl1_v1_alt3",
+    };
+    // Brazier Y inside each prefab (verified by grepping the prefab files for Stayed_Brazier).
+    private static final int[] HOUSE_HUMAN_ANCHOR_Y = {1, 1, 1, 1};
+    // Brazier's own rotation field inside each prefab. Used by getDoorOffset to compute
+    // the steps between record.rotation (player's placement yaw) and the prefab's native frame
+    // when locating door-side stand-points. Verified per-variant from the prefab JSON.
+    private static final int[] HOUSE_HUMAN_ANCHOR_ROT = {0, 2, 0, 0};
+    private static final String[] HOUSE_HUMAN_VARIANT_NAMES = {
+            "Variant 1", "Variant 2", "Variant 3", "Variant 4"
+    };
 
     private BuildingType() {}
 
@@ -45,15 +63,46 @@ public final class BuildingType {
 
     /** Prefab filename without extension, or null if using programmatic generation. */
     public static String getPrefabName(String type) {
+        return getPrefabName(type, 0);
+    }
+
+    /**
+     * Prefab filename without extension for the given variant, or null if using programmatic
+     * generation. Only HOUSE_HUMAN currently has multiple variants; for other types the variant
+     * argument is ignored. variant=0 always maps to the original prefab so old saves keep working.
+     */
+    public static String getPrefabName(String type, int variant) {
+        if (HOUSE_HUMAN.equals(type)) {
+            int v = clampHouseVariant(variant);
+            return HOUSE_HUMAN_PREFABS[v];
+        }
         return switch (type) {
             case TOWN_HALL -> "Townhall_lvl1_v3";
-            case HOUSE_HUMAN -> "VillagerHouse_lvl1_v1";
             case FARM -> "Farm_lvl1_v1";
             case WAREHOUSE -> "Warehouse_lvl1_v1";
             case SAWMILL -> "Sawmill_lvl1_v1";
             case MINE -> "Mine_lvl1_v1";
             default -> null;
         };
+    }
+
+    public static int getHouseVariantCount() {
+        return HOUSE_HUMAN_PREFABS.length;
+    }
+
+    public static String getHouseVariantName(int variant) {
+        return HOUSE_HUMAN_VARIANT_NAMES[clampHouseVariant(variant)];
+    }
+
+    /** Wraps any int (positive or negative) into the valid variant range with cyclic semantics. */
+    public static int wrapHouseVariant(int variant) {
+        int n = HOUSE_HUMAN_PREFABS.length;
+        return ((variant % n) + n) % n;
+    }
+
+    private static int clampHouseVariant(int variant) {
+        if (variant < 0 || variant >= HOUSE_HUMAN_PREFABS.length) return 0;
+        return variant;
     }
 
     /**
@@ -79,9 +128,20 @@ public final class BuildingType {
      * House: brazier Y will be set once prefab is finalized (default 0 until then).
      */
     public static int getAnchorPrefabY(String type) {
+        return getAnchorPrefabY(type, 0);
+    }
+
+    /**
+     * Per-variant anchor Y for buildings with multiple prefab variants.
+     * For HOUSE_HUMAN the brazier sits at different heights across variants
+     * (e.g. alt3 has it on the second floor at Y=4). Other types ignore the variant.
+     */
+    public static int getAnchorPrefabY(String type, int variant) {
+        if (HOUSE_HUMAN.equals(type)) {
+            return HOUSE_HUMAN_ANCHOR_Y[clampHouseVariant(variant)];
+        }
         return switch (type) {
             case TOWN_HALL -> 1;
-            case HOUSE_HUMAN -> 1;
             case FARM -> 2;
             case WAREHOUSE -> 1;
             case SAWMILL -> 2;
@@ -116,10 +176,22 @@ public final class BuildingType {
      * Actual rotation steps = (record.rotation - anchorPrefabRotation + 4) % 4.
      */
     public static int[] getDoorOffset(String type, int recordRotation) {
+        return getDoorOffset(type, recordRotation, 0);
+    }
+
+    /**
+     * Variant-aware overload. Different house variants have the brazier rotated differently
+     * inside their prefabs, so the steps from native to world differ.
+     */
+    public static int[] getDoorOffset(String type, int recordRotation, int variant) {
         int dx, dz, anchorPrefabRotation;
         switch (type) {
             // Brazier anchor at prefab (2,1,3); stand two blocks in front at (2,1,1) → offset (0,-2).
-            case HOUSE_HUMAN -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
+            case HOUSE_HUMAN -> {
+                dx = 0;
+                dz = -2;
+                anchorPrefabRotation = HOUSE_HUMAN_ANCHOR_ROT[clampHouseVariant(variant)];
+            }
             // Anchor at prefab (-5,1,1); main door at (0,1,-2) facing -Z; stand at (0,-3) → dx=5, dz=-4.
             case TOWN_HALL   -> { dx =  5; dz = -4; anchorPrefabRotation = 0; }
             case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }

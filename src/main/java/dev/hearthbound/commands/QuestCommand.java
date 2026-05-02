@@ -141,6 +141,7 @@ public class QuestCommand extends AbstractCommandCollection {
             village.setRescueQuestStarted(false);
             village.setRescueQuestTrapDone(false);
             village.getRescueQuestHistory().clear();
+            village.getRescueQuestSites().clear();
             VillageManager.get().save(store, ref, village);
 
             ctx.sendMessage(Message.raw("Rescue quest fully reset. Talk to the elf to start again."));

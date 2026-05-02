@@ -41,30 +41,22 @@ public class SiteClearer {
     private boolean inBreakPhase = false;
     private boolean cancelled = false;
     private ScheduledFuture<?> task;
-    // Packed-coordinate → normalized block type for every block in the original plan.
-    // Used to skip cells where we already placed a building block on a prior run.
-    private final java.util.Map<Long, String> plannedBlocks;
+    // Packed world-space coordinates where the prefab specifies any non-empty block —
+    // including ones filtered out of the placement plan (Soil_Ash floors, Soil_Dirt fill,
+    // mine backfill rock). These cells must never be cleared, otherwise the ResourceBlockPlacer
+    // pass leaves a hole there.
+    private final java.util.Set<Long> occupiedCells;
 
     public SiteClearer(World world, List<BlockPlacer.BlockEntry> plan,
+                       java.util.Set<Long> occupiedCells,
                        BuilderBehavior builderBehavior, Runnable onComplete) {
         this.world = world;
         this.builderBehavior = builderBehavior;
         this.onComplete = onComplete;
-        this.plannedBlocks = buildPlannedMap(plan);
+        this.occupiedCells = occupiedCells;
         // Expand the plan to the full bounding box so cells that were saved as implicit
         // air in the prefab (no Empty entry) are also scanned for terrain blocks.
         this.plan = expandToBbox(plan);
-    }
-
-    private static java.util.Map<Long, String> buildPlannedMap(List<BlockPlacer.BlockEntry> plan) {
-        java.util.Map<Long, String> map = new java.util.HashMap<>(plan.size() * 2);
-        for (BlockPlacer.BlockEntry e : plan) {
-            String normalized = ResourceBlockPlacer.normalizeBlockId(e.blockType());
-            if (!"Empty".equals(normalized)) {
-                map.put(packCoord(e.x(), e.y(), e.z()), normalized);
-            }
-        }
-        return map;
     }
 
     private static long packCoord(int x, int y, int z) {
@@ -145,19 +137,17 @@ public class SiteClearer {
                     return;
                 }
 
-                String blockId = getBlockId(entry.x(), entry.y(), entry.z());
-
-                // If the world already has exactly what the plan expects here, skip —
-                // this block was placed on a previous run. Takes priority over terrain check
-                // so we never break our own blocks even if they happen to be "terrain" IDs.
-                String planned = plannedBlocks.get(packCoord(entry.x(), entry.y(), entry.z()));
-                if (planned != null) {
-                    String normalizedActual = ResourceBlockPlacer.normalizeBlockId(blockId);
-                    if (planned.equals(normalizedActual)) {
-                        currentIndex++;
-                        continue;
-                    }
+                // Cells that the prefab marks as occupied (any non-empty block, including
+                // SKIP_BLOCKS-filtered terrain like Soil_Ash floors and mine backfill) must
+                // never be cleared — ResourceBlockPlacer doesn't refill them, so a clear here
+                // turns into a permanent hole. Takes priority over terrain detection so a
+                // natural Rock_Stone wall in a mine prefab stays put.
+                if (occupiedCells.contains(packCoord(entry.x(), entry.y(), entry.z()))) {
+                    currentIndex++;
+                    continue;
                 }
+
+                String blockId = getBlockId(entry.x(), entry.y(), entry.z());
 
                 if (!isTerrainBlock(blockId)) {
                     // Air, player-placed block, or already cleared by the player — skip instantly.

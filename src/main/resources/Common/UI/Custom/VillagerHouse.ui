@@ -40,6 +40,12 @@
   Pressed: (Background: #1a1030, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a090d8, FontSize: 12))
 );
 
+@VariantArrowStyle = TextButtonStyle(
+  Default: (Background: #1a2230, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8a9eae, FontSize: 18, RenderBold: true)),
+  Hovered: (Background: #243044, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4e0ec, FontSize: 18, RenderBold: true)),
+  Pressed: (Background: #0f161e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8a9eae, FontSize: 18, RenderBold: true))
+);
+
 Group {
   LayoutMode: Middle;
   Background: #050810(0.88);
@@ -135,9 +141,44 @@ Group {
         Text: "The house will be built where the brazier is placed. Break the brazier to move it.";
       }
 
+      // ── Variant switcher: < Variant N (i / count) > ──
+      Group {
+        Anchor: (Top: 20, Height: 22);
+        LayoutMode: Center;
+
+        Label {
+          Anchor: (Width: 110, Height: 20);
+          Style: (HorizontalAlignment: End, VerticalAlignment: Center, TextColor: #7a6040, FontSize: 11, RenderBold: true);
+          Text: "STYLE";
+        }
+      }
+
+      Group {
+        Anchor: (Top: 6, Height: 40);
+        LayoutMode: Center;
+
+        TextButton #VariantPrev {
+          Anchor: (Width: 36, Height: 36);
+          Style: @VariantArrowStyle;
+          Text: "<";
+        }
+
+        Label #VariantName {
+          Anchor: (Left: 8, Width: 220, Height: 36);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c8d4da, FontSize: 13, RenderBold: true);
+          Text: "Variant 1 (1 / 4)";
+        }
+
+        TextButton #VariantNext {
+          Anchor: (Left: 8, Width: 36, Height: 36);
+          Style: @VariantArrowStyle;
+          Text: ">";
+        }
+      }
+
       Group {
         LayoutMode: Center;
-        Anchor: (Top: 24, Height: 40);
+        Anchor: (Top: 16, Height: 40);
 
         TextButton #ConfirmButton {
           Anchor: (Width: 220, Height: 36);

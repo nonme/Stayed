@@ -177,6 +177,16 @@ public final class RescueQuestManager {
     private static final double MAX_DISTANCE = 450.0;
     private static final int MAX_SPAWN_ATTEMPTS = 20;
 
+    // Minimum horizontal distance (XZ) between centers of any two rescue-quest structures.
+    // Largest footprint half-extent ≈ 12 blocks, plus TerrainBlender adds ~5-10 blocks of
+    // blending zone outside the perimeter — 70 leaves a ~30-block visual gap between sites.
+    private static final double MIN_SITE_DISTANCE = 70.0;
+    private static final double MIN_SITE_DISTANCE_SQ = MIN_SITE_DISTANCE * MIN_SITE_DISTANCE;
+
+    // Retry parameters when the first attempt is rejected by the site-overlap check.
+    private static final int MAX_SPAWN_ATTEMPTS_RETRY = 40;
+    private static final double MAX_DISTANCE_RETRY = 700.0;
+
     // -------------------------------------------------------------------------
     // Active NPC tracking
     // -------------------------------------------------------------------------
@@ -323,7 +333,26 @@ public final class RescueQuestManager {
             Consumer<Spawned> onDone) {
         applyMarkerIconOnce();
 
-        findSpawnLocation(world, fromPos, ThreadLocalRandom.current(), variant)
+        // Snapshot existing sites BEFORE cleanup runs (cleanup only touches NPCs, not VillageData,
+        // but reading from the same store on the world thread is the safest order).
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        List<int[]> existingSites = village != null
+                ? new ArrayList<>(village.getRescueQuestSites())
+                : new ArrayList<>();
+
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        findSpawnLocation(world, fromPos, rng, variant, existingSites,
+                MAX_SPAWN_ATTEMPTS, MAX_DISTANCE)
+                .thenCompose(candidate -> {
+                    if (candidate != null || existingSites.isEmpty()) {
+                        return CompletableFuture.completedFuture(candidate);
+                    }
+                    LOGGER.info("startForPlayer: first pass found no valid site (likely overlap-rejected); "
+                            + "retrying with " + MAX_SPAWN_ATTEMPTS_RETRY + " attempts up to "
+                            + MAX_DISTANCE_RETRY);
+                    return findSpawnLocation(world, fromPos, rng, variant, existingSites,
+                            MAX_SPAWN_ATTEMPTS_RETRY, MAX_DISTANCE_RETRY);
+                })
                 .thenAccept(candidate -> world.execute(() -> {
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
 
@@ -335,7 +364,7 @@ public final class RescueQuestManager {
             cleanup(liveStore);
 
             if (candidate == null) {
-                LOGGER.warning("startForPlayer: no valid spawn after " + MAX_SPAWN_ATTEMPTS + " attempts");
+                LOGGER.warning("startForPlayer: no valid spawn after retry");
                 onDone.accept(null);
                 return;
             }
@@ -352,6 +381,13 @@ public final class RescueQuestManager {
                         + blockX + "," + groundY + "," + blockZ + ") variant=" + variant);
                 onDone.accept(null);
                 return;
+            }
+
+            // Record the site so future quests don't overlap with this one.
+            VillageData liveVillage = VillageManager.get().getVillageData(liveStore, playerRef);
+            if (liveVillage != null) {
+                liveVillage.addRescueQuestSite(blockX, blockZ);
+                VillageManager.get().save(liveStore, playerRef, liveVillage);
             }
 
             spawnQuestMarker(liveStore, spawned.victimPos(), playerRef, chosenVariant);
@@ -668,12 +704,15 @@ public final class RescueQuestManager {
      */
     private static CompletableFuture<int[]> findSpawnLocation(World world, Vector3d fromPos,
             ThreadLocalRandom rng,
-            QuestVariant variant) {
+            QuestVariant variant,
+            List<int[]> existingSites,
+            int attempts,
+            double maxDistance) {
         // Phase 1: generate all candidate positions up-front.
-        int[][] positions = new int[MAX_SPAWN_ATTEMPTS][2];
-        for (int i = 0; i < MAX_SPAWN_ATTEMPTS; i++) {
+        int[][] positions = new int[attempts][2];
+        for (int i = 0; i < attempts; i++) {
             double angle = rng.nextDouble(Math.PI * 2);
-            double distance = rng.nextDouble(MIN_DISTANCE, MAX_DISTANCE);
+            double distance = rng.nextDouble(MIN_DISTANCE, maxDistance);
             positions[i][0] = (int) Math.floor(fromPos.getX() + Math.cos(angle) * distance);
             positions[i][1] = (int) Math.floor(fromPos.getZ() + Math.sin(angle) * distance);
         }
@@ -702,7 +741,7 @@ public final class RescueQuestManager {
 
                     for (int[] pos : positions) {
                         int blockX = pos[0], blockZ = pos[1];
-                        int[] result = scoreCandidate(world, fromPos, blockX, blockZ, variant);
+                        int[] result = scoreCandidate(world, fromPos, blockX, blockZ, variant, existingSites);
                         if (result == null) {
                             continue;
                         }
@@ -719,7 +758,7 @@ public final class RescueQuestManager {
                                 + " variant=" + chosen
                                 + " at (" + bestCandidate[0] + "," + bestCandidate[1] + "," + bestCandidate[2] + ")");
                     } else {
-                        LOGGER.warning("findSpawnLocation: no candidate found in " + MAX_SPAWN_ATTEMPTS + " attempts");
+                        LOGGER.warning("findSpawnLocation: no candidate found in " + attempts + " attempts");
                     }
                     return bestCandidate;
                 });
@@ -741,7 +780,18 @@ public final class RescueQuestManager {
      * (≈-1000000)
      */
     private static int[] scoreCandidate(World world, Vector3d fromPos,
-            int blockX, int blockZ, QuestVariant requestedVariant) {
+            int blockX, int blockZ, QuestVariant requestedVariant,
+            List<int[]> existingSites) {
+        // Reject candidates that overlap any prior rescue-quest site.
+        // Done before any chunk reads — cheap and avoids wasted work.
+        for (int[] site : existingSites) {
+            double dx = blockX - site[0];
+            double dz = blockZ - site[1];
+            if (dx * dx + dz * dz < MIN_SITE_DISTANCE_SQ) {
+                return null;
+            }
+        }
+
         // TRAP: single center point, no footprint/biome scoring
         if (requestedVariant == QuestVariant.TRAP) {
             WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(blockX, blockZ));

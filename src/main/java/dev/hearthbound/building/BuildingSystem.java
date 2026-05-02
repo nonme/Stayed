@@ -44,9 +44,21 @@ public class BuildingSystem {
     private SiteClearer activeClearer;
     private ResourceBlockPlacer activeBuilder;
     private BuildingRecord activeRecord;
-    private List<Ref<EntityStore>> activePreviewRefs;
-    private int activeRotation = 0;
-    private UUID activePreviewPlayerUuid;
+
+    /**
+     * One ghost preview session per player. Cycling variants only affects the calling player,
+     * and one player breaking their brazier doesn't wipe another player's preview.
+     */
+    private static final class PreviewSession {
+        List<Ref<EntityStore>> refs;
+        int rotation;
+        int variant;
+        String buildingType;
+        int anchorX, anchorY, anchorZ;
+    }
+
+    private final java.util.Map<UUID, PreviewSession> previews = new java.util.concurrent.ConcurrentHashMap<>();
+
     // Players who are currently authoring a prefab — Founding Stone place/break events
     // skip village flow for them so they can drop anchor blocks inside prefab selections
     // without triggering ghost preview or village reset.
@@ -78,61 +90,142 @@ public class BuildingSystem {
     /**
      * Spawns BlockEntity markers for each structural block in the plan.
      * Never writes to the chunk — no snapshot, no restore, no cascade, no collision holes.
+     * Stores the session per-player so cycling variants and clearing only affect this player.
      */
     public boolean showGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                      World world, String buildingType,
-                                     int anchorX, int anchorY, int anchorZ, int rotation) {
-        List<BlockPlacer.BlockEntry> plan = loadBuildPlan(buildingType, anchorX, anchorY, anchorZ, rotation);
+                                     int anchorX, int anchorY, int anchorZ, int rotation, int variant) {
+        List<BlockPlacer.BlockEntry> plan = loadBuildPlan(buildingType, anchorX, anchorY, anchorZ, rotation, variant);
         if (plan.isEmpty()) {
-            LOGGER.warning("No building plan for type: " + buildingType);
+            LOGGER.warning("No building plan for type: " + buildingType + " variant=" + variant);
             return false;
         }
 
-        // Set refs early so hasActivePreview() returns true during spawn,
-        // preventing PlaceBlockEvent re-entrancy from triggering a second preview.
-        activePreviewRefs = new ArrayList<>();
-        activeRotation = rotation;
-
-        activePreviewRefs = GhostPreview.show(store, plan);
-
-        // Start repeating bounding box — every 8s so it stays visible indefinitely.
-        com.hypixel.hytale.server.core.entity.entities.Player player =
-                store.getComponent(playerRef, com.hypixel.hytale.server.core.entity.entities.Player.getComponentType());
-        if (player != null) {
-            activePreviewPlayerUuid = player.getUuid();
-            GhostPreview.sendBoundingBox(activePreviewPlayerUuid, world, plan);
+        UUID playerUuid = resolvePlayerUuid(store, playerRef);
+        if (playerUuid == null) {
+            LOGGER.warning("[Ghost] showGhostPreview: player UUID is null, refusing to spawn preview");
+            return false;
         }
 
+        PreviewSession session = new PreviewSession();
+        session.refs = GhostPreview.show(store, plan);
+        session.rotation = rotation;
+        session.variant = variant;
+        session.buildingType = buildingType;
+        session.anchorX = anchorX;
+        session.anchorY = anchorY;
+        session.anchorZ = anchorZ;
+        previews.put(playerUuid, session);
+
+        GhostPreview.sendBoundingBox(playerUuid, world, plan);
+
         LOGGER.info("[Ghost] showGhostPreview: type=" + buildingType + " rotation=" + rotation
-                + " plan=" + plan.size() + " entities=" + activePreviewRefs.size()
+                + " variant=" + variant + " plan=" + plan.size()
+                + " entities=" + session.refs.size()
                 + " anchor=(" + anchorX + "," + anchorY + "," + anchorZ + ")");
         return true;
     }
 
-    /** Overload without rotation for backwards compatibility. */
+    /** Overload without explicit variant — uses 0 (legacy default). */
+    public boolean showGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                     World world, String buildingType,
+                                     int anchorX, int anchorY, int anchorZ, int rotation) {
+        return showGhostPreview(store, playerRef, world, buildingType, anchorX, anchorY, anchorZ, rotation, 0);
+    }
+
+    /** Overload without rotation or variant — uses 0 for both (legacy). */
     public boolean showGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                      World world, String buildingType,
                                      int anchorX, int anchorY, int anchorZ) {
-        return showGhostPreview(store, playerRef, world, buildingType, anchorX, anchorY, anchorZ, 0);
+        return showGhostPreview(store, playerRef, world, buildingType, anchorX, anchorY, anchorZ, 0, 0);
     }
 
-    /** Removes all preview entities. Must be called on the world thread. */
+    /** Removes the calling player's preview entities. Must be called on the world thread. */
     public void clearGhostPreview(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
-        if (activePreviewPlayerUuid != null) {
-            GhostPreview.clearBoundingBox(activePreviewPlayerUuid, world);
-            activePreviewPlayerUuid = null;
-        }
-        GhostPreview.clear(store, activePreviewRefs);
-        activePreviewRefs = null;
-        activeRotation = 0;
+        UUID playerUuid = resolvePlayerUuid(store, playerRef);
+        clearGhostPreviewFor(store, playerUuid, world);
     }
 
+    /**
+     * Removes a specific player's preview by UUID. Used by callers that have the UUID directly
+     * (e.g. block break events where the entity ref is the breaker).
+     */
+    public void clearGhostPreviewFor(Store<EntityStore> store, UUID playerUuid, World world) {
+        if (playerUuid == null) return;
+        PreviewSession session = previews.remove(playerUuid);
+        if (session == null) return;
+        GhostPreview.clearBoundingBox(playerUuid, world);
+        GhostPreview.clear(store, session.refs);
+    }
+
+    public boolean hasActivePreview(Store<EntityStore> store, Ref<EntityStore> playerRef) {
+        UUID uuid = resolvePlayerUuid(store, playerRef);
+        if (uuid == null) return false;
+        PreviewSession s = previews.get(uuid);
+        return s != null && s.refs != null && !s.refs.isEmpty();
+    }
+
+    /** @deprecated kept so legacy callsites compile; checks across all players and is racy. */
+    @Deprecated
     public boolean hasActivePreview() {
-        return activePreviewRefs != null && !activePreviewRefs.isEmpty();
+        for (PreviewSession s : previews.values()) {
+            if (s.refs != null && !s.refs.isEmpty()) return true;
+        }
+        return false;
     }
 
+    public int getActiveRotation(Store<EntityStore> store, Ref<EntityStore> playerRef) {
+        UUID uuid = resolvePlayerUuid(store, playerRef);
+        if (uuid == null) return 0;
+        PreviewSession s = previews.get(uuid);
+        return s != null ? s.rotation : 0;
+    }
+
+    /** @deprecated kept so legacy callsites compile; returns 0 if multiple players are active. */
+    @Deprecated
     public int getActiveRotation() {
-        return activeRotation;
+        if (previews.size() == 1) {
+            return previews.values().iterator().next().rotation;
+        }
+        return 0;
+    }
+
+    public int getActiveVariant(Store<EntityStore> store, Ref<EntityStore> playerRef) {
+        UUID uuid = resolvePlayerUuid(store, playerRef);
+        if (uuid == null) return 0;
+        PreviewSession s = previews.get(uuid);
+        return s != null ? s.variant : 0;
+    }
+
+    /**
+     * Re-renders the active preview for this player using the new variant. Used by the
+     * VillagerHousePage variant switcher. Returns the new variant index or -1 if no preview
+     * is active.
+     */
+    public int cycleHouseVariant(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                  World world, int delta) {
+        UUID uuid = resolvePlayerUuid(store, playerRef);
+        if (uuid == null) return -1;
+        PreviewSession s = previews.get(uuid);
+        if (s == null) return -1;
+        if (!BuildingType.HOUSE_HUMAN.equals(s.buildingType)) return s.variant;
+
+        int next = BuildingType.wrapHouseVariant(s.variant + delta);
+        // Snapshot anchor + rotation before clearing wipes the session.
+        String type = s.buildingType;
+        int rot = s.rotation;
+        int ax = s.anchorX, ay = s.anchorY, az = s.anchorZ;
+
+        clearGhostPreviewFor(store, uuid, world);
+        showGhostPreview(store, playerRef, world, type, ax, ay, az, rot, next);
+        return next;
+    }
+
+    private static UUID resolvePlayerUuid(Store<EntityStore> store, Ref<EntityStore> playerRef) {
+        if (playerRef == null) return null;
+        com.hypixel.hytale.server.core.entity.entities.Player player =
+                store.getComponent(playerRef, com.hypixel.hytale.server.core.entity.entities.Player.getComponentType());
+        return player != null ? player.getUuid() : null;
     }
 
     // ========== Founding ==========
@@ -260,11 +353,12 @@ public class BuildingSystem {
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         if (village == null) return;
 
+        int variant = record.getVariant();
         List<BlockPlacer.BlockEntry> plan = loadBuildPlan(record.getType(),
-                record.getPosX(), record.getPosY(), record.getPosZ(), rotation);
+                record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
 
         if (plan.isEmpty()) {
-            LOGGER.warning("No building plan for type: " + record.getType());
+            LOGGER.warning("No building plan for type: " + record.getType() + " variant=" + variant);
             return;
         }
 
@@ -277,7 +371,7 @@ public class BuildingSystem {
         // This is done once here so the elf never has to "place Empty" during building.
         if (BuildingType.MINE.equals(record.getType())) {
             List<BlockPlacer.BlockEntry> belowEmpty = loadBelowAnchorEmptyCells(
-                    record.getType(), record.getPosX(), record.getPosY(), record.getPosZ(), rotation);
+                    record.getType(), record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
             for (BlockPlacer.BlockEntry entry : belowEmpty) {
                 var existing = world.getBlockType(entry.x(), entry.y(), entry.z());
                 String existingId = (existing != null) ? existing.getId() : "Empty";
@@ -289,7 +383,7 @@ public class BuildingSystem {
         }
 
         // Safe position: a couple blocks in front of the building door.
-        int[] doorOffset = BuildingType.getDoorOffset(record.getType(), rotation);
+        int[] doorOffset = BuildingType.getDoorOffset(record.getType(), rotation, record.getVariant());
         double dirX = doorOffset[0] == 0 ? 0 : (doorOffset[0] > 0 ? 2 : -2);
         double dirZ = doorOffset[1] == 0 ? 0 : (doorOffset[1] > 0 ? 2 : -2);
         double safeX = record.getPosX() + doorOffset[0] + dirX + 0.5;
@@ -330,7 +424,9 @@ public class BuildingSystem {
 
         // Phase 1: clear all occupied cells with pickaxe animation, skipping cells the
         // player already broke. Phase 2: block-by-block construction starts on completion.
-        activeClearer = new SiteClearer(world, plan, builderBehavior, () -> {
+        java.util.Set<Long> occupiedCells = loadOccupiedCells(record.getType(),
+                record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
+        activeClearer = new SiteClearer(world, plan, occupiedCells, builderBehavior, () -> {
             activeClearer = null;
             activeBuilder = new ResourceBlockPlacer(world, plan, record,
                     fSafeX, fSafeY, fSafeZ, fElfUuid, ownerUuid, () -> {
@@ -419,7 +515,8 @@ public class BuildingSystem {
      */
     private void replaceWithPrefab(World world, Store<EntityStore> store,
                                    BuildingRecord record, int rotation) {
-        String prefabName = BuildingType.getPrefabName(record.getType());
+        int variant = record.getVariant();
+        String prefabName = BuildingType.getPrefabName(record.getType(), variant);
         if (prefabName == null) return;
 
         try {
@@ -430,7 +527,7 @@ public class BuildingSystem {
             // Our PrefabLoader and the engine's BlockSelection.rotate(Axis.Y) now use the
             // same handedness (CCW), so we rotate by exactly steps * 90°.
             String anchorBlockId = BuildingType.getAnchorBlockId(record.getType());
-            int anchorPrefabY = BuildingType.getAnchorPrefabY(record.getType());
+            int anchorPrefabY = BuildingType.getAnchorPrefabY(record.getType(), variant);
             int prefabRotation = readPrefabAnchorYaw(selection, anchorBlockId, anchorPrefabY);
             int steps = (rotation - prefabRotation + 4) % 4;
             int angleDeg = (steps * 90) % 360;
@@ -498,25 +595,36 @@ public class BuildingSystem {
     // ========== Build Plan ==========
 
     private List<BlockPlacer.BlockEntry> loadBelowAnchorEmptyCells(
-            String type, int anchorX, int anchorY, int anchorZ, int rotation) {
-        String prefabName = BuildingType.getPrefabName(type);
+            String type, int anchorX, int anchorY, int anchorZ, int rotation, int variant) {
+        String prefabName = BuildingType.getPrefabName(type, variant);
         if (prefabName == null) return List.of();
         String anchorBlockId = BuildingType.getAnchorBlockId(type);
-        int anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+        int anchorPrefabY = BuildingType.getAnchorPrefabY(type, variant);
         return PrefabLoader.loadBelowAnchorEmpty(prefabName, anchorBlockId, anchorPrefabY,
                 anchorX, anchorY, anchorZ, rotation);
     }
 
+    private java.util.Set<Long> loadOccupiedCells(
+            String type, int anchorX, int anchorY, int anchorZ, int rotation, int variant) {
+        String prefabName = BuildingType.getPrefabName(type, variant);
+        if (prefabName == null) return java.util.Set.of();
+        String anchorBlockId = BuildingType.getAnchorBlockId(type);
+        int anchorPrefabY = BuildingType.getAnchorPrefabY(type, variant);
+        return PrefabLoader.loadOccupiedCells(prefabName, anchorBlockId, anchorPrefabY,
+                anchorX, anchorY, anchorZ, rotation);
+    }
+
     /**
-     * Loads the build plan for a building type. Uses prefab if one is defined,
-     * falls back to programmatic generation otherwise.
+     * Loads the build plan for a building type and variant. Uses prefab if one is defined,
+     * falls back to programmatic generation otherwise. variant=0 always maps to the original
+     * prefab (back-compat with old saves that have no variant field).
      */
     private List<BlockPlacer.BlockEntry> loadBuildPlan(
-            String type, int anchorX, int anchorY, int anchorZ, int rotation) {
-        String prefabName = BuildingType.getPrefabName(type);
+            String type, int anchorX, int anchorY, int anchorZ, int rotation, int variant) {
+        String prefabName = BuildingType.getPrefabName(type, variant);
         if (prefabName != null) {
             String anchorBlockId = BuildingType.getAnchorBlockId(type);
-            int anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+            int anchorPrefabY = BuildingType.getAnchorPrefabY(type, variant);
             boolean mineOrder = dev.hearthbound.village.BuildingType.MINE.equals(type);
             List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(
                     prefabName, anchorBlockId, anchorPrefabY, anchorX, anchorY, anchorZ, rotation, mineOrder);
@@ -558,14 +666,22 @@ public class BuildingSystem {
     }
 
     /**
-     * Returns the total resource requirements for a building type.
+     * Returns the total resource requirements for a building type (variant 0).
      * Uses prefab if available, falls back to BuildingGenerator.
      */
     public static java.util.Map<String, Integer> getRequiredResources(String type) {
-        String prefabName = BuildingType.getPrefabName(type);
+        return getRequiredResources(type, 0);
+    }
+
+    /**
+     * Variant-aware resource requirements. Different house variants have different sizes
+     * and therefore different resource costs.
+     */
+    public static java.util.Map<String, Integer> getRequiredResources(String type, int variant) {
+        String prefabName = BuildingType.getPrefabName(type, variant);
         if (prefabName != null) {
             String anchorBlockId = BuildingType.getAnchorBlockId(type);
-            int anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+            int anchorPrefabY = BuildingType.getAnchorPrefabY(type, variant);
             List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(prefabName, anchorBlockId, anchorPrefabY, 0, anchorPrefabY, 0);
             if (!plan.isEmpty()) {
                 java.util.Map<String, Integer> resources = new java.util.LinkedHashMap<>();
@@ -631,9 +747,9 @@ public class BuildingSystem {
             activeBuilder = null;
         }
         activeRecord = null;
-        activePreviewPlayerUuid = null;
-        GhostPreview.clear(store, activePreviewRefs);
-        activePreviewRefs = null;
-        activeRotation = 0;
+        for (PreviewSession s : previews.values()) {
+            GhostPreview.clear(store, s.refs);
+        }
+        previews.clear();
     }
 }

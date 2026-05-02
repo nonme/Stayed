@@ -58,15 +58,25 @@ public final class BuildingLayout {
 
     private static final Map<String, Layout> CACHE = new HashMap<>();
 
-    /** Returns the cached layout for the given building type, computing it if needed. */
+    /** Returns the cached layout for the given building type (variant 0), computing it if needed. */
     public static Layout get(String buildingType) {
-        return CACHE.computeIfAbsent(buildingType, BuildingLayout::compute);
+        return get(buildingType, 0);
     }
 
-    private static Layout compute(String type) {
-        String prefabName    = BuildingType.getPrefabName(type);
+    /**
+     * Returns the cached layout for the given building type and prefab variant.
+     * Different house variants have different interior centers and door positions, so each
+     * variant gets its own cached Layout.
+     */
+    public static Layout get(String buildingType, int variant) {
+        String key = buildingType + ":" + variant;
+        return CACHE.computeIfAbsent(key, k -> compute(buildingType, variant));
+    }
+
+    private static Layout compute(String type, int variant) {
+        String prefabName    = BuildingType.getPrefabName(type, variant);
         String anchorId      = BuildingType.getAnchorBlockId(type);
-        int    anchorPrefabY = BuildingType.getAnchorPrefabY(type);
+        int    anchorPrefabY = BuildingType.getAnchorPrefabY(type, variant);
 
         if (prefabName == null) return fallback();
 

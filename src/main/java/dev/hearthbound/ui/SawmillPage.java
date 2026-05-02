@@ -34,6 +34,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final Logger LOGGER = Logger.getLogger(SawmillPage.class.getName());
 
     private final Ref<EntityStore> playerRef;
+    private final PlayerRef networkPlayerRef;
     private final UUID ownerUuid;
     private final World world;
     private final int anchorX, anchorY, anchorZ;
@@ -45,6 +46,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                        int anchorX, int anchorY, int anchorZ) {
         super(player, CustomPageLifetime.CanDismissOrCloseThroughInteraction, DialogEventData.CODEC);
         this.playerRef = playerRef;
+        this.networkPlayerRef = player;
         this.ownerUuid = player.getUuid();
         this.world = world;
         this.anchorX = anchorX;
@@ -168,42 +170,24 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean renderResourceList(UICommandBuilder b,
                                         Map<String, Integer> required,
                                         Map<String, Integer> have) {
-        b.clear("#ResourceListContainer");
-        boolean allSatisfied = true;
-        int rowIndex = 0;
-        for (Map.Entry<String, Integer> entry : required.entrySet()) {
-            String itemId = entry.getKey();
-            int need = entry.getValue();
-            int got = have.getOrDefault(itemId, 0);
-            boolean satisfied = got >= need;
-            if (!satisfied) allSatisfied = false;
-
-            String countColor = satisfied ? "#78c880" : "#c87878";
-            String nameColor = satisfied ? "#8ab8a0" : "#9ab0bc";
-            String displayName = itemId.replace("_", " ");
-
-            b.appendInline("#ResourceListContainer",
-                    "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 2); Padding: (Horizontal: 4); " +
-                    "  ItemIcon { Anchor: (Width: 24, Height: 24); } " +
-                    "  Label { Anchor: (Left: 8); FlexWeight: 1; Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: " + nameColor + ", FontSize: 11); Text: \"" + displayName + "\"; } " +
-                    "  Label { Anchor: (Width: 60); Style: (HorizontalAlignment: End, VerticalAlignment: Center, TextColor: " + countColor + ", FontSize: 11, RenderBold: true); Text: \"" + got + " / " + need + "\"; } " +
-                    "}");
-            b.set("#ResourceListContainer[" + rowIndex + "][0].ItemId", itemId);
-            rowIndex++;
-        }
-        return allSatisfied;
+        String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+        return dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                b, "#ResourceListContainer", required, have, language);
     }
 
     private void applyConstructionState(UICommandBuilder b, boolean isBuilding,
                                          boolean isCompleted, boolean allSatisfied, boolean elfBusy) {
         if (isCompleted) {
-            b.set("#ConstructionStatus.Text", "Complete!");
+            b.set("#ConstructionStatus.Text",
+                    "The Sawmill stands complete. Upgrades coming in a future update.");
+            b.set("#ResourceListContainer.Visible", false);
             b.set("#StartBuildButton.Visible", false);
             b.set("#DepositButton.Visible", false);
             b.set("#BuildProgressLabel.Visible", false);
             b.set("#DepositHint.Text", "");
             return;
         }
+        b.set("#ResourceListContainer.Visible", true);
 
         if (isBuilding) {
             b.set("#ConstructionStatus.Text", "Under construction...");
@@ -283,7 +267,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
 
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
                 BuildingRecord record = new BuildingRecord(BuildingType.SAWMILL, anchorX, anchorY, anchorZ);
-                record.setRotation(BuildingSystem.get().getActiveRotation());
+                record.setRotation(BuildingSystem.get().getActiveRotation(store, playerRef));
                 village.addBuilding(record);
                 VillageManager.get().save(store, playerRef, village);
 

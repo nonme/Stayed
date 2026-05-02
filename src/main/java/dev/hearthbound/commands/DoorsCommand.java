@@ -43,7 +43,7 @@ public class DoorsCommand extends AbstractCommandCollection {
 
         for (BuildingRecord b : buildings) {
             if (!b.isCompleted()) continue;
-            BuildingLayout.Layout layout = BuildingLayout.get(b.getType());
+            BuildingLayout.Layout layout = BuildingLayout.get(b.getType(), b.getVariant());
             if (layout == null || !layout.hasDoor()) continue;
 
             int steps = layout.rotationSteps(b.getRotation());

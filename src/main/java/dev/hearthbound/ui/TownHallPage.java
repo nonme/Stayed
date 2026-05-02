@@ -21,7 +21,6 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import dev.hearthbound.building.BuildingSystem;
-import dev.hearthbound.building.CraftabilityIndex;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -51,6 +50,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     };
 
     private final Ref<EntityStore> playerRef;
+    private final PlayerRef networkPlayerRef;
     private final UUID ownerUuid;
     private final World world;
     private final int stoneX, stoneY, stoneZ;
@@ -62,6 +62,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                          int stoneX, int stoneY, int stoneZ) {
         super(player, CustomPageLifetime.CanDismissOrCloseThroughInteraction, DialogEventData.CODEC);
         this.playerRef = playerRef;
+        this.networkPlayerRef = player;
         this.ownerUuid = player.getUuid();
         this.world = world;
         this.stoneX = stoneX;
@@ -190,45 +191,54 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         BuildingRecord townHall = village.findBuilding(BuildingType.TOWN_HALL);
         boolean townHallBuilt = townHall != null && townHall.isCompleted();
 
-        String nextBuildingType = townHallBuilt ? BuildingType.WAREHOUSE : BuildingType.TOWN_HALL;
+        // Town Hall is the only building managed from this page. Once it's done,
+        // the tab becomes a placeholder for future upgrades — other buildings
+        // have their own anchors and UIs.
+        if (townHallBuilt) {
+            populateTownHallCompleted(builder);
+            return;
+        }
+
         BuildingRecord activeRecord = BuildingSystem.get().getActiveRecord();
         boolean isBuildingThis = BuildingSystem.get().isBuilding()
-                && activeRecord != null && nextBuildingType.equals(activeRecord.getType());
+                && activeRecord != null && BuildingType.TOWN_HALL.equals(activeRecord.getType());
         boolean elfBusy = BuildingSystem.get().isBuilding() && !isBuildingThis;
-        boolean constructionFinished = village.isConstructionStarted() && townHallBuilt && !BuildingSystem.get().isBuilding();
 
-        builder.set("#ConstructionTitle.Text", BuildingType.getDisplayName(nextBuildingType));
+        builder.set("#ConstructionTitle.Text", BuildingType.getDisplayName(BuildingType.TOWN_HALL));
 
         Map<String, Integer> required;
         if (isBuildingThis) {
             required = BuildingSystem.get().getRemainingResources();
-            if (required == null) required = BuildingSystem.getRequiredResources(nextBuildingType);
+            if (required == null) required = BuildingSystem.getRequiredResources(BuildingType.TOWN_HALL);
         } else {
-            required = BuildingSystem.getRequiredResources(nextBuildingType);
+            required = BuildingSystem.getRequiredResources(BuildingType.TOWN_HALL);
         }
 
-        Map<String, Integer> have = readBuildingStorage(resolveTargetBuilding(village, false));
+        Map<String, Integer> have = readBuildingStorage(townHall);
+        builder.set("#ResourceListContainer.Visible", true);
         boolean allSatisfied = renderResourceList(builder, required, have);
 
-        applyConstructionState(builder, isBuildingThis, constructionFinished, allSatisfied, elfBusy);
+        applyConstructionState(builder, isBuildingThis, false, allSatisfied, elfBusy);
+    }
+
+    /** Town Hall is built — show an upgrade-coming-soon placeholder, hide all build controls. */
+    private void populateTownHallCompleted(UICommandBuilder builder) {
+        builder.set("#ConstructionTitle.Text", BuildingType.getDisplayName(BuildingType.TOWN_HALL));
+        builder.set("#ConstructionStatus.Text",
+                "The Town Hall stands complete. Upgrades coming in a future update.");
+        builder.set("#ResourceListContainer.Visible", false);
+        builder.set("#StartBuildButton.Visible", false);
+        builder.set("#DepositButton.Visible", false);
+        builder.set("#BuildProgressLabel.Visible", false);
+        builder.set("#DepositHint.Text", "");
     }
 
     /**
-     * Returns the building the player is currently outfitting: Town Hall until it is built,
-     * then the next staged building (Warehouse). Creates the next record on demand when
-     * {@code createIfMissing} is true (used for deposit flow so resources have a home).
+     * Returns the Town Hall record. The Construction tab in this page only manages the
+     * Town Hall; other buildings have their own anchors/pages (e.g. Warehouse via Counter).
      */
-    private BuildingRecord resolveTargetBuilding(VillageData village, boolean createIfMissing) {
-        BuildingRecord townHall = village.findBuilding(BuildingType.TOWN_HALL);
-        boolean townHallBuilt = townHall != null && townHall.isCompleted();
-        if (!townHallBuilt) return townHall;
-
-        BuildingRecord warehouse = village.findBuilding(BuildingType.WAREHOUSE);
-        if (warehouse != null || !createIfMissing) return warehouse;
-
-        warehouse = new BuildingRecord(BuildingType.WAREHOUSE, stoneX - 8, stoneY, stoneZ);
-        village.addBuilding(warehouse);
-        return warehouse;
+    private BuildingRecord resolveTargetBuilding(VillageData village) {
+        return village.findBuilding(BuildingType.TOWN_HALL);
     }
 
     private static Map<String, Integer> readBuildingStorage(BuildingRecord record) {
@@ -244,30 +254,9 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
     private boolean renderResourceList(UICommandBuilder builder,
                                        Map<String, Integer> required,
                                        Map<String, Integer> have) {
-        builder.clear("#ResourceListContainer");
-        boolean allSatisfied = true;
-        int rowIndex = 0;
-        for (Map.Entry<String, Integer> entry : required.entrySet()) {
-            String itemId = entry.getKey();
-            int need = entry.getValue();
-            int got = have.getOrDefault(itemId, 0);
-            boolean satisfied = got >= need;
-            if (!satisfied) allSatisfied = false;
-
-            String countColor = satisfied ? "#78c880" : "#c87878";
-            String nameColor = satisfied ? "#8ab8a0" : "#9ab0bc";
-            String displayName = CraftabilityIndex.getDisplayName(itemId);
-
-            builder.appendInline("#ResourceListContainer",
-                    "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 2); Padding: (Horizontal: 4); " +
-                    "  ItemIcon { Anchor: (Width: 24, Height: 24); } " +
-                    "  Label { Anchor: (Left: 8); FlexWeight: 1; Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: " + nameColor + ", FontSize: 11); Text: \"" + displayName + "\"; } " +
-                    "  Label { Anchor: (Width: 60); Style: (HorizontalAlignment: End, VerticalAlignment: Center, TextColor: " + countColor + ", FontSize: 11, RenderBold: true); Text: \"" + got + " / " + need + "\"; } " +
-                    "}");
-            builder.set("#ResourceListContainer[" + rowIndex + "][0].ItemId", itemId);
-            rowIndex++;
-        }
-        return allSatisfied;
+        String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+        return dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                builder, "#ResourceListContainer", required, have, language);
     }
 
     /** Sets status text, button visibility and hints to match the current phase. */
@@ -376,7 +365,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 String typed = data.getVillageName();
                 String villageName = (typed != null && !typed.isBlank()) ? typed.strip() : currentVillageName;
 
-                int rotation = BuildingSystem.get().getActiveRotation();
+                int rotation = BuildingSystem.get().getActiveRotation(store, playerRef);
 
                 // Point of no return
                 BuildingSystem.get().confirmFounding(
@@ -396,7 +385,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 Player player = store.getComponent(ref, Player.getComponentType());
                 if (player == null) return;
 
-                BuildingRecord target = resolveTargetBuilding(dv, true);
+                BuildingRecord target = resolveTargetBuilding(dv);
                 if (target == null) return;
 
                 Map<String, Integer> required = BuildingSystem.get().isBuilding()
@@ -431,7 +420,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 VillageData village = VillageManager.get().getVillageData(store, playerRef);
                 if (village == null) return;
 
-                BuildingRecord target = resolveTargetBuilding(village, true);
+                BuildingRecord target = resolveTargetBuilding(village);
                 if (target == null) return;
 
                 VillageManager.get().save(store, playerRef, village);

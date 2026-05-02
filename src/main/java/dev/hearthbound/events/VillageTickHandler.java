@@ -395,6 +395,7 @@ public class VillageTickHandler {
             final int houseY = house.getPosY();
             final int houseZ = house.getPosZ();
             final int houseRotation = house.getRotation();
+            final int houseVariant = house.getVariant();
 
             // Move the villager to their new house door on the next world tick
             world.execute(() -> {
@@ -405,7 +406,7 @@ public class VillageTickHandler {
                 Ref<EntityStore> villagerRef = world.getEntityRef(assignedUuid);
                 if (villagerRef == null || !villagerRef.isValid()) return;
 
-                int[] doorOffset = BuildingType.getDoorOffset(houseType, houseRotation);
+                int[] doorOffset = BuildingType.getDoorOffset(houseType, houseRotation, houseVariant);
                 double doorX = houseX + doorOffset[0] + 0.5;
                 double doorY = houseY + 1;
                 double doorZ = houseZ + doorOffset[1] + 0.5;

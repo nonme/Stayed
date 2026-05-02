@@ -390,14 +390,13 @@ public class VillageTickHandler {
             if (village == null) break;
 
             final UUID assignedUuid = homelessUuid;
-            final String houseType = house.getType();
             final int houseX = house.getPosX();
             final int houseY = house.getPosY();
             final int houseZ = house.getPosZ();
             final int houseRotation = house.getRotation();
-            final int houseVariant = house.getVariant();
 
-            // Move the villager to their new house door on the next world tick
+            // Move the villager to a tile inside their new house on the next world tick.
+            // Stand-point is one block in front of the brazier (which faces the room interior).
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 Entity entity = world.getEntity(assignedUuid);
@@ -406,10 +405,8 @@ public class VillageTickHandler {
                 Ref<EntityStore> villagerRef = world.getEntityRef(assignedUuid);
                 if (villagerRef == null || !villagerRef.isValid()) return;
 
-                int[] doorOffset = BuildingType.getDoorOffset(houseType, houseRotation, houseVariant);
-                double doorX = houseX + doorOffset[0] + 0.5;
-                double doorY = houseY + 1;
-                double doorZ = houseZ + doorOffset[1] + 0.5;
+                double[] stand = BuildingType.getInteriorStandPoint(houseX, houseY, houseZ, houseRotation);
+                double doorX = stand[0], doorY = stand[1], doorZ = stand[2];
 
                 entity.moveTo(villagerRef, doorX, doorY, doorZ, liveStore);
 

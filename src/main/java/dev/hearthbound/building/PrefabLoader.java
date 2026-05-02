@@ -289,6 +289,58 @@ public class PrefabLoader {
         }
     }
 
+    /**
+     * Door descriptor read directly from a prefab. All coordinates are in native prefab space
+     * (relative to the anchor block, no rotation applied) — apply rotationSteps later when
+     * mapping to world coords. {@code nativeRotation} is the door block's own yaw as stored
+     * in the prefab; convert to world rotation via {@link #rotateBlockRotation}.
+     */
+    public record DoorInfo(int lx, int ly, int lz, int nativeRotation, String blockId) {}
+
+    /**
+     * Finds the first non-trapdoor door in the prefab and returns its native-local position
+     * and rotation. Bypasses {@link #extractBlocks} entirely so the SKIP_BLOCKS / isDoorOrGate
+     * filter (which exists to keep doors out of the block-by-block build plan) does not also
+     * hide them from layout discovery.
+     *
+     * <p>Returns {@code null} when the prefab has no door — open-air buildings (mine, sawmill)
+     * are expected to fall back to no-door layout.
+     */
+    public static DoorInfo findDoor(String prefabName, String anchorBlockId, int anchorPrefabY) {
+        try {
+            BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
+            var assetMap = BlockType.getAssetMap();
+
+            int prefabOriginX = selection.getX();
+            int prefabOriginY = selection.getY();
+            int prefabOriginZ = selection.getZ();
+
+            int[] anchorLocal = findAnchorLocal(selection, anchorBlockId, anchorPrefabY,
+                    prefabOriginX, prefabOriginY, prefabOriginZ);
+            int anchorLX = anchorLocal[0];
+            int anchorLZ = anchorLocal[1];
+
+            DoorInfo[] result = {null};
+            selection.forEachBlock((bx, by, bz, holder) -> {
+                if (result[0] != null) return;
+                if (holder.filler() != 0) return;
+                BlockType bt = assetMap.getAsset(holder.blockId());
+                if (bt == null) return;
+                String id = bt.getId();
+                if (id == null || !id.contains("Door") || id.contains("Trapdoor")) return;
+
+                int lx = (bx - prefabOriginX) - anchorLX;
+                int ly = (by - prefabOriginY) - anchorPrefabY;
+                int lz = (bz - prefabOriginZ) - anchorLZ;
+                result[0] = new DoorInfo(lx, ly, lz, holder.rotation() % 4, id);
+            });
+            return result[0];
+        } catch (Exception e) {
+            LOGGER.warning("PrefabLoader.findDoor failed for '" + prefabName + "': " + e.getMessage());
+            return null;
+        }
+    }
+
     /** Reads the yaw rotation of the anchor block from the prefab (lowest 2 bits of RotationTuple index). */
     private static int readAnchorRotation(BlockSelection selection, String anchorBlockId, int anchorPrefabY) {
         var assetMap = BlockType.getAssetMap();

@@ -98,16 +98,16 @@ public final class BuildingLayout {
 
         // Find door/gate block — skip for open-air buildings (mine, sawmill) that have
         // decorative doors the NPC should not try to open/enter.
+        // Read directly from the prefab via findDoor: PrefabLoader.extractBlocks drops doors
+        // (they're placed atomically by the final replaceWithPrefab swap, not block-by-block),
+        // so scanning the build plan would always return null.
         boolean hasManagedDoor = !BuildingType.MINE.equals(type) && !BuildingType.SAWMILL.equals(type);
-        BlockPlacer.BlockEntry doorEntry = hasManagedDoor ? blocks.stream()
-                .filter(b -> isClosedDoor(b.blockType()))
-                .findFirst()
-                .orElse(null) : null;
+        PrefabLoader.DoorInfo doorInfo = hasManagedDoor
+                ? PrefabLoader.findDoor(prefabName, anchorId, anchorPrefabY)
+                : null;
 
-        String openBlock  = doorEntry != null ? openVariant(doorEntry.blockType())  : null;
-        String closeBlock = doorEntry != null ? closeVariant(doorEntry.blockType()) : null;
-        // True local Y of the door block relative to anchor.
-        int doorTrueLY = doorEntry != null ? (doorEntry.y() - anchorPrefabY) : 0;
+        String openBlock  = doorInfo != null ? openVariant(doorInfo.blockId())  : null;
+        String closeBlock = doorInfo != null ? closeVariant(doorInfo.blockId()) : null;
 
         // Interior center: use hardcoded override if available, otherwise auto-detect.
         int centerLX = 0, centerLZ = 0, floorLY = 0;
@@ -140,10 +140,10 @@ public final class BuildingLayout {
 
         Layout layout = new Layout(
                 centerLX, centerLZ, floorLY, anchorPrefabRotation,
-                doorEntry != null ? doorEntry.x() : null,
-                doorEntry != null ? doorTrueLY : null,
-                doorEntry != null ? doorEntry.z() : null,
-                doorEntry != null ? doorEntry.rotation() : null,
+                doorInfo != null ? doorInfo.lx() : null,
+                doorInfo != null ? doorInfo.ly() : null,
+                doorInfo != null ? doorInfo.lz() : null,
+                doorInfo != null ? doorInfo.nativeRotation() : null,
                 openBlock, closeBlock);
 
         LOGGER.info(String.format("BuildingLayout computed for %s: center=(%d,%d)%s",
@@ -152,11 +152,6 @@ public final class BuildingLayout {
                         ? " door=(" + layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ() + ")"
                         : " no-door"));
         return layout;
-    }
-
-    private static boolean isClosedDoor(String id) {
-        // PrefabLoader returns base block ID (e.g. "Furniture_Village_Door"), not state-variant.
-        return id != null && id.contains("Door") && !id.contains("Trapdoor");
     }
 
     private static String openVariant(String id) {

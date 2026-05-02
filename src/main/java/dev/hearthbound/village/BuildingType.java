@@ -34,10 +34,6 @@ public final class BuildingType {
     };
     // Brazier Y inside each prefab (verified by grepping the prefab files for Stayed_Brazier).
     private static final int[] HOUSE_HUMAN_ANCHOR_Y = {1, 1, 1, 1};
-    // Brazier's own rotation field inside each prefab. Used by getDoorOffset to compute
-    // the steps between record.rotation (player's placement yaw) and the prefab's native frame
-    // when locating door-side stand-points. Verified per-variant from the prefab JSON.
-    private static final int[] HOUSE_HUMAN_ANCHOR_ROT = {0, 2, 0, 0};
     private static final String[] HOUSE_HUMAN_VARIANT_NAMES = {
             "Variant 1", "Variant 2", "Variant 3", "Variant 4"
     };
@@ -187,11 +183,9 @@ public final class BuildingType {
         int dx, dz, anchorPrefabRotation;
         switch (type) {
             // Brazier anchor at prefab (2,1,3); stand two blocks in front at (2,1,1) → offset (0,-2).
-            case HOUSE_HUMAN -> {
-                dx = 0;
-                dz = -2;
-                anchorPrefabRotation = HOUSE_HUMAN_ANCHOR_ROT[clampHouseVariant(variant)];
-            }
+            // NOTE: villager recall/assignment uses getInteriorStandPoint instead — this branch is
+            // only here for legacy callers (e.g. building construction) that need a "near house" point.
+            case HOUSE_HUMAN -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
             // Anchor at prefab (-5,1,1); main door at (0,1,-2) facing -Z; stand at (0,-3) → dx=5, dz=-4.
             case TOWN_HALL   -> { dx =  5; dz = -4; anchorPrefabRotation = 0; }
             case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
@@ -210,6 +204,35 @@ public final class BuildingType {
             case 2 -> new int[]{-dx, -dz};
             case 3 -> new int[]{ dz, -dx};
             default -> new int[]{dx,   dz};
+        };
+    }
+
+    /**
+     * Stand-point right in front of the brazier, inside the house, used for villager
+     * recall and home assignment. Independent of prefab variant — relies only on the
+     * brazier's world rotation, which always points into the room (the brazier is placed
+     * against a wall with its open face toward the interior in every prefab variant).
+     *
+     * @param brazierX brazier world X
+     * @param brazierY brazier world Y (block where the brazier sits)
+     * @param brazierZ brazier world Z
+     * @param brazierWorldRotation rotation index 0..3 of the brazier as placed (record.getRotation())
+     * @return double[]{x, y, z} center-of-tile world coordinates one block in front of the brazier
+     */
+    public static double[] getInteriorStandPoint(int brazierX, int brazierY, int brazierZ,
+                                                  int brazierWorldRotation) {
+        // rot 0 → +Z, 1 → +X, 2 → -Z, 3 → -X
+        int dx, dz;
+        switch (brazierWorldRotation & 0x3) {
+            case 1  -> { dx =  1; dz =  0; }
+            case 2  -> { dx =  0; dz = -1; }
+            case 3  -> { dx = -1; dz =  0; }
+            default -> { dx =  0; dz =  1; }
+        }
+        return new double[]{
+                brazierX + dx + 0.5,
+                brazierY,
+                brazierZ + dz + 0.5
         };
     }
 

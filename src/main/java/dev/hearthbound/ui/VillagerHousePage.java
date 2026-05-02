@@ -459,13 +459,14 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     }
 
     private void recallVillager(UUID villagerUuid, BuildingRecord house) {
-        int[] doorOffset = BuildingType.getDoorOffset(house.getType(), house.getRotation(), house.getVariant());
-        double doorX = house.getPosX() + doorOffset[0] + 0.5;
-        double doorY = house.getPosY() + 1;
-        double doorZ = house.getPosZ() + doorOffset[1] + 0.5;
-        LOGGER.info("recallVillager: anchor=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
-                + ") rotation=" + house.getRotation() + " offset=(" + doorOffset[0] + "," + doorOffset[1]
-                + ") → door=(" + doorX + "," + doorY + "," + doorZ + ")");
+        // Stand one block in front of the brazier, inside the house. Brazier is always
+        // placed with its open face toward the interior, so its world rotation tells us
+        // which direction is "into the room".
+        double[] stand = BuildingType.getInteriorStandPoint(
+                house.getPosX(), house.getPosY(), house.getPosZ(), house.getRotation());
+        double standX = stand[0], standY = stand[1], standZ = stand[2];
+        LOGGER.info("recallVillager: brazier=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
+                + ") rotation=" + house.getRotation() + " → stand=(" + standX + "," + standY + "," + standZ + ")");
 
         // If the villager's chunk is not loaded, load it first, then teleport on the world thread.
         Entity entity = world.getEntity(villagerUuid);
@@ -476,10 +477,10 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 return;
             }
             world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() ->
-                    doMoveTo(villagerUuid, doorX, doorY, doorZ)));
+                    doMoveTo(villagerUuid, standX, standY, standZ)));
             return;
         }
-        doMoveTo(villagerUuid, doorX, doorY, doorZ);
+        doMoveTo(villagerUuid, standX, standY, standZ);
     }
 
     private void doMoveTo(UUID villagerUuid, double x, double y, double z) {

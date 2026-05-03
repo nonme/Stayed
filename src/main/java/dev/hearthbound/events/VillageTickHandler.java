@@ -97,6 +97,14 @@ public class VillageTickHandler {
         if (village == null || !village.isFounded()) return;
 
         convertAllFollowers(store, playerRef, village, world);
+        // Free buildings whose assigned villager is permanently lost. Runs
+        // before the assign* passes so a freed slot can immediately be picked
+        // up by another villager on the same tick — no empty house or
+        // workplace lingers when there's a candidate available.
+        cleanupOrphanedAssignments(store, playerRef, village, world);
+        // Re-read in case cleanup mutated village state via save().
+        village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null) return;
         assignHomelessVillagers(store, playerRef, village, world);
         assignUnstaffedFarms(store, playerRef, village);
         assignUnstaffedSawmills(store, playerRef, village);
@@ -366,6 +374,91 @@ public class VillageTickHandler {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    /**
+     * Frees any building whose assignedVillagerId points to a villager that is
+     * permanently lost — either no NpcRegistry record at all (the registry
+     * entry was wiped or never created) or a record whose circuit breaker has
+     * tripped (broken=true). The reconcile path keeps trying to recover live
+     * NPCs, so we only free assignments we know won't come back.
+     *
+     * Also detects a separate kind of damage: the entity is alive but missing
+     * its VillagerData component (which can happen if a respawn ran on an
+     * older code path that didn't restore the component). The scheduler
+     * silently skips villagers without VillagerData, so they stand idle
+     * forever. We re-attach the component from VillagerSummary so they wake
+     * up on the next scheduler tick.
+     *
+     * Both work buildings and houses are touched: a freed work slot is filled
+     * by assignUnstaffed* on the same tick, a freed house by
+     * assignHomelessVillagers on the next iteration of the same tick. The
+     * VillagerSummary stays in place so the player's resident count doesn't
+     * shrink — we only mark the post empty.
+     */
+    private void cleanupOrphanedAssignments(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                            VillageData village, World world) {
+        boolean anyFreed = false;
+        java.util.HashSet<UUID> seen = new java.util.HashSet<>();
+        for (BuildingRecord building : village.getBuildings()) {
+            UUID assigned = building.getAssignedVillagerId();
+            if (assigned == null) continue;
+            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(assigned);
+            boolean orphaned = record == null || record.broken;
+            if (orphaned) {
+                String reason = record == null ? "no registry entry" : "broken=true";
+                LOGGER.info("cleanupOrphanedAssignments: freeing " + building.getType() + " at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ()
+                        + " (assigned=" + assigned + ", " + reason + ")");
+                building.setAssignedVillagerId(null);
+                if (!BuildingType.isResidential(building.getType()) && record == null) {
+                    VillagerSummary summary = VillageManager.get().findVillagerSummary(village, assigned);
+                    if (summary != null) summary.setProfession(VillagerData.PROF_NONE);
+                }
+                anyFreed = true;
+                continue;
+            }
+            // Self-heal: a villager whose entity is alive but is missing the
+            // VillagerData component sits idle forever (the scheduler skips it).
+            // Re-attach the component from VillagerSummary so they wake up on
+            // the next scheduler tick. dedupe by UUID — a villager assigned to
+            // both a house and a workplace would otherwise be checked twice.
+            if (seen.add(assigned)) {
+                healVillagerDataIfMissing(store, world, assigned, village);
+            }
+        }
+        if (anyFreed) {
+            VillageManager.get().save(store, playerRef, village);
+        }
+    }
+
+    /**
+     * Re-attaches VillagerData to a live villager that lost the component.
+     * Uses VillagerSummary as the source of truth for race/profession/name and
+     * NpcRegistry for the skin seed. No-op if the entity isn't loaded right
+     * now, if VillagerData is already present, or if the summary is missing.
+     */
+    private void healVillagerDataIfMissing(Store<EntityStore> store, World world, UUID villagerUuid,
+                                            VillageData village) {
+        Ref<EntityStore> ref = world.getEntityRef(villagerUuid);
+        if (ref == null || !ref.isValid()) return;
+        VillagerData existing = store.getComponent(ref, VillagerData.getComponentType());
+        if (existing != null) return;
+
+        VillagerSummary summary = VillageManager.get().findVillagerSummary(village, villagerUuid);
+        if (summary == null) return;
+        NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(villagerUuid);
+        long skinSeed = record != null ? record.skinSeed : 0L;
+
+        VillagerData data = new VillagerData();
+        data.setSkinSeed(skinSeed);
+        data.setRace(summary.getRace());
+        data.setProfession(summary.getProfession());
+        data.setFirstName(summary.getFirstName());
+        data.setLastName(summary.getLastName());
+        store.putComponent(ref, VillagerData.getComponentType(), data);
+        LOGGER.info("healVillagerDataIfMissing: re-attached VillagerData to " + villagerUuid
+                + " (" + summary.getFullName() + ")");
     }
 
     /**

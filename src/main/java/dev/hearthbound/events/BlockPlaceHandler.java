@@ -57,8 +57,9 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
             return;
         }
 
-if (BuildingType.TOWN_HALL.equals(buildingType)) {
-            VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+
+        if (BuildingType.TOWN_HALL.equals(buildingType)) {
             if (village != null && village.isFounded()) {
                 LOGGER.info("Village already founded, ignoring Founding Stone placement");
                 return;
@@ -70,17 +71,24 @@ if (BuildingType.TOWN_HALL.equals(buildingType)) {
             return;
         }
 
+        Vector3i pos = event.getTargetBlock();
+
+        // Re-placing the anchor of an already-tracked building (e.g. player broke the Lumbermill
+        // block on a finished sawmill and put it back) must NOT trigger a new ghost preview —
+        // the building still exists in VillageData, F-key handlers already match it by position.
+        if (village != null && village.findBuildingAt(buildingType, pos.x, pos.y, pos.z) != null) {
+            LOGGER.info("Anchor re-placed on existing " + buildingType + " at "
+                    + pos.x + "," + pos.y + "," + pos.z + " — skipping ghost preview");
+            return;
+        }
+
         // Resolve initial variant for HOUSE_HUMAN from the village's last-picked variant.
         // Other building types ignore the variant slot.
         int initialVariant = 0;
-        if (BuildingType.HOUSE_HUMAN.equals(buildingType)) {
-            VillageData village = VillageManager.get().getVillageData(store, playerRef);
-            if (village != null) {
-                initialVariant = BuildingType.wrapHouseVariant(village.getSelectedHouseVariant());
-            }
+        if (BuildingType.HOUSE_HUMAN.equals(buildingType) && village != null) {
+            initialVariant = BuildingType.wrapHouseVariant(village.getSelectedHouseVariant());
         }
 
-        Vector3i pos = event.getTargetBlock();
         LOGGER.info(itemId + " placed at " + pos.x + ", " + pos.y + ", " + pos.z);
 
         EntityStore entityStore = (EntityStore) commandBuffer.getExternalData();

@@ -242,6 +242,36 @@ public class VillageManager {
     }
 
     /**
+     * Rewrites every UUID reference from oldUuid → newUuid across the village data.
+     * Used by NpcRespawner when an NPC is replaced by a fresh entity (the engine
+     * always assigns a new UUID on spawn, so we can't reuse the old one).
+     *
+     * Touches: VillagerSummary.villagerUuid, BuildingRecord.assignedVillagerId on
+     * every building (residential + work), so the villager keeps their house and
+     * job through a respawn.
+     */
+    public int replaceVillagerUuid(VillageData data, UUID oldUuid, UUID newUuid) {
+        if (data == null || oldUuid == null || newUuid == null) return 0;
+        int touched = 0;
+        for (VillagerSummary s : data.getVillagers()) {
+            if (oldUuid.equals(s.getVillagerUuid())) {
+                s.setVillagerUuid(newUuid);
+                touched++;
+            }
+        }
+        for (BuildingRecord b : data.getBuildings()) {
+            if (oldUuid.equals(b.getAssignedVillagerId())) {
+                b.setAssignedVillagerId(newUuid);
+                touched++;
+            }
+        }
+        if (touched > 0) {
+            LOGGER.info("replaceVillagerUuid: " + oldUuid + " → " + newUuid + " (" + touched + " refs)");
+        }
+        return touched;
+    }
+
+    /**
      * Mark a building as completed and advance village stage if appropriate.
      */
     public void completeBuilding(Store<EntityStore> store, Ref<EntityStore> playerRef,

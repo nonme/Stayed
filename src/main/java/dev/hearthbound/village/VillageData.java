@@ -359,6 +359,24 @@ public class VillageData implements Component<EntityStore> {
         return null;
     }
 
+    /**
+     * Returns the building of {@code type} whose anchor block sits at exactly (x,y,z), or null.
+     * Used to detect that a freshly placed anchor block belongs to an already-tracked building
+     * (e.g. the player broke and re-placed the Lumbermill block) — in that case we must NOT
+     * trigger a new ghost preview / construction flow.
+     */
+    public BuildingRecord findBuildingAt(String type, int x, int y, int z) {
+        for (BuildingRecord b : buildings) {
+            if (type.equals(b.getType())
+                    && b.getPosX() == x
+                    && b.getPosY() == y
+                    && b.getPosZ() == z) {
+                return b;
+            }
+        }
+        return null;
+    }
+
     @Override
     public Component<EntityStore> clone() {
         VillageData copy = new VillageData();

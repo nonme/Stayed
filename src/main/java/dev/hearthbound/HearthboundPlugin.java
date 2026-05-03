@@ -64,6 +64,10 @@ public class HearthboundPlugin extends JavaPlugin {
         // Must happen before any player joins so ChunkPreLoadProcessEvent
         // can find records for NPC chunks that load near the spawn.
         dev.hearthbound.npc.HearthboundDataStore.get().loadAndPopulateRegistry();
+        // Periodic flush: NpcPositionTracker marks the store dirty as villagers
+        // walk; this drains the flag to disk every 30s so a crash loses at most
+        // half a minute of position drift instead of every move since boot.
+        dev.hearthbound.npc.HearthboundDataStore.get().startPeriodicFlush();
 
         // Register ECS components
         VillageData.register(this.getEntityStoreRegistry());
@@ -121,6 +125,8 @@ public class HearthboundPlugin extends JavaPlugin {
     @Override
     protected void shutdown() {
         // Save any in-flight NPC state and cancel all scheduled tasks.
+        dev.hearthbound.npc.NpcPositionTracker.stop();
+        dev.hearthbound.npc.HearthboundDataStore.get().stopPeriodicFlush();
         dev.hearthbound.npc.HearthboundDataStore.get().save();
         dev.hearthbound.npc.NpcRegistry.get().stopReconcileTask();
         dev.hearthbound.util.TickScheduler.shutdown();

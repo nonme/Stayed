@@ -14,7 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
+
+import dev.hearthbound.util.TickScheduler;
 
 /**
  * Persists NPC registry data to disk so it survives server restarts.
@@ -48,6 +53,41 @@ public final class HearthboundDataStore {
 
     private HearthboundDataStore() {}
 
+    // Dirty flag: set by callers that mutate state we want persisted (notably
+    // NpcPositionTracker on significant moves). The flush task drains it every
+    // PERIODIC_SAVE_INTERVAL_MS, so we don't write the file every tick.
+    private final AtomicBoolean dirty = new AtomicBoolean(false);
+    private ScheduledFuture<?> flushTask = null;
+    private static final long PERIODIC_SAVE_INTERVAL_MS = 30_000L;
+
+    /** Marks the in-memory registry as having unsaved changes. */
+    public void markDirty() {
+        dirty.set(true);
+    }
+
+    /**
+     * Starts the periodic flush task. Idempotent — safe to call multiple times.
+     * The task runs on the shared scheduler and only writes when dirty=true,
+     * so it's effectively free when nothing has changed.
+     */
+    public void startPeriodicFlush() {
+        if (flushTask != null) return;
+        flushTask = TickScheduler.getExecutor().scheduleAtFixedRate(() -> {
+            if (dirty.compareAndSet(true, false)) {
+                save();
+            }
+        }, PERIODIC_SAVE_INTERVAL_MS, PERIODIC_SAVE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    public void stopPeriodicFlush() {
+        if (flushTask != null) {
+            flushTask.cancel(false);
+            flushTask = null;
+        }
+        // Final flush so we don't lose pending changes on shutdown.
+        if (dirty.getAndSet(false)) save();
+    }
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
@@ -65,8 +105,17 @@ public final class HearthboundDataStore {
                 UUID uuid = UUID.fromString(r.uuid);
                 NpcRegistry.InteractionType interaction =
                         NpcRegistry.InteractionType.valueOf(r.interaction);
-                registry.register(new NpcRegistry.NpcRecord(
-                        uuid, r.role, interaction, r.skinSeed, r.chunkIndex));
+                NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
+                        uuid, r.role, interaction, r.skinSeed, r.chunkIndex);
+                // Restore last-known position if present in the saved file. Boxed
+                // Doubles are null when the field didn't exist in older saves —
+                // hasPosition stays false in that case (backwards compatible).
+                if (r.hasPosition != null && r.hasPosition
+                        && r.lastX != null && r.lastY != null && r.lastZ != null) {
+                    record.setPosition(r.lastX, r.lastY, r.lastZ);
+                }
+                if (r.broken != null && r.broken) record.broken = true;
+                registry.register(record);
             } catch (Exception e) {
                 LOGGER.warning("Skipping invalid persisted NPC record: " + r.uuid + " — " + e.getMessage());
             }
@@ -97,6 +146,13 @@ public final class HearthboundDataStore {
             pr.interaction = r.interaction.name();
             pr.skinSeed    = r.skinSeed;
             pr.chunkIndex  = r.chunkIndex;
+            if (r.hasPosition) {
+                pr.hasPosition = true;
+                pr.lastX = r.lastX;
+                pr.lastY = r.lastY;
+                pr.lastZ = r.lastZ;
+            }
+            if (r.broken) pr.broken = true;
             data.npcs.add(pr);
         }
         for (Map.Entry<UUID, Long> entry : registry.getPendingRemovals().entrySet()) {
@@ -149,13 +205,23 @@ public final class HearthboundDataStore {
         List<PersistedPendingRemoval> pendingRemovals = new ArrayList<>();
     }
 
-    /** Plain data object — Gson serialises/deserialises this directly. */
+    /**
+     * Plain data object — Gson serialises/deserialises this directly.
+     *
+     * Boxed types (Double, Boolean) are used for the fields added after v1 of
+     * this format so they default to null when reading old saves. The load
+     * code treats null as "not present" rather than zero, so an old record
+     * doesn't accidentally pin an NPC to (0, 0, 0).
+     */
     private static final class PersistedRecord {
         String uuid;
         String role;
         String interaction;
         long   skinSeed;
         long   chunkIndex;
+        Double lastX, lastY, lastZ;
+        Boolean hasPosition;
+        Boolean broken;
     }
 
     private static final class PersistedPendingRemoval {

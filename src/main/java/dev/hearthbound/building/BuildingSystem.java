@@ -465,14 +465,18 @@ public class BuildingSystem {
         VillageManager mgr = VillageManager.get();
         mgr.completeBuilding(store, playerRef, record);
 
-        // After completion, draw a pathway from this building's door to the nearest existing
-        // completed building's door — gives the village an organic road network as it grows.
+        // After completion, recompute the full pathway network so a village that grew
+        // building-by-building converges to the same KNN+commute+warehouse graph the
+        // /hb pathways all knn command would produce. We don't clear existing tiles —
+        // A* is idempotent over them — so old roads simply remain in place when the
+        // new graph reroutes around them, which reads as the village's history.
         VillageData villageForPath = mgr.getVillageData(store, playerRef);
         if (villageForPath != null) {
-            int placed = PathwayBuilder.connectNewBuilding(world, villageForPath, record);
+            int placed = PathwayBuilder.connectAll(world, villageForPath);
             if (placed > 0) {
                 mgr.save(store, playerRef, villageForPath);
-                LOGGER.info("Pathway placed: " + placed + " blocks from " + record.getType());
+                LOGGER.info("Pathway network rebuilt after " + record.getType()
+                        + ": " + placed + " new blocks placed");
             }
         }
 

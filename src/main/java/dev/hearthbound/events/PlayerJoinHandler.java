@@ -38,6 +38,11 @@ public class PlayerJoinHandler {
             VillageTickHandler tickHandler = HearthboundPlugin.get().getVillageTickHandler();
             tickHandler.start(store, playerRef, pRef, world);
 
+            // Sync live NPC positions every few seconds — keeps registry chunkIndex
+            // and lastX/Y/Z accurate so we can recover NPCs that wander out of
+            // their original chunk before being saved.
+            dev.hearthbound.npc.NpcPositionTracker.start(world);
+
         } catch (Exception e) {
             LOGGER.warning("Failed to initialize village for player: " + e.getMessage());
         }

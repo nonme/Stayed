@@ -178,7 +178,18 @@ public class VillagerScheduler {
         VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
         String profession = summary != null ? summary.getProfession() : VillagerData.PROF_NONE;
 
-        ScheduleTarget target = resolveTarget(uuid, data, profession, village, house, farm, warehouse, sawmill, mine, time24);
+        // Personal workplace lookup beats the village-wide "first of type" fallback so each
+        // farmer/lumberjack/miner reports to the building that actually assigned them.
+        BuildingRecord ownFarm    = findVillagerWorkplace(village, uuid, BuildingType.FARM);
+        BuildingRecord ownSawmill = findVillagerWorkplace(village, uuid, BuildingType.SAWMILL);
+        BuildingRecord ownMine    = findVillagerWorkplace(village, uuid, BuildingType.MINE);
+
+        BuildingRecord effectiveFarm    = ownFarm    != null ? ownFarm    : farm;
+        BuildingRecord effectiveSawmill = ownSawmill != null ? ownSawmill : sawmill;
+        BuildingRecord effectiveMine    = ownMine    != null ? ownMine    : mine;
+
+        ScheduleTarget target = resolveTarget(uuid, data, profession, village, house,
+                effectiveFarm, warehouse, effectiveSawmill, effectiveMine, time24);
         if (target == null) return;
 
         ScheduleTarget prev = lastTarget.get(uuid);
@@ -337,6 +348,21 @@ public class VillagerScheduler {
         for (BuildingRecord b : village.getBuildings()) {
             if (!b.isCompleted()) continue;
             if (!BuildingType.isResidential(b.getType())) continue;
+            if (villagerUuid.equals(b.getAssignedVillagerId())) return b;
+        }
+        return null;
+    }
+
+    /**
+     * Returns the completed work building of {@code type} this villager is assigned to.
+     * Without this lookup, multiple farms (or sawmills/mines) of the same type all share
+     * the village-wide "first completed of type" target — every farmer ends up at the same
+     * farm regardless of which one assigned them.
+     */
+    private BuildingRecord findVillagerWorkplace(VillageData village, UUID villagerUuid, String type) {
+        for (BuildingRecord b : village.getBuildings()) {
+            if (!b.isCompleted()) continue;
+            if (!type.equals(b.getType())) continue;
             if (villagerUuid.equals(b.getAssignedVillagerId())) return b;
         }
         return null;

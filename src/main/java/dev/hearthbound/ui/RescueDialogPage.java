@@ -22,6 +22,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
+import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
@@ -276,58 +277,56 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private void spawnFollowerAndAdvanceObjective(Ref<EntityStore> playerRef, Store<EntityStore> store) {
         try {
-            com.hypixel.hytale.server.core.modules.entity.component.TransformComponent npcTransform =
-                    store.getComponent(npcRef, com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
-            com.hypixel.hytale.math.vector.Vector3d spawnPos =
-                    (npcTransform != null) ? npcTransform.getPosition() : null;
-
-            VillagerData victimData = store.getComponent(npcRef, VillagerData.getComponentType());
-            long skinSeed = (victimData != null) ? victimData.getSkinSeed() : 0L;
-
-            UUID oldUuid = NpcManager.extractUuid(store, npcRef);
-            if (oldUuid != null) {
-                NpcRegistry.get().unregister(oldUuid);
-            }
-
             advanceRescueObjective(playerRef, store);
             spawnReturnMarker(playerRef, store);
 
-            store.removeEntity(npcRef, com.hypixel.hytale.component.RemoveReason.REMOVE);
-
-            if (spawnPos == null) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: no transform on trapped NPC");
+            UUID rescueUuid = NpcManager.extractUuid(store, npcRef);
+            if (rescueUuid == null) {
+                LOGGER.warning("spawnFollowerAndAdvanceObjective: rescue NPC has no UUID");
+                return;
+            }
+            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(rescueUuid);
+            if (record == null) {
+                LOGGER.warning("spawnFollowerAndAdvanceObjective: no registry record for rescue NPC " + rescueUuid);
                 return;
             }
 
-            com.hypixel.hytale.math.vector.Vector3d followerPos =
-                    new com.hypixel.hytale.math.vector.Vector3d(spawnPos.getX(), spawnPos.getY() + 0.1, spawnPos.getZ());
-            var follower = NpcManager.spawnNpc(store, followerPos,
-                    new com.hypixel.hytale.math.vector.Vector3f(0, 0, 0), "Villager_Rescue_Follower");
-
-            if (follower == null) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: failed to spawn follower NPC");
+            // In-place role change: same entity, same engine UUID, same npcId.
+            // The Trapped behaviour tree is replaced by Follower; everything else
+            // (skin, position, VillagerData) stays put.
+            var npcEntity = store.getComponent(npcRef,
+                    com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType());
+            if (npcEntity == null) {
+                LOGGER.warning("spawnFollowerAndAdvanceObjective: NPCEntity null on rescue NPC");
                 return;
             }
-
-            Ref<EntityStore> followerRef = follower.first();
-
-            if (victimData != null) {
-                store.putComponent(followerRef, VillagerData.getComponentType(), victimData);
+            int followerRoleIndex = com.hypixel.hytale.server.npc.NPCPlugin.get()
+                    .getIndex("Villager_Rescue_Follower");
+            if (followerRoleIndex < 0) {
+                LOGGER.warning("spawnFollowerAndAdvanceObjective: follower role not registered");
+                return;
             }
+            com.hypixel.hytale.server.npc.systems.RoleChangeSystem.requestRoleChange(
+                    npcRef, npcEntity.getRole(), followerRoleIndex, false, store);
 
-            dev.hearthbound.npc.VillagerAppearance.apply(followerRef, store, skinSeed, 0);
+            // Update the registry to reflect the new role + interaction so a
+            // restart loads the NPC straight as a follower.
+            NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
+                    record.npcId, rescueUuid, "Villager_Rescue_Follower",
+                    NpcRegistry.InteractionType.FOLLOWER, record.skinSeed, record.chunkIndex);
+            if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
+            NpcRegistry.get().updateRecord(updated);
+            HearthboundDataStore.get().markDirty();
 
-            UUID followerUuid = NpcManager.extractUuid(store, followerRef);
-            if (followerUuid != null) {
-                long chunkIndex = NpcManager.chunkIndexFor(followerPos);
-                NpcRegistry.get().register(new NpcRegistry.NpcRecord(
-                        followerUuid, "Villager_Rescue_Follower",
-                        NpcRegistry.InteractionType.FOLLOWER, skinSeed, chunkIndex));
-                HearthboundDataStore.get().save();
+            RescueQuestManager.registerFollower(npcRef);
+            LOGGER.info("Rescue NPC role-changed to follower (UUID: " + rescueUuid + ")");
+
+            // Re-apply interaction (None for follower) and refresh skin after the
+            // async role change completes.
+            Player playerEntity = store.getComponent(playerRef, Player.getComponentType());
+            if (playerEntity != null) {
+                NpcRestorer.restoreAfterRoleChange(npcRef, playerEntity.getWorld(), updated);
             }
-
-            RescueQuestManager.registerFollower(followerRef);
-            LOGGER.info("Spawned rescue follower NPC at " + followerPos);
 
         } catch (Exception e) {
             LOGGER.warning("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());

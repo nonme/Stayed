@@ -8,6 +8,7 @@ import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.server.OpenCustomUIInteraction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import com.hypixel.hytale.event.EventPriority;
 import com.hypixel.hytale.server.core.universe.world.events.ChunkPreLoadProcessEvent;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.building.CraftabilityIndex;
@@ -72,7 +73,13 @@ public class HearthboundPlugin extends JavaPlugin {
         // Register ECS components
         VillageData.register(this.getEntityStoreRegistry());
         VillagerData.register(this.getEntityStoreRegistry());
+        // Legacy elf marker — kept registered so existing chunk saves can still
+        // be deserialised. New code uses StayedNpcIdentityComponent instead;
+        // NpcChunkLoadHandler migrates legacy entities on first load.
         dev.hearthbound.npc.ElfNpcComponent.register(this.getEntityStoreRegistry());
+        dev.hearthbound.npc.StayedNpcIdentityComponent.register(this.getEntityStoreRegistry());
+        dev.hearthbound.npc.StayedIntegrationTestNpcMarkerComponent.register(
+                this.getEntityStoreRegistry());
 
         // Register ECS event systems
         this.getEntityStoreRegistry().registerSystem(new BlockPlaceHandler());
@@ -83,6 +90,8 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new CounterHandler());
         this.getEntityStoreRegistry().registerSystem(new LumbermillHandler());
         this.getEntityStoreRegistry().registerSystem(new MineTorchHandler());
+        // Engine-level guard against duplicate NPC entities sharing one npcId.
+        this.getEntityStoreRegistry().registerSystem(new dev.hearthbound.npc.DuplicateNpcPrevention());
 
         // Register NPC interaction → Elf dialog page
         OpenCustomUIInteraction.registerCustomPageSupplier(
@@ -116,15 +125,33 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEventRegistry().register(LoadedAssetsEvent.class, Item.class, CraftabilityIndex::onItemsLoaded);
         this.getEventRegistry().register(LoadedAssetsEvent.class, ItemDropList.class, CraftabilityIndex::onDropListsLoaded);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, PlayerJoinHandler::onPlayerReady);
-        this.getEventRegistry().registerGlobal(ChunkPreLoadProcessEvent.class, NpcChunkLoadHandler::onChunkLoad);
+        // EventPriority.LAST: NPC plugin runs first and finishes deserialising
+        // identity components (e.g. StayedNpcIdentityComponent) before our
+        // handler walks the holders. Without this, Holder.getComponent returned
+        // null for every NPC at chunk-load time and we couldn't match entities
+        // to registry records.
+        this.getEventRegistry().registerGlobal(EventPriority.LAST,
+                ChunkPreLoadProcessEvent.class, NpcChunkLoadHandler::onChunkLoad);
 
         // Register commands
         this.getCommandRegistry().registerCommand(new HearthboundCommand());
     }
 
+    /**
+     * Starts the periodic NpcRegistry self-check once we have a world handle.
+     * Called from PlayerJoinHandler on the first PlayerReady event (the plugin
+     * does not get a world until at least one player joins).
+     */
+    public static void startSelfCheckIfNeeded(
+            com.hypixel.hytale.server.core.universe.world.World world) {
+        if (world == null) return;
+        dev.hearthbound.test.audit.NpcRegistrySelfCheck.start(world);
+    }
+
     @Override
     protected void shutdown() {
         // Save any in-flight NPC state and cancel all scheduled tasks.
+        dev.hearthbound.test.audit.NpcRegistrySelfCheck.stop();
         dev.hearthbound.npc.NpcPositionTracker.stop();
         dev.hearthbound.npc.HearthboundDataStore.get().stopPeriodicFlush();
         dev.hearthbound.npc.HearthboundDataStore.get().save();

@@ -596,12 +596,20 @@ public final class RescueQuestManager {
             long chunkIndex = NpcManager.chunkIndexFor(pos);
             NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
                     victimUuid, VARIANT_VICTIM_ROLE, NpcRegistry.InteractionType.RESCUE, skinSeed, chunkIndex);
-            NpcRegistry.get().register(record);
+            record.setPosition(pos.getX(), pos.getY(), pos.getZ());
+            NpcRegistry.get().registerWithIdentity(store, victimRef, record);
             HearthboundDataStore.get().save();
             NpcRestorer.restore(victimRef, store, world, record);
         }
     }
 
+    /**
+     * Spawns a hostile mob as part of a rescue camp. Enemies are intentionally
+     * NOT registered in {@link NpcRegistry}: a killed goblin should stay dead,
+     * and orphan duplicates in unloaded chunks are not our problem (they have
+     * no Stayed identity component, so {@link dev.hearthbound.npc.DuplicateNpcPrevention}
+     * leaves them alone).
+     */
     private static void spawnEnemy(Store<EntityStore> store, Vector3d pos, String role) {
         Pair<Ref<EntityStore>, INonPlayerCharacter> result
                 = NpcManager.spawnNpc(store, pos, new Vector3f(0, 0, 0), role);
@@ -611,13 +619,6 @@ public final class RescueQuestManager {
         }
         Ref<EntityStore> enemyRef = result.first();
         activeNpcRefs.add(enemyRef);
-        UUID enemyUuid = NpcManager.extractUuid(store, enemyRef);
-        if (enemyUuid != null) {
-            long chunkIndex = NpcManager.chunkIndexFor(pos);
-            NpcRegistry.get().register(new NpcRegistry.NpcRecord(
-                    enemyUuid, role, NpcRegistry.InteractionType.NONE, 0L, chunkIndex));
-            HearthboundDataStore.get().save();
-        }
     }
 
     private static String[] enemyRolesFor(QuestVariant variant) {

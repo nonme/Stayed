@@ -20,7 +20,6 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.math.vector.Vector3d;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.npc.NpcRegistry;
-import dev.hearthbound.npc.NpcRespawner;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -475,36 +474,24 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
             return;
         }
 
-        // Entity not in any loaded chunk. Force-load the last-known chunk, then
-        // either moveTo (entity returned) or respawn-on-the-spot (entity gone).
+        // Entity not in any loaded chunk. Force-load the last-known chunk and
+        // try moveTo. If the entity is gone for good, NpcChunkLoadHandler will
+        // spawn a fresh one at the saved position next time a relevant chunk
+        // loads — we don't run a parallel respawn path here.
         NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(villagerUuid);
         if (record == null) {
             LOGGER.warning("recallVillager: no NpcRecord for uuid=" + villagerUuid);
             return;
         }
         world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() -> {
-            // Give the chunk ~1.5s to deserialise its entities before checking.
             dev.hearthbound.util.TickScheduler.runLater(world, 1500L, () -> {
                 Entity reloaded = world.getEntity(villagerUuid);
                 if (reloaded != null) {
                     doMoveTo(villagerUuid, standX, standY, standZ);
                     return;
                 }
-                // Entity is gone — respawn at the recall point. The new entity gets a
-                // new UUID; NpcRespawner rewrites the village data so the resident is
-                // still tied to this house.
-                LOGGER.warning("recallVillager: entity not in chunk after force-load — respawning at brazier");
-                Store<EntityStore> liveStore = world.getEntityStore().getStore();
-                NpcRegistry.NpcRecord liveRecord = NpcRegistry.get().getRecord(villagerUuid);
-                if (liveRecord == null) return;
-                NpcRespawner.respawn(world, liveStore, playerRef, liveRecord,
-                                new Vector3d(standX, standY, standZ))
-                        .thenAccept(result -> {
-                            if (!result.ok) {
-                                LOGGER.warning("recallVillager: respawn failed: " + result.reason);
-                                NpcRegistry.get().recordRespawnFailure(villagerUuid);
-                            }
-                        });
+                LOGGER.warning("recallVillager: entity not in chunk after force-load uuid="
+                        + villagerUuid + " — record kept; NpcChunkLoadHandler will respawn on next chunk reload");
             });
         }));
     }

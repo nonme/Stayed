@@ -104,8 +104,10 @@ public class SpawnVillagerCommand extends AbstractPlayerCommand {
 
         if (npcUuid != null) {
             long chunkIndex = NpcManager.chunkIndexFor(spawnPos);
-            NpcRegistry.get().register(new NpcRegistry.NpcRecord(
-                    npcUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex));
+            NpcRegistry.NpcRecord rec = new NpcRegistry.NpcRecord(
+                    npcUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
+            rec.setPosition(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
+            NpcRegistry.get().registerWithIdentity(store, npcRef, rec);
             HearthboundDataStore.get().save();
         }
 

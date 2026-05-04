@@ -12,7 +12,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -25,18 +24,17 @@ import dev.hearthbound.util.TickScheduler;
  * Persists NPC registry data to disk so it survives server restarts.
  *
  * - File: mods/HearthboundData/data.json
- * - Written atomically via temp file to avoid partial writes on crash
- * - Loaded at plugin startup to populate NpcRegistry before any chunks load
+ * - Atomic write via temp file + ATOMIC_MOVE (so a crash mid-write can't tear).
+ * - Loaded once at startup before any chunk loads.
  *
- * Format:
- * {
- *   "npcs": [
- *     { "uuid": "...", "role": "...", "interaction": "ELF|RESCUE|NONE",
- *       "skinSeed": 0, "chunkIndex": 12345 },
- *     ...
- *   ],
- *   "pendingRemovals": [ "uuid1", "uuid2", ... ]
- * }
+ * Migration: records written by older versions did not contain the `npcId`
+ * field. On load we synthesise one from the engine UUID as a string, so the
+ * stable identity is identical to what the entity already carried.
+ *
+ * Deferred removals are persisted because reset/test cleanup can delete the
+ * registry record while the physical entity is asleep in an unloaded chunk.
+ * Without a durable tombstone, a server restart turns that entity into an
+ * orphan carrying HB_NPCID with no matching record.
  */
 public final class HearthboundDataStore {
 
@@ -53,23 +51,14 @@ public final class HearthboundDataStore {
 
     private HearthboundDataStore() {}
 
-    // Dirty flag: set by callers that mutate state we want persisted (notably
-    // NpcPositionTracker on significant moves). The flush task drains it every
-    // PERIODIC_SAVE_INTERVAL_MS, so we don't write the file every tick.
     private final AtomicBoolean dirty = new AtomicBoolean(false);
     private ScheduledFuture<?> flushTask = null;
     private static final long PERIODIC_SAVE_INTERVAL_MS = 30_000L;
 
-    /** Marks the in-memory registry as having unsaved changes. */
     public void markDirty() {
         dirty.set(true);
     }
 
-    /**
-     * Starts the periodic flush task. Idempotent — safe to call multiple times.
-     * The task runs on the shared scheduler and only writes when dirty=true,
-     * so it's effectively free when nothing has changed.
-     */
     public void startPeriodicFlush() {
         if (flushTask != null) return;
         flushTask = TickScheduler.getExecutor().scheduleAtFixedRate(() -> {
@@ -84,64 +73,68 @@ public final class HearthboundDataStore {
             flushTask.cancel(false);
             flushTask = null;
         }
-        // Final flush so we don't lose pending changes on shutdown.
         if (dirty.getAndSet(false)) save();
     }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
-
-    /**
-     * Loads all NPC records from disk and registers them in NpcRegistry.
-     * Call once at plugin startup before any player joins.
-     */
     public void loadAndPopulateRegistry() {
         PersistedData data = loadFromDisk();
         NpcRegistry registry = NpcRegistry.get();
         registry.clear();
+
+        int migrated = 0;
         for (PersistedRecord r : data.npcs) {
             try {
-                UUID uuid = UUID.fromString(r.uuid);
+                UUID entityUuid = UUID.fromString(r.uuid);
                 NpcRegistry.InteractionType interaction =
                         NpcRegistry.InteractionType.valueOf(r.interaction);
+
+                String npcId = (r.npcId != null && !r.npcId.isBlank()) ? r.npcId : r.uuid;
+                if (r.npcId == null || r.npcId.isBlank()) migrated++;
+
                 NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
-                        uuid, r.role, interaction, r.skinSeed, r.chunkIndex);
-                // Restore last-known position if present in the saved file. Boxed
-                // Doubles are null when the field didn't exist in older saves —
-                // hasPosition stays false in that case (backwards compatible).
+                        npcId, entityUuid, r.role, interaction, r.skinSeed, r.chunkIndex);
+
                 if (r.hasPosition != null && r.hasPosition
                         && r.lastX != null && r.lastY != null && r.lastZ != null) {
                     record.setPosition(r.lastX, r.lastY, r.lastZ);
                 }
-                if (r.broken != null && r.broken) record.broken = true;
+                if (r.testMarker != null && !r.testMarker.isBlank()) {
+                    record.testMarker = r.testMarker;
+                }
+
                 registry.register(record);
             } catch (Exception e) {
                 LOGGER.warning("Skipping invalid persisted NPC record: " + r.uuid + " — " + e.getMessage());
             }
         }
-        for (PersistedPendingRemoval pr : data.pendingRemovals) {
-            try {
-                registry.markForRemoval(UUID.fromString(pr.uuid), pr.chunkIndex);
-            } catch (Exception e) {
-                LOGGER.warning("Skipping invalid pending removal: " + pr.uuid);
+
+        int pendingLoaded = 0;
+        if (data.pendingRemovals != null) {
+            for (PersistedPendingRemoval r : data.pendingRemovals) {
+                if (r == null || r.uuid == null || r.uuid.isBlank()) continue;
+                try {
+                    registry.markForRemoval(UUID.fromString(r.uuid), r.chunkIndex);
+                    pendingLoaded++;
+                } catch (Exception e) {
+                    LOGGER.warning("Skipping invalid pending NPC removal: " + r.uuid + " — " + e.getMessage());
+                }
             }
         }
-        LOGGER.info("HearthboundDataStore: loaded " + data.npcs.size() + " NPC record(s), "
-                + data.pendingRemovals.size() + " pending removal(s) from disk");
+
+        LOGGER.info("HearthboundDataStore: loaded " + data.npcs.size() + " NPC record(s) from disk"
+                + (migrated > 0 ? " (" + migrated + " migrated to npcId)" : "")
+                + (pendingLoaded > 0 ? ", pending removals=" + pendingLoaded : ""));
+        if (migrated > 0) markDirty();
     }
 
-    /**
-     * Persists the current NpcRegistry state (records + pending removals) to disk.
-     * Call after any spawn, respawn, or despawn that changes the registry.
-     */
     public void save() {
         NpcRegistry registry = NpcRegistry.get();
 
         PersistedData data = new PersistedData();
         for (NpcRegistry.NpcRecord r : registry.allRecords()) {
             PersistedRecord pr = new PersistedRecord();
-            pr.uuid        = r.entityUuid.toString();
+            pr.npcId       = r.npcId;
+            pr.uuid        = r.entityUuid != null ? r.entityUuid.toString() : "";
             pr.role        = r.roleName;
             pr.interaction = r.interaction.name();
             pr.skinSeed    = r.skinSeed;
@@ -152,14 +145,17 @@ public final class HearthboundDataStore {
                 pr.lastY = r.lastY;
                 pr.lastZ = r.lastZ;
             }
-            if (r.broken) pr.broken = true;
+            if (r.testMarker != null && !r.testMarker.isBlank()) {
+                pr.testMarker = r.testMarker;
+            }
             data.npcs.add(pr);
         }
-        for (Map.Entry<UUID, Long> entry : registry.getPendingRemovals().entrySet()) {
-            PersistedPendingRemoval ppr = new PersistedPendingRemoval();
-            ppr.uuid       = entry.getKey().toString();
-            ppr.chunkIndex = entry.getValue();
-            data.pendingRemovals.add(ppr);
+
+        for (java.util.Map.Entry<UUID, Long> e : registry.getPendingRemovals().entrySet()) {
+            PersistedPendingRemoval pending = new PersistedPendingRemoval();
+            pending.uuid = e.getKey().toString();
+            pending.chunkIndex = e.getValue();
+            data.pendingRemovals.add(pending);
         }
 
         try {
@@ -171,16 +167,11 @@ public final class HearthboundDataStore {
             Files.move(tmp, DATA_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
-            LOGGER.fine("HearthboundDataStore: saved " + data.npcs.size() + " NPC(s), "
-                    + data.pendingRemovals.size() + " pending removal(s)");
+            LOGGER.fine("HearthboundDataStore: saved " + data.npcs.size() + " NPC(s)");
         } catch (IOException e) {
             LOGGER.warning("HearthboundDataStore: failed to save data: " + e.getMessage());
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Internal
-    // -------------------------------------------------------------------------
 
     private PersistedData loadFromDisk() {
         if (!Files.exists(DATA_FILE)) {
@@ -191,7 +182,6 @@ public final class HearthboundDataStore {
             PersistedData data = GSON.fromJson(reader, PersistedData.class);
             if (data == null) return new PersistedData();
             if (data.npcs == null) data.npcs = new ArrayList<>();
-            if (data.pendingRemovals == null) data.pendingRemovals = new ArrayList<>();
             return data;
         } catch (Exception e) {
             LOGGER.warning("HearthboundDataStore: failed to load data: " + e.getMessage());
@@ -201,19 +191,22 @@ public final class HearthboundDataStore {
 
     /** Top-level persisted structure. */
     private static final class PersistedData {
-        List<PersistedRecord>         npcs            = new ArrayList<>();
+        List<PersistedRecord> npcs = new ArrayList<>();
         List<PersistedPendingRemoval> pendingRemovals = new ArrayList<>();
     }
 
     /**
      * Plain data object — Gson serialises/deserialises this directly.
      *
-     * Boxed types (Double, Boolean) are used for the fields added after v1 of
-     * this format so they default to null when reading old saves. The load
-     * code treats null as "not present" rather than zero, so an old record
-     * doesn't accidentally pin an NPC to (0, 0, 0).
+     * `npcId` was added in the post-rewrite format. Old files have it as null;
+     * the load path synthesises a value from `uuid` so the stable identity is
+     * identical to the entity's engine UUID at the time of migration.
+     *
+     * `broken` (legacy circuit breaker) and similar fields are no longer kept.
+     * Gson silently ignores any extra keys present in old files.
      */
     private static final class PersistedRecord {
+        String npcId;
         String uuid;
         String role;
         String interaction;
@@ -221,11 +214,16 @@ public final class HearthboundDataStore {
         long   chunkIndex;
         Double lastX, lastY, lastZ;
         Boolean hasPosition;
-        Boolean broken;
+        /**
+         * Set on records spawned by the integration test framework. Lets
+         * {@code /hb test cleanup} find and delete leftover test NPCs after
+         * a server restart that interrupted teardown.
+         */
+        String testMarker;
     }
 
     private static final class PersistedPendingRemoval {
         String uuid;
-        long   chunkIndex;
+        long chunkIndex;
     }
 }

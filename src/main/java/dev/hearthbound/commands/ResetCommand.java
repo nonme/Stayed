@@ -1,6 +1,8 @@
 package dev.hearthbound.commands;
 
+import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.Message;
@@ -17,12 +19,18 @@ import dev.hearthbound.building.PathwayBuilder;
 import dev.hearthbound.npc.ElfSage;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcRegistry;
+import dev.hearthbound.npc.StayedNpcIdentityComponent;
 import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillagerSummary;
 
+import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
+
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,7 +60,9 @@ public class ResetCommand extends AbstractPlayerCommand {
         RescueQuestManager.cleanup(store);
 
         // Despawn the elf — defers to chunk load if it's in an unloaded chunk.
+        Set<UUID> doomedNpcUuids = new HashSet<>();
         if (oldData != null && oldData.getElfId() != null) {
+            doomedNpcUuids.add(oldData.getElfId());
             removeNpc(store, world, oldData.getElfId());
         }
 
@@ -68,10 +78,23 @@ public class ResetCommand extends AbstractPlayerCommand {
             for (VillagerSummary v : oldData.getVillagers()) {
                 UUID uuid = v.getVillagerUuid();
                 if (uuid != null) {
+                    doomedNpcUuids.add(uuid);
                     removeNpc(store, world, uuid);
                 }
             }
         }
+
+        // Reset means "wipe Stayed NPC state", not only "wipe NPCs still
+        // referenced by VillageData". Old broken test/rescue paths can leave
+        // registry records or loaded entities outside the current village;
+        // remove them too before clearRecords() would make them orphans.
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record.entityUuid != null) {
+                doomedNpcUuids.add(record.entityUuid);
+                removeNpc(store, world, record.entityUuid);
+            }
+        }
+        removeLoadedManagedNpcs(store, doomedNpcUuids);
 
         // Restore grass over registered pathway blocks before we wipe VillageData. Otherwise
         // the registry vanishes and the pathway tiles linger in the world without an undo handle.
@@ -127,6 +150,41 @@ public class ResetCommand extends AbstractPlayerCommand {
         NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
         long chunkIndex = record != null ? record.chunkIndex : 0L;
         NpcRegistry.get().markForRemoval(uuid, chunkIndex);
+    }
+
+    /**
+     * Catches every loaded Stayed-managed NPC before reset clears the registry.
+     * If it carries HB_NPCID, it belongs to this mod and must not survive a
+     * full reset as a future orphan.
+     */
+    private static void removeLoadedManagedNpcs(Store<EntityStore> store, Set<UUID> doomedNpcUuids) {
+        java.util.List<Ref<EntityStore>> refsToRemove = new java.util.ArrayList<>();
+        Archetype<EntityStore> npcQuery = Archetype.of(NPCEntity.getComponentType());
+        store.forEachChunk(npcQuery, (chunk, buffer) -> {
+            for (int i = 0; i < chunk.size(); i++) {
+                Ref<EntityStore> ref = chunk.getReferenceTo(i);
+                StayedNpcIdentityComponent identity = store.getComponent(
+                        ref, StayedNpcIdentityComponent.getComponentType());
+                if (identity == null || identity.getNpcId() == null || identity.getNpcId().isBlank()) {
+                    continue;
+                }
+                UUIDComponent uc = store.getComponent(ref, UUIDComponent.getComponentType());
+                UUID entityUuid = uc != null ? uc.getUuid() : null;
+                boolean explicitlyDoomed = entityUuid != null && doomedNpcUuids.contains(entityUuid);
+                boolean orphan = NpcRegistry.get().getRecordByNpcId(identity.getNpcId()) == null;
+                boolean managedByRegistry = NpcRegistry.get().getRecordByNpcId(identity.getNpcId()) != null;
+                if (explicitlyDoomed || orphan || managedByRegistry) {
+                    refsToRemove.add(ref);
+                }
+            }
+        });
+        for (Ref<EntityStore> ref : refsToRemove) {
+            try {
+                store.removeEntity(ref, RemoveReason.REMOVE);
+            } catch (Exception ignored) {
+                // reset is best-effort; deferred removals handle unloaded entities
+            }
+        }
     }
 
     /** Returns the block id at the given world coords, or "Empty" if the chunk is unloaded. */

@@ -61,8 +61,13 @@ public class VillageTickHandler {
     private VillageHud hud;
     private final VillagerScheduler villagerScheduler = new VillagerScheduler();
 
+    private Ref<EntityStore> lastPlayerRef;
+    private World lastWorld;
+
     public void start(Store<EntityStore> store, Ref<EntityStore> playerRef, PlayerRef player, World world) {
         stop();
+        this.lastPlayerRef = playerRef;
+        this.lastWorld = world;
 
         tickTask = TickScheduler.runRepeating(world, TICK_INTERVAL_MS, TICK_INTERVAL_MS, () -> {
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
@@ -70,6 +75,22 @@ public class VillageTickHandler {
         });
 
         LOGGER.info("VillageTickHandler started");
+    }
+
+    /**
+     * Synchronously runs one full village tick using the most recent player/world
+     * pair captured by {@link #start}. Intended for the integration test framework
+     * (ForceVillageTickStep) where we need to fast-forward the housing/role
+     * assignment loop instead of waiting out the 5 s scheduler interval.
+     *
+     * Must be called on the world thread (the test runner already schedules its
+     * steps via {@code world.execute(...)} so this is satisfied).
+     */
+    public void runOneTickNow() {
+        if (lastPlayerRef == null || lastWorld == null) return;
+        if (!lastPlayerRef.isValid()) return;
+        Store<EntityStore> liveStore = lastWorld.getEntityStore().getStore();
+        tick(liveStore, lastPlayerRef, lastWorld);
     }
 
     public void stop() {
@@ -119,42 +140,17 @@ public class VillageTickHandler {
         // Don't convert while the player is still walking back — wait for Return objective to finish
         if (isReturnObjectiveActive(store, playerRef)) return;
 
-        // Walk every RESCUE-tagged registry record. This covers both loaded and unloaded NPCs,
-        // and handles the race where the player flies away before RoleChangeSystem runs:
-        //   - NPC loaded as Trapped  → re-apply Follower role change here, convert next tick
-        //   - NPC loaded as Follower → convert immediately
-        //   - NPC in unloaded chunk  → force-load so it appears on the next tick
+        // Walk RESCUE/FOLLOWER records. We only act on entities whose chunk is
+        // currently loaded — a follower in an unloaded chunk will be picked up
+        // by NpcChunkLoadHandler the moment its chunk reloads, no need for an
+        // active force-load here.
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
             if (record.interaction != NpcRegistry.InteractionType.RESCUE
                     && record.interaction != NpcRegistry.InteractionType.FOLLOWER) continue;
+            if (record.entityUuid == null) continue;
 
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
-            if (ref == null || !ref.isValid()) {
-                // Chunk not loaded — load it, then convert immediately in the callback
-                // instead of waiting for the next tick (chunk may unload again by then).
-                if (!record.restorePending) {
-                    LOGGER.info("convertAllFollowers: loading chunk for follower uuid="
-                            + record.entityUuid + " chunkIndex=" + record.chunkIndex);
-                    final NpcRegistry.NpcRecord rec = record;
-                    world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() -> {
-                        Store<EntityStore> liveStore = world.getEntityStore().getStore();
-                        Ref<EntityStore> liveRef = world.getEntityRef(rec.entityUuid);
-                        if (liveRef == null || !liveRef.isValid()) return;
-                        NPCEntity liveNpc = liveStore.getComponent(liveRef, NPCEntity.getComponentType());
-                        if (liveNpc == null) return;
-                        String role = liveNpc.getRoleName();
-                        VillageData liveVillage = VillageManager.get().getVillageData(liveStore, playerRef);
-                        if (liveVillage == null) return;
-                        if (FOLLOWER_ROLE.equals(role)) {
-                            convertFollowerToVillager(liveStore, playerRef, liveRef, liveVillage, world);
-                        } else if (VICTIM_ROLE.equals(role) && FOLLOWER_ROLE.equals(rec.roleName)) {
-                            int idx = NPCPlugin.get().getIndex(FOLLOWER_ROLE);
-                            if (idx >= 0) RoleChangeSystem.requestRoleChange(liveRef, liveNpc.getRole(), idx, false, liveStore);
-                        }
-                    }));
-                }
-                continue;
-            }
+            if (ref == null || !ref.isValid()) continue;
 
             NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
             if (npcEntity == null) continue;
@@ -162,19 +158,17 @@ public class VillageTickHandler {
             String currentRole = npcEntity.getRoleName();
 
             if (FOLLOWER_ROLE.equals(currentRole)) {
-                // Ready to convert — reload village in case a previous iteration saved it
                 VillageData liveVillage = VillageManager.get().getVillageData(store, playerRef);
                 if (liveVillage == null) continue;
                 convertFollowerToVillager(store, playerRef, ref, liveVillage, world);
 
             } else if (VICTIM_ROLE.equals(currentRole) && FOLLOWER_ROLE.equals(record.roleName)) {
-                // RoleChangeSystem hasn't applied the role change yet (player flew away immediately
-                // after dialog). The registry was already updated to FOLLOWER_ROLE by RescueDialogPage,
-                // so we know the player agreed to join — re-apply the role change here.
+                // RoleChangeSystem hasn't applied yet (player flew away right after dialog).
+                // Registry already says Follower → re-issue the role change.
                 int followerRoleIndex = NPCPlugin.get().getIndex(FOLLOWER_ROLE);
                 if (followerRoleIndex >= 0) {
                     RoleChangeSystem.requestRoleChange(ref, npcEntity.getRole(), followerRoleIndex, false, store);
-                    LOGGER.info("convertAllFollowers: re-applied Trapped→Follower role change for uuid="
+                    LOGGER.info("convertAllFollowers: re-applied Trapped->Follower role change for uuid="
                             + record.entityUuid);
                 }
             }
@@ -228,11 +222,16 @@ public class VillageTickHandler {
             // interaction to a villager, and the saved role name would still say Follower.
             if (followerUuid != null) {
                 NpcRegistry.NpcRecord oldRecord = NpcRegistry.get().getRecord(followerUuid);
+                String npcId = oldRecord != null ? oldRecord.npcId : UUID.randomUUID().toString();
                 long skinSeed = oldRecord != null ? oldRecord.skinSeed : 0L;
                 long chunkIndex = oldRecord != null ? oldRecord.chunkIndex : 0L;
-                NpcRegistry.get().updateRecord(new NpcRegistry.NpcRecord(
-                        followerUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex));
-                HearthboundDataStore.get().save();
+                NpcRegistry.NpcRecord newRecord = new NpcRegistry.NpcRecord(
+                        npcId, followerUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
+                if (oldRecord != null && oldRecord.hasPosition) {
+                    newRecord.setPosition(oldRecord.lastX, oldRecord.lastY, oldRecord.lastZ);
+                }
+                NpcRegistry.get().updateRecord(newRecord);
+                HearthboundDataStore.get().markDirty();
             }
 
             LOGGER.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");
@@ -502,6 +501,8 @@ public class VillageTickHandler {
                 double doorX = stand[0], doorY = stand[1], doorZ = stand[2];
 
                 entity.moveTo(villagerRef, doorX, doorY, doorZ, liveStore);
+                NpcRegistry.get().updatePosition(assignedUuid, doorX, doorY, doorZ);
+                dev.hearthbound.npc.HearthboundDataStore.get().markDirty();
 
                 // Mark villager as housed so hasHome() returns true and happiness shows correctly.
                 VillagerData vd = liveStore.getComponent(villagerRef, VillagerData.getComponentType());

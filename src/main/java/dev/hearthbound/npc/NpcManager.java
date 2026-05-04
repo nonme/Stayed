@@ -71,6 +71,9 @@ public class NpcManager {
      * Computes the chunk index for a world position.
      */
     public static long chunkIndexFor(Vector3d position) {
-        return ChunkUtil.indexChunkFromBlock((int) position.getX(), (int) position.getZ());
+        // HyCitizens-style: pass doubles so ChunkUtil uses MathUtil.floor internally.
+        // (int) cast truncates toward zero on negative coords and gives a different
+        // chunk than the engine actually places the entity in (off by one).
+        return ChunkUtil.indexChunkFromBlock(position.getX(), position.getZ());
     }
 }

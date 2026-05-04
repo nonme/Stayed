@@ -24,6 +24,7 @@ public class BuildingRecord {
             .append(new KeyedCodec<>("AssignedVillager", Codec.UUID_STRING), BuildingRecord::setAssignedVillagerId, BuildingRecord::getAssignedVillagerId).add()
             .append(new KeyedCodec<>("Storage", STORAGE_CODEC), BuildingRecord::setStorage, BuildingRecord::getStorage).add()
             .append(new KeyedCodec<>("Variant", Codec.INTEGER), BuildingRecord::setVariant, BuildingRecord::getVariant).add()
+            .append(new KeyedCodec<>("TestMarker", Codec.STRING), BuildingRecord::setTestMarker, BuildingRecord::getTestMarker).add()
             .build();
 
     private String type = "";
@@ -38,6 +39,13 @@ public class BuildingRecord {
      * 0 = original prefab, matches old saves where this field is absent.
      */
     private int variant = 0;
+
+    /**
+     * Non-null only on buildings created by the integration test framework
+     * (FakeBuildingStep). Lets cleanup steps remove just the test buildings
+     * without touching real player constructions.
+     */
+    private String testMarker = null;
 
     public BuildingRecord() {}
 
@@ -79,6 +87,9 @@ public class BuildingRecord {
 
     public int getVariant() { return variant; }
     public void setVariant(int variant) { this.variant = variant; }
+
+    public String getTestMarker() { return testMarker; }
+    public void setTestMarker(String testMarker) { this.testMarker = testMarker; }
 
     /** Adds {@code amount} of {@code itemId} to the local storage. Returns the new total. */
     public int addResource(String itemId, int amount) {

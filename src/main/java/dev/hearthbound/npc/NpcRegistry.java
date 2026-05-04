@@ -1,7 +1,6 @@
 package dev.hearthbound.npc;
 
 import com.hypixel.hytale.math.util.ChunkUtil;
-import com.hypixel.hytale.server.core.universe.world.World;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,20 +8,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import dev.hearthbound.util.TickScheduler;
-
 /**
- * In-memory registry of all Hearthbound NPCs, independent of BSON.
+ * In-memory registry of all Stayed-managed NPCs.
  *
- * - NPC state stored here, not in BSON
- * - ChunkPreLoadProcessEvent triggers restore polling via scheduleRestoreOne()
- * - reconcileTask() runs every 1s and re-restores any NPC whose ref became invalid —
- *   this is the fix for getEntityRef() timeout when the player is far from the NPC chunk
- * - pendingRemovals: deferred deletion for NPCs in unloaded chunks
+ * Indexed by two keys:
+ *   - npcId         — stable plugin-level identity (UUID string), the primary key.
+ *                     Survives respawns; written to BSON on the entity via
+ *                     {@link StayedNpcIdentityComponent}.
+ *   - entityUuid    — the engine UUIDComponent value of the currently spawned entity.
+ *                     Changes whenever an NPC is replaced (e.g. lost-and-respawned).
+ *
+ * Restoration flow lives in {@link dev.hearthbound.events.NpcChunkLoadHandler}:
+ * on chunk load, the handler scans entities in the chunk, matches them to records
+ * by npcId (read from {@link StayedNpcIdentityComponent}), spawns fresh entities
+ * for records whose entity is missing, and re-applies skin and interaction. The
+ * registry itself runs no schedulers — it is a passive store.
  */
 public final class NpcRegistry {
 
@@ -34,54 +36,62 @@ public final class NpcRegistry {
         return INSTANCE;
     }
 
-    private static final long POLL_INTERVAL_MS      = 200;
-    private static final long POLL_TIMEOUT_MS       = 12_000;
-    private static final long RECONCILE_INTERVAL_MS = 1_000;
-
     public enum InteractionType { ELF, RESCUE, FOLLOWER, VILLAGER, NONE }
 
     /**
-     * Everything needed to restore — or fully respawn — an NPC.
-     * Stored outside BSON — survives chunk unload without any BSON dependency.
+     * Persistent identity + restoration data for one NPC.
      *
-     * Position fields (lastX/Y/Z) are updated continuously by NpcPositionTracker and
-     * give us a respawn point if the original entity is lost (entity removed, BSON
-     * corruption, world wipe). chunkIndex is derived from the position.
+     * Position fields (lastX/Y/Z) are kept up to date by {@link NpcPositionTracker}
+     * and serve as the spawn-point fallback when the original entity is missing
+     * after chunk load.
+     *
+     * Backwards-compatibility note: this class keeps every public field that
+     * existed in the previous registry (entityUuid, roleName, interaction,
+     * skinSeed, chunkIndex, hasPosition, lastX/Y/Z, broken, restorePending) so
+     * callsites elsewhere in the mod compile unchanged. New code should prefer
+     * {@link #npcId}, which is the durable identity.
      */
     public static final class NpcRecord {
-        public final UUID entityUuid;
+        /** Stable plugin-level identity. Mirrors {@link StayedNpcIdentityComponent#getNpcId()}. */
+        public volatile String npcId;
+        /** Engine UUID of the currently spawned entity. Mutates when the entity is respawned. */
+        public volatile UUID entityUuid;
         public final String roleName;
         public final InteractionType interaction;
         /** Non-zero for villagers/rescue victims that need a skin applied. */
         public final long skinSeed;
-        /** Chunk index where this NPC was last seen. Updated on successful restore and on position sync. */
+        /** Chunk index where this NPC was last seen. Updated on position sync. */
         public volatile long chunkIndex;
         /** Last known world position. Valid only when hasPosition=true. */
         public volatile double lastX, lastY, lastZ;
-        /** False until the first position sync — old records loaded from disk start out without coords. */
+        /** False until the first position sync. */
         public volatile boolean hasPosition;
-        /**
-         * True while scheduleRestoreOne() is actively polling for this entity.
-         * Prevents reconcileTask from launching a duplicate polling loop.
-         */
+        /** Reserved — no longer set by registry code; kept so older save files load. */
         public volatile boolean restorePending = false;
-        /**
-         * Circuit breaker state for the respawn fallback. After too many failed
-         * respawns, we mark the NPC broken and stop trying so a single bad role
-         * config or corrupt data can't burn CPU forever.
-         */
-        public volatile int respawnFailCount = 0;
-        public volatile long firstFailTimeMs = 0L;
+        /** Reserved — no longer set by registry code; kept so older save files load. */
         public volatile boolean broken = false;
-        /** Set once we've notified the player about a broken NPC, to avoid chat-spamming. */
+        /** Reserved — no longer set by registry code; kept so older save files load. */
         public volatile boolean brokenNotified = false;
+        /**
+         * Non-null only on records created by the integration test framework.
+         * Stored as the test name that spawned this NPC; lets {@code /hb test
+         * cleanup} find and remove leftover test NPCs even after a server
+         * restart that interrupted teardown. Persisted to data.json.
+         */
+        public volatile String testMarker = null;
 
         public NpcRecord(UUID entityUuid, String roleName, InteractionType interaction,
                          long skinSeed, long chunkIndex) {
+            this(UUID.randomUUID().toString(), entityUuid, roleName, interaction, skinSeed, chunkIndex);
+        }
+
+        public NpcRecord(String npcId, UUID entityUuid, String roleName, InteractionType interaction,
+                         long skinSeed, long chunkIndex) {
+            this.npcId = npcId != null ? npcId : UUID.randomUUID().toString();
             this.entityUuid = entityUuid;
-            this.roleName   = roleName;
+            this.roleName = roleName;
             this.interaction = interaction;
-            this.skinSeed   = skinSeed;
+            this.skinSeed = skinSeed;
             this.chunkIndex = chunkIndex;
         }
 
@@ -93,388 +103,192 @@ public final class NpcRegistry {
         }
     }
 
-    // uuid → record
-    private final ConcurrentHashMap<UUID, NpcRecord> records = new ConcurrentHashMap<>();
+    // npcId → record (primary index)
+    private final ConcurrentHashMap<String, NpcRecord> byNpcId = new ConcurrentHashMap<>();
+    // entityUuid → record (secondary lookup; mutates with entity respawns)
+    private final ConcurrentHashMap<UUID, NpcRecord> byEntityUuid = new ConcurrentHashMap<>();
 
-    // uuid → chunkIndex: NPCs that must be deleted when their chunk next loads.
-    // Stores chunkIndex for O(1) chunk matching on ChunkPreLoadProcessEvent.
+    // entityUuid → chunkIndex: NPCs that must be deleted when their chunk next loads.
+    // NOT persisted to disk — a stale orphan that survives a restart will be caught by
+    // DuplicateNpcPrevention next time anyway.
     private final ConcurrentHashMap<UUID, Long> pendingRemovals = new ConcurrentHashMap<>();
-
-    // World reference for reconcile task — set when first scheduleRestoreOne is called.
-    // All our NPCs are in the same world so one reference is sufficient.
-    private volatile World reconcileWorld = null;
-    private ScheduledFuture<?> reconcileTask = null;
 
     private NpcRegistry() {}
 
+    // -------------------------------------------------------------------------
+    // Registration
+    // -------------------------------------------------------------------------
+
     public void register(NpcRecord record) {
-        records.put(record.entityUuid, record);
-        LOGGER.fine("NpcRegistry registered " + record.roleName + " uuid=" + record.entityUuid
-                + " chunk=" + record.chunkIndex + " interaction=" + record.interaction);
+        if (record == null) return;
+        byNpcId.put(record.npcId, record);
+        if (record.entityUuid != null) byEntityUuid.put(record.entityUuid, record);
+        LOGGER.fine("NpcRegistry registered " + record.roleName + " npcId=" + record.npcId
+                + " entityUuid=" + record.entityUuid + " interaction=" + record.interaction);
     }
 
     /**
-     * Replaces the record for an existing NPC (e.g. after role change).
-     * Preserves restorePending state from the old record so active polling isn't disrupted.
+     * Convenience for spawn pathways: writes {@link StayedNpcIdentityComponent}
+     * onto the freshly spawned entity and inserts the record into the registry
+     * in one step. This is the entry point every spawn site should use so that
+     * {@link DuplicateNpcPrevention} can see the new entity by its npcId.
      */
-    public void updateRecord(NpcRecord newRecord) {
-        NpcRecord old = records.get(newRecord.entityUuid);
-        if (old != null) newRecord.restorePending = old.restorePending;
-        records.put(newRecord.entityUuid, newRecord);
-        LOGGER.fine("NpcRegistry updated " + newRecord.roleName + " uuid=" + newRecord.entityUuid
-                + " interaction=" + newRecord.interaction);
+    public void registerWithIdentity(
+            com.hypixel.hytale.component.Store<
+                    com.hypixel.hytale.server.core.universe.world.storage.EntityStore> store,
+            com.hypixel.hytale.component.Ref<
+                    com.hypixel.hytale.server.core.universe.world.storage.EntityStore> ref,
+            NpcRecord record) {
+        if (record == null) return;
+        if (store != null && ref != null) {
+            store.putComponent(ref, StayedNpcIdentityComponent.getComponentType(),
+                    new StayedNpcIdentityComponent(record.npcId));
+        }
+        register(record);
     }
 
-    public void unregister(UUID uuid) {
-        NpcRecord removed = records.remove(uuid);
+    /** Replaces the record for an existing entityUuid. */
+    public void updateRecord(NpcRecord newRecord) {
+        if (newRecord == null) return;
+        NpcRecord old = byEntityUuid.get(newRecord.entityUuid);
+        if (old != null) {
+            // Inherit the stable npcId from the prior record so persistent identity
+            // is preserved even when callers construct a fresh NpcRecord with the
+            // legacy 5-arg constructor (which generates a new npcId).
+            newRecord.npcId = old.npcId;
+            byNpcId.put(old.npcId, newRecord);
+        } else {
+            byNpcId.put(newRecord.npcId, newRecord);
+        }
+        if (newRecord.entityUuid != null) byEntityUuid.put(newRecord.entityUuid, newRecord);
+        LOGGER.fine("NpcRegistry updated " + newRecord.roleName + " npcId=" + newRecord.npcId
+                + " entityUuid=" + newRecord.entityUuid);
+    }
+
+    public void unregister(UUID entityUuid) {
+        if (entityUuid == null) return;
+        NpcRecord removed = byEntityUuid.remove(entityUuid);
         if (removed != null) {
-            LOGGER.fine("NpcRegistry unregistered " + removed.roleName + " uuid=" + uuid);
+            byNpcId.remove(removed.npcId);
+            LOGGER.fine("NpcRegistry unregistered " + removed.roleName + " npcId=" + removed.npcId
+                    + " entityUuid=" + entityUuid);
+        }
+    }
+
+    public void unregisterByNpcId(String npcId) {
+        if (npcId == null || npcId.isBlank()) return;
+        NpcRecord removed = byNpcId.remove(npcId);
+        if (removed != null && removed.entityUuid != null) {
+            byEntityUuid.remove(removed.entityUuid);
         }
     }
 
     public void clear() {
-        records.clear();
+        byNpcId.clear();
+        byEntityUuid.clear();
         pendingRemovals.clear();
         LOGGER.info("NpcRegistry cleared");
     }
 
     /** Clears NPC records only — pending removals survive to delete unloaded entities. */
     public void clearRecords() {
-        records.clear();
+        byNpcId.clear();
+        byEntityUuid.clear();
         LOGGER.info("NpcRegistry records cleared");
     }
 
-    public void markForRemoval(UUID uuid, long chunkIndex) {
-        pendingRemovals.put(uuid, chunkIndex);
-        LOGGER.fine("NpcRegistry: marked for deferred removal uuid=" + uuid);
+    // -------------------------------------------------------------------------
+    // Lookup
+    // -------------------------------------------------------------------------
+
+    public NpcRecord getRecord(UUID entityUuid) {
+        return entityUuid != null ? byEntityUuid.get(entityUuid) : null;
     }
 
-    public boolean isPendingRemoval(UUID uuid) {
-        return pendingRemovals.containsKey(uuid);
-    }
-
-    public Map<UUID, Long> getPendingRemovals() {
-        return Collections.unmodifiableMap(pendingRemovals);
-    }
-
-    public void clearPendingRemoval(UUID uuid) {
-        pendingRemovals.remove(uuid);
-    }
-
-    public NpcRecord getRecord(UUID uuid) {
-        return records.get(uuid);
+    public NpcRecord getRecordByNpcId(String npcId) {
+        return (npcId == null || npcId.isBlank()) ? null : byNpcId.get(npcId);
     }
 
     public java.util.Collection<NpcRecord> allRecords() {
-        return new ArrayList<>(records.values());
+        return new ArrayList<>(byNpcId.values());
     }
 
     public List<NpcRecord> getForChunk(long chunkIndex) {
         List<NpcRecord> result = new ArrayList<>();
-        for (NpcRecord r : records.values()) {
+        for (NpcRecord r : byNpcId.values()) {
             if (r.chunkIndex == chunkIndex) result.add(r);
         }
         return result;
     }
 
-    public void scheduleRestoreForChunk(long chunkIndex, World world) {
-        List<NpcRecord> forChunk = getForChunk(chunkIndex);
-        if (forChunk.isEmpty()) return;
-        for (NpcRecord record : forChunk) {
-            scheduleRestoreOne(record, world);
+    // -------------------------------------------------------------------------
+    // Live-entity binding
+    // -------------------------------------------------------------------------
+
+    /**
+     * Re-points a record at a freshly spawned engine entity. Used after a
+     * lost-NPC respawn or after migrating an old entity that did not yet carry
+     * a {@link StayedNpcIdentityComponent}.
+     */
+    public void bindEntityUuid(String npcId, UUID newEntityUuid) {
+        if (npcId == null || newEntityUuid == null) return;
+        NpcRecord record = byNpcId.get(npcId);
+        if (record == null) return;
+        UUID oldUuid = record.entityUuid;
+        if (oldUuid != null && !oldUuid.equals(newEntityUuid)) {
+            byEntityUuid.remove(oldUuid);
         }
+        record.entityUuid = newEntityUuid;
+        byEntityUuid.put(newEntityUuid, record);
     }
 
     /**
-     * Polls world.getEntityRef(uuid) every 200ms until entity appears (or 12s timeout),
-     * then restores skin + interaction on the world thread.
-     *
-     * On timeout: does NOT give up — reconcileTask() will retry every 1s until entity
-     * is found. This handles the case where the player is far from the NPC chunk when
-     * the chunk loads, so getEntityRef() returns null during the initial polling window.
+     * Position update from {@link NpcPositionTracker}. Returns true when the
+     * delta is large enough to be worth persisting.
      */
-    public void scheduleRestoreOne(NpcRecord record, World world) {
-        if (record.restorePending) return; // already polling
-        record.restorePending = true;
-        ensureReconcileTask(world);
-
-        long startTime = System.currentTimeMillis();
-        boolean[] done = {false};
-        ScheduledFuture<?>[] taskRef = {null};
-
-        taskRef[0] = TickScheduler.getExecutor().scheduleAtFixedRate(() -> {
-            if (done[0]) return;
-
-            long elapsed = System.currentTimeMillis() - startTime;
-            if (elapsed >= POLL_TIMEOUT_MS) {
-                done[0] = true;
-                if (taskRef[0] != null) taskRef[0].cancel(false);
-                // Mark as not pending so reconcileTask can retry when player approaches.
-                record.restorePending = false;
-                LOGGER.fine("NpcRegistry: initial poll timed out for " + record.roleName
-                        + " uuid=" + record.entityUuid + " — reconcileTask will retry");
-                return;
-            }
-
-            world.execute(() -> {
-                if (done[0]) return;
-
-                var ref = world.getEntityRef(record.entityUuid);
-                if (ref == null || !ref.isValid()) return;
-
-                done[0] = true;
-                if (taskRef[0] != null) taskRef[0].cancel(false);
-
-                LOGGER.info("NpcRegistry: restoring " + record.roleName
-                        + " uuid=" + record.entityUuid
-                        + " after " + (System.currentTimeMillis() - startTime) + "ms");
-
-                applyRestoreAndUpdateChunk(ref, world, record);
-            });
-
-        }, 0L, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Background task that runs every 1s and re-restores any registered NPC whose
-     * ref is not currently valid and is not already being polled.
-     *
-     * Handles NPCs whose chunk was loaded while the player was far away, causing
-     * the initial 12s poll to time out before the entity became accessible.
-     */
-    private void ensureReconcileTask(World world) {
-        reconcileWorld = world;
-        if (reconcileTask != null) return;
-        reconcileTask = TickScheduler.getExecutor().scheduleAtFixedRate(() -> {
-            World w = reconcileWorld;
-            if (w == null) return;
-
-            List<NpcRecord> unresolved = new ArrayList<>();
-            for (NpcRecord r : records.values()) {
-                if (!r.restorePending && !r.broken) unresolved.add(r);
-            }
-            if (unresolved.isEmpty()) return;
-
-            w.execute(() -> {
-                for (NpcRecord record : unresolved) {
-                    if (records.get(record.entityUuid) == null) continue; // unregistered
-                    if (record.restorePending) continue; // race: just started polling
-
-                    var ref = w.getEntityRef(record.entityUuid);
-                    if (ref != null && ref.isValid()) {
-                        // Entity is in an active chunk — restore it.
-                        LOGGER.fine("NpcRegistry: reconcile restoring " + record.roleName
-                                + " uuid=" + record.entityUuid);
-                        applyRestoreAndUpdateChunk(ref, w, record);
-                        continue;
-                    }
-
-                    // Entity ref invalid — chunk where the NPC was last seen is
-                    // not currently in memory. Kick off a force-load + retry on
-                    // a separate task so the reconcile tick stays cheap.
-                    //
-                    // We don't gate on hasPosition: chunkIndex is always present
-                    // (set on spawn / load from disk), and old records loaded
-                    // before the position-tracking change have valid chunkIndex
-                    // but no lastX/Y/Z. Such records still need to be recovered
-                    // — the respawn fallback will use VillageData heuristics
-                    // (assigned house → founding stone) to pick a position.
-                    scheduleForceLoadAndRetry(record, w);
-                }
-            });
-        }, RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * Force-loads the chunk containing the NPC's last known position, then
-     * retries getEntityRef. If that still fails after the chunk has had time
-     * to deserialise, escalates to a respawn through NpcRespawner.
-     *
-     * Uses restorePending as a mutex so we don't fire multiple parallel loads
-     * for the same NPC. The flag is cleared in either branch (restore or
-     * respawn) so the next reconcile tick can act on a fresh state.
-     */
-    private void scheduleForceLoadAndRetry(NpcRecord record, World world) {
-        if (!record.restorePending) {
-            record.restorePending = true;
-        } else {
-            return;
-        }
-        long targetChunk = record.chunkIndex;
-        world.getChunkAsync(targetChunk).whenComplete((chunk, error) -> {
-            if (error != null) {
-                LOGGER.warning("NpcRegistry: force-load failed for " + record.entityUuid
-                        + " chunk=" + targetChunk + ": " + error.getMessage());
-                record.restorePending = false;
-                return;
-            }
-            // Give the chunk a moment to finish deserialising entities, then check.
-            TickScheduler.getExecutor().schedule(() -> world.execute(() -> {
-                record.restorePending = false;
-                var ref = world.getEntityRef(record.entityUuid);
-                if (ref != null && ref.isValid()) {
-                    LOGGER.info("NpcRegistry: force-load recovered " + record.roleName
-                            + " uuid=" + record.entityUuid + " in chunk " + targetChunk);
-                    applyRestoreAndUpdateChunk(ref, world, record);
-                    return;
-                }
-                // Entity is gone — respawn from the saved position. We pick the
-                // position here on the world thread because pickRespawnPosition
-                // touches village data which lives on a player ref.
-                LOGGER.warning("NpcRegistry: entity not found in loaded chunk "
-                        + targetChunk + " for " + record.entityUuid + " — respawning");
-                attemptRespawn(record, world);
-            }), 1500L, TimeUnit.MILLISECONDS);
-        });
-    }
-
-    /**
-     * Find the village owner whose data references this NPC, then have
-     * NpcRespawner replace the entity. We need the player ref because
-     * VillageData is a component on the player entity.
-     */
-    private void attemptRespawn(NpcRecord record, World world) {
-        var store = world.getEntityStore().getStore();
-        com.hypixel.hytale.component.Ref<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> playerRef =
-                findPlayerOwningNpc(world, store, record.entityUuid);
-        com.hypixel.hytale.math.vector.Vector3d pos = NpcRespawner.pickRespawnPosition(playerRef, store, record);
-        if (pos == null) {
-            LOGGER.warning("NpcRegistry: no respawn position for " + record.entityUuid + " — skipping");
-            recordRespawnFailure(record.entityUuid);
-            return;
-        }
-        // Fire-and-forget: respawn() returns a future; we log the outcome but
-        // don't block. The world thread is freed immediately so chunk loads
-        // can complete (blocking on getChunkAsync().join() from inside a
-        // world.execute() deadlocks the server).
-        UUID uuid = record.entityUuid;
-        NpcRespawner.respawn(world, store, playerRef, record, pos)
-                .thenAccept(result -> {
-                    if (!result.ok) {
-                        LOGGER.warning("NpcRegistry: respawn failed for " + uuid + ": " + result.reason);
-                        recordRespawnFailure(uuid);
-                    }
-                });
-    }
-
-    /**
-     * Walks player entities to find the one whose VillageData references this NPC.
-     * Single-player worlds have one player; this is O(villagers) per call but only
-     * runs on respawn, which is rare. Returns null if no owner found — respawner
-     * will then fall back to the founding-stone heuristic.
-     */
-    private com.hypixel.hytale.component.Ref<com.hypixel.hytale.server.core.universe.world.storage.EntityStore>
-            findPlayerOwningNpc(World world,
-                    com.hypixel.hytale.component.Store<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> store,
-                    UUID npcUuid) {
-        try {
-            var universe = com.hypixel.hytale.server.core.universe.Universe.get();
-            for (var playerRef : universe.getPlayers()) {
-                if (playerRef == null) continue;
-                UUID playerUuid = playerRef.getUuid();
-                if (playerUuid == null) continue;
-                var entityRef = world.getEntityRef(playerUuid);
-                if (entityRef == null || !entityRef.isValid()) continue;
-                var village = store.getComponent(entityRef, dev.hearthbound.village.VillageData.getComponentType());
-                if (village == null) continue;
-                if (npcUuid.equals(village.getElfId())) return entityRef;
-                for (var summary : village.getVillagers()) {
-                    if (npcUuid.equals(summary.getVillagerUuid())) return entityRef;
-                }
-                for (var building : village.getBuildings()) {
-                    if (npcUuid.equals(building.getAssignedVillagerId())) return entityRef;
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.fine("findPlayerOwningNpc failed: " + e.getMessage());
-        }
-        return null;
-    }
-
-    private void applyRestoreAndUpdateChunk(
-            com.hypixel.hytale.component.Ref<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> ref,
-            World world, NpcRecord record) {
-        record.restorePending = false;
-        var store = world.getEntityStore().getStore();
-
-        // Sync chunkIndex + lastX/Y/Z to entity's actual current position.
-        // hasPosition=true after this means future restores can be skipped if the
-        // chunk loads through Pass 2 of NpcChunkLoadHandler — the position is
-        // authoritative regardless of where chunkIndex points.
-        try {
-            var tc = store.getComponent(ref,
-                    com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
-            if (tc != null && tc.getPosition() != null) {
-                var pos = tc.getPosition();
-                record.setPosition(pos.x, pos.y, pos.z);
-                record.chunkIndex = ChunkUtil.indexChunkFromBlock((int) pos.x, (int) pos.z);
-            }
-        } catch (Exception ignored) {}
-
-        // Successful restore clears any prior failure history.
-        record.respawnFailCount = 0;
-        record.firstFailTimeMs = 0L;
-        record.broken = false;
-        record.brokenNotified = false;
-
-        NpcRestorer.restore(ref, store, world, record);
-    }
-
-    /**
-     * Updates the cached world position for an NPC. Called by NpcPositionTracker
-     * every few seconds for live entities. The chunkIndex is recomputed from x/z
-     * so it tracks where the NPC actually is, not where it was when last restored.
-     *
-     * @return true if the position changed enough to warrant persisting (>= 1 block
-     *         of horizontal movement), so the caller can mark data dirty.
-     */
-    public boolean updatePosition(UUID uuid, double x, double y, double z) {
-        NpcRecord r = records.get(uuid);
+    public boolean updatePosition(UUID entityUuid, double x, double y, double z) {
+        NpcRecord r = byEntityUuid.get(entityUuid);
         if (r == null) return false;
         boolean significant = !r.hasPosition
                 || Math.abs(r.lastX - x) >= 1.0
                 || Math.abs(r.lastZ - z) >= 1.0
                 || Math.abs(r.lastY - y) >= 2.0;
         r.setPosition(x, y, z);
-        r.chunkIndex = ChunkUtil.indexChunkFromBlock((int) x, (int) z);
+        r.chunkIndex = ChunkUtil.indexChunkFromBlock(x, z);
         return significant;
     }
 
-    /**
-     * Records a failed respawn attempt and trips the circuit breaker after
-     * MAX_RESPAWN_FAILS within RESPAWN_FAIL_WINDOW_MS. Once broken, no further
-     * respawns are attempted for this NPC.
-     */
-    public void recordRespawnFailure(UUID uuid) {
-        NpcRecord r = records.get(uuid);
-        if (r == null) return;
-        long now = System.currentTimeMillis();
-        if (r.firstFailTimeMs == 0L || now - r.firstFailTimeMs > RESPAWN_FAIL_WINDOW_MS) {
-            r.firstFailTimeMs = now;
-            r.respawnFailCount = 1;
-        } else {
-            r.respawnFailCount++;
-        }
-        if (r.respawnFailCount >= MAX_RESPAWN_FAILS) {
-            r.broken = true;
-            LOGGER.warning("NpcRegistry: NPC " + uuid + " (" + r.roleName + ") tripped circuit breaker after "
-                    + r.respawnFailCount + " failed respawns — marking broken");
-        }
-    }
-
-    private static final int MAX_RESPAWN_FAILS = 3;
-    private static final long RESPAWN_FAIL_WINDOW_MS = 5 * 60 * 1000L;
-
-    public void stopReconcileTask() {
-        if (reconcileTask != null) {
-            reconcileTask.cancel(false);
-            reconcileTask = null;
-        }
-        reconcileWorld = null;
-    }
-
-    public void updateChunk(UUID uuid, long newChunkIndex) {
-        NpcRecord r = records.get(uuid);
+    public void updateChunk(UUID entityUuid, long newChunkIndex) {
+        NpcRecord r = byEntityUuid.get(entityUuid);
         if (r != null) r.chunkIndex = newChunkIndex;
     }
+
+    // -------------------------------------------------------------------------
+    // Pending removals (deferred deletion of NPCs in unloaded chunks)
+    // -------------------------------------------------------------------------
+
+    public void markForRemoval(UUID entityUuid, long chunkIndex) {
+        if (entityUuid == null) return;
+        pendingRemovals.put(entityUuid, chunkIndex);
+        LOGGER.fine("NpcRegistry: marked for deferred removal entityUuid=" + entityUuid);
+    }
+
+    public boolean isPendingRemoval(UUID entityUuid) {
+        return entityUuid != null && pendingRemovals.containsKey(entityUuid);
+    }
+
+    public Map<UUID, Long> getPendingRemovals() {
+        return Collections.unmodifiableMap(pendingRemovals);
+    }
+
+    public void clearPendingRemoval(UUID entityUuid) {
+        if (entityUuid != null) pendingRemovals.remove(entityUuid);
+    }
+
+    // -------------------------------------------------------------------------
+    // Legacy API kept for callsite compatibility (no-ops in the new design)
+    // -------------------------------------------------------------------------
+
+    /** No-op. Legacy hook from the old reconcile loop; restoration now lives in the chunk handler. */
+    public void stopReconcileTask() {}
 }

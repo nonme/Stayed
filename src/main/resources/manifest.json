@@ -13,7 +13,9 @@
     "DisabledByDefault": false,
     "IncludesAssetPack": true,
     "Dependencies": {},
-    "OptionalDependencies": {},
+    "OptionalDependencies": {
+        "Hytale:NPC": "*"
+    },
     "ServerVersion": "2026.03.26-89796e57b",
     "Main": "dev.hearthbound.HearthboundPlugin"
 }

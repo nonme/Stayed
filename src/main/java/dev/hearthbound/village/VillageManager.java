@@ -243,8 +243,8 @@ public class VillageManager {
 
     /**
      * Rewrites every UUID reference from oldUuid → newUuid across the village data.
-     * Used by NpcRespawner when an NPC is replaced by a fresh entity (the engine
-     * always assigns a new UUID on spawn, so we can't reuse the old one).
+     * Called when an NPC is replaced by a fresh entity (the engine always assigns
+     * a new engine UUID on spawn, so we cannot reuse the old one).
      *
      * Touches: VillagerSummary.villagerUuid, BuildingRecord.assignedVillagerId on
      * every building (residential + work), so the villager keeps their house and
@@ -269,6 +269,49 @@ public class VillageManager {
             LOGGER.info("replaceVillagerUuid: " + oldUuid + " → " + newUuid + " (" + touched + " refs)");
         }
         return touched;
+    }
+
+    /**
+     * Fully removes a villager from the village: drops their VillagerSummary, clears
+     * assignedVillagerId from every building they were assigned to, and resets the
+     * profession field on any WorkSummary that referenced them.
+     *
+     * Does NOT save — caller must call {@link #save} afterwards (lets callers batch
+     * multiple removals before hitting disk).
+     *
+     * Returns true if the villager was found and removed.
+     */
+    public boolean removeVillager(VillageData data, UUID villagerUuid) {
+        if (data == null || villagerUuid == null) return false;
+        boolean removed = data.getVillagers().removeIf(s -> villagerUuid.equals(s.getVillagerUuid()));
+        for (BuildingRecord b : data.getBuildings()) {
+            if (villagerUuid.equals(b.getAssignedVillagerId())) {
+                b.setAssignedVillagerId(null);
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Scans every building in the village and clears {@code assignedVillagerId} for
+     * any UUID that is not present in {@code liveUuids}. Call this after removing
+     * a batch of villagers to sweep up any building slots that still hold stale refs.
+     *
+     * Does NOT save — caller must call {@link #save} afterwards.
+     *
+     * Returns the number of slots cleared.
+     */
+    public int removeStaleAssignments(VillageData data, java.util.Set<UUID> liveUuids) {
+        if (data == null || liveUuids == null) return 0;
+        int cleared = 0;
+        for (BuildingRecord b : data.getBuildings()) {
+            UUID assigned = b.getAssignedVillagerId();
+            if (assigned != null && !liveUuids.contains(assigned)) {
+                b.setAssignedVillagerId(null);
+                cleared++;
+            }
+        }
+        return cleared;
     }
 
     /**

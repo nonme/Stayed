@@ -43,6 +43,10 @@ public class PlayerJoinHandler {
             // their original chunk before being saved.
             dev.hearthbound.npc.NpcPositionTracker.start(world);
 
+            // First player ready means we have a world handle — start the
+            // periodic NpcRegistry self-check (idempotent, safe to call again).
+            HearthboundPlugin.startSelfCheckIfNeeded(world);
+
         } catch (Exception e) {
             LOGGER.warning("Failed to initialize village for player: " + e.getMessage());
         }

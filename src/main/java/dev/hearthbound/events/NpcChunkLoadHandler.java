@@ -295,14 +295,27 @@ public class NpcChunkLoadHandler {
         ScheduledFuture<?>[] taskRef = {null};
         taskRef[0] = TickScheduler.getExecutor().scheduleAtFixedRate(() ->
             world.execute(() -> {
-                Ref<EntityStore> ref = world.getEntityRef(entityUuid);
-                if (ref != null && ref.isValid()) {
-                    Store<EntityStore> store = world.getEntityStore().getStore();
-                    NpcRestorer.restore(ref, store, world, record);
+                NpcRegistry.NpcRecord liveRecord = NpcRegistry.get().getRecordByNpcId(npcId);
+                if (liveRecord == null) {
                     if (taskRef[0] != null) taskRef[0].cancel(false);
                     return;
                 }
-                if (++attempts[0] >= 20) {
+                Store<EntityStore> store = world.getEntityStore().getStore();
+                Ref<EntityStore> ref = world.getEntityRef(liveRecord.entityUuid);
+                if (ref == null || !ref.isValid()) {
+                    ref = NpcLiveEntityResolver.findLiveNpcByRecord(store, liveRecord);
+                }
+                if (ref != null && ref.isValid()) {
+                    UUID liveUuid = NpcManager.extractUuid(store, ref);
+                    if (liveUuid != null && !liveUuid.equals(liveRecord.entityUuid)) {
+                        NpcRegistry.get().bindEntityUuid(npcId, liveUuid);
+                        HearthboundDataStore.get().markDirty();
+                    }
+                    NpcRestorer.restore(ref, store, world, liveRecord);
+                    if (taskRef[0] != null) taskRef[0].cancel(false);
+                    return;
+                }
+                if (++attempts[0] >= 120) {
                     LOGGER.warning("NpcChunkLoadHandler: entity ref never became valid for npcId="
                             + npcId + " entityUuid=" + entityUuid);
                     if (taskRef[0] != null) taskRef[0].cancel(false);

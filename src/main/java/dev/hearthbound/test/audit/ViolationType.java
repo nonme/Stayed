@@ -19,4 +19,8 @@ public enum ViolationType {
     DUPLICATE_NPCID_IN_REGISTRY,
     /** byNpcId and byEntityUuid disagree on which record a given npcId/entityUuid resolves to. */
     INDEX_DESYNC,
+    /** Loaded registered NPC missed skin/model/interaction restore. */
+    ROLE_BINDING_MISSING,
+    /** Loaded moving NPC still has a stale Frozen component. */
+    STALE_FROZEN,
 }

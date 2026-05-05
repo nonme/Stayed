@@ -4,7 +4,13 @@ import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.hypixel.hytale.server.core.entity.Frozen;
+import com.hypixel.hytale.server.core.modules.entity.component.Interactable;
+import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
+import com.hypixel.hytale.server.core.modules.entity.component.PersistentModel;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
+import com.hypixel.hytale.server.core.modules.interaction.Interactions;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -49,6 +55,7 @@ public final class NpcRegistryInvariantAudit {
         Map<UUID, String> entityUuidToNpcId = new HashMap<>();
         Map<UUID, Long> entityUuidToObservedChunk = new HashMap<>();
         Map<UUID, String> entityUuidToDetails = new HashMap<>();
+        Map<UUID, Ref<EntityStore>> entityUuidToRef = new HashMap<>();
 
         Archetype<EntityStore> npcQuery = Archetype.of(NPCEntity.getComponentType());
         store.forEachChunk(npcQuery, (chunk, buffer) -> {
@@ -60,6 +67,7 @@ public final class NpcRegistryInvariantAudit {
                 if (uc == null) continue;
                 UUID entityUuid = uc.getUuid();
                 if (entityUuid == null) continue;
+                entityUuidToRef.put(entityUuid, ref);
 
                 TransformComponent transform = store.getComponent(
                         ref, TransformComponent.getComponentType());
@@ -240,6 +248,67 @@ public final class NpcRegistryInvariantAudit {
                         record.entityUuid,
                         "byNpcId record != byEntityUuid record"));
             }
+        }
+
+        // Invariant 8: ROLE_BINDING_MISSING — a loaded persistent citizen exists,
+        // but the components that make it visible/skinned/interactable were not
+        // restored. This catches the "naked non-interactable NPC after restart"
+        // class of regressions where registry identity is correct but role binding
+        // restoration missed the live entity.
+        for (NpcRegistry.NpcRecord record : allRecords) {
+            if (record.entityUuid == null) continue;
+            if (record.interaction != NpcRegistry.InteractionType.ELF
+                    && record.interaction != NpcRegistry.InteractionType.VILLAGER) {
+                continue;
+            }
+            Ref<EntityStore> ref = entityUuidToRef.get(record.entityUuid);
+            if (ref == null || !ref.isValid()) continue;
+
+            List<String> missing = new ArrayList<>();
+            if (store.getComponent(ref, Interactable.getComponentType()) == null) {
+                missing.add("Interactable");
+            }
+            if (store.getComponent(ref, Interactions.getComponentType()) == null) {
+                missing.add("Interactions");
+            }
+            if (store.getComponent(ref, PlayerSkinComponent.getComponentType()) == null) {
+                missing.add("PlayerSkinComponent");
+            }
+            if (store.getComponent(ref, ModelComponent.getComponentType()) == null) {
+                missing.add("ModelComponent");
+            }
+            if (store.getComponent(ref, PersistentModel.getComponentType()) == null) {
+                missing.add("PersistentModel");
+            }
+            if (!missing.isEmpty()) {
+                violations.add(new Violation(
+                        ViolationType.ROLE_BINDING_MISSING,
+                        record.npcId,
+                        record.entityUuid,
+                        "loaded " + record.interaction + " NPC missing " + missing
+                                + "; " + describeRecord(record)));
+            }
+        }
+
+        // Invariant 9: STALE_FROZEN — villagers/followers should not remain
+        // Frozen outside short explicit animations. A stale Frozen component
+        // survives role changes/reloads and makes the NPC hover without walking.
+        for (NpcRegistry.NpcRecord record : allRecords) {
+            if (record.entityUuid == null) continue;
+            if (record.interaction != NpcRegistry.InteractionType.VILLAGER
+                    && record.interaction != NpcRegistry.InteractionType.RESCUE
+                    && record.interaction != NpcRegistry.InteractionType.FOLLOWER) {
+                continue;
+            }
+            Ref<EntityStore> ref = entityUuidToRef.get(record.entityUuid);
+            if (ref == null || !ref.isValid()) continue;
+            if (store.getComponent(ref, Frozen.getComponentType()) == null) continue;
+            violations.add(new Violation(
+                    ViolationType.STALE_FROZEN,
+                    record.npcId,
+                    record.entityUuid,
+                    "loaded " + record.interaction + " NPC still has Frozen; "
+                            + describeRecord(record)));
         }
 
         long durationNanos = System.nanoTime() - startNanos;

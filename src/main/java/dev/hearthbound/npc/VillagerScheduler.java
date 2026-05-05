@@ -227,7 +227,7 @@ public class VillagerScheduler {
             // Farming state is invalidated whenever the farmer leaves the farm — going home,
             // going to eat, or being reassigned. Drop the runtime state so the next arrival
             // starts a fresh pick.
-            farmerWork.clear(uuid);
+            farmerWork.clear(uuid, world);
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 startTraveling(ref, liveStore, target, world, uuid);

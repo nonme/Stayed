@@ -3,6 +3,7 @@ package dev.hearthbound.npc;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.entity.Entity;
+import com.hypixel.hytale.server.core.entity.Frozen;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.util.TickScheduler;
@@ -125,6 +126,7 @@ public final class NpcTeleporter {
                     + record.npcId + ", liveUuid=" + liveUuid + ")");
             return;
         }
+        removeStaleFrozen(store, ref, record, liveUuid);
         entity.moveTo(ref, x, y, z, store);
         LOGGER.fine("NpcTeleporter.recall: " + record.npcId + " (uuid=" + liveUuid
                 + ") → (" + x + "," + y + "," + z + ")");
@@ -133,5 +135,23 @@ public final class NpcTeleporter {
         // catches this within ~15 ms, but a server restart in that window
         // would otherwise drop the NPC back at its pre-teleport coordinates.
         NpcPositionTracker.requestSync(world);
+    }
+
+    private static void removeStaleFrozen(Store<EntityStore> store, Ref<EntityStore> ref,
+                                          NpcRegistry.NpcRecord record, UUID liveUuid) {
+        if (record.interaction != NpcRegistry.InteractionType.VILLAGER
+                && record.interaction != NpcRegistry.InteractionType.RESCUE
+                && record.interaction != NpcRegistry.InteractionType.FOLLOWER) {
+            return;
+        }
+        try {
+            if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
+            store.tryRemoveComponent(ref, Frozen.getComponentType());
+            LOGGER.info("NpcTeleporter.recall: removed stale Frozen from npcId="
+                    + record.npcId + " uuid=" + liveUuid);
+        } catch (Exception e) {
+            LOGGER.fine("NpcTeleporter.recall: unfreeze failed for npcId="
+                    + record.npcId + ": " + e.getMessage());
+        }
     }
 }

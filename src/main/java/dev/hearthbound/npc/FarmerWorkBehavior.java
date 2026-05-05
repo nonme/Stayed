@@ -154,14 +154,18 @@ public class FarmerWorkBehavior {
 
     /** Should be called when the villager leaves the farm (going home, eating, etc.). */
     public void clear(UUID uuid) {
+        clear(uuid, null);
+    }
+
+    /** Same as {@link #clear(UUID)}, but also removes a live stale Frozen component. */
+    public void clear(UUID uuid, World world) {
         State s = states.remove(uuid);
         Context ctx = contexts.remove(uuid);
         if (ctx != null) {
             if (ctx.task != null) ctx.task.cancel(false);
-            // Lazy unfreeze on clear — we may not have a valid ref here; the JSON role-swap
-            // back to traveling/idle will reset the engine motion, and Frozen on a non-working
-            // villager is otherwise harmless.
         }
+        World liveWorld = world != null ? world : (ctx != null ? ctx.world : null);
+        unfreezeLive(uuid, liveWorld);
         if (s != null) s.frozen = false;
     }
 
@@ -615,6 +619,20 @@ public class FarmerWorkBehavior {
             LOGGER.fine("Farmer unfreeze failed: " + e.getMessage());
         }
         state.frozen = false;
+    }
+
+    private static void unfreezeLive(UUID uuid, World world) {
+        if (uuid == null || world == null) return;
+        try {
+            Ref<EntityStore> ref = world.getEntityRef(uuid);
+            if (ref == null || !ref.isValid()) return;
+            Store<EntityStore> store = world.getEntityStore().getStore();
+            if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
+            store.tryRemoveComponent(ref, Frozen.getComponentType());
+            LOGGER.info("Farmer " + uuid + " stale Frozen removed");
+        } catch (Exception e) {
+            LOGGER.fine("Farmer live unfreeze failed for " + uuid + ": " + e.getMessage());
+        }
     }
 
     /**

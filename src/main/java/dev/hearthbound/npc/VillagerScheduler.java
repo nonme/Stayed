@@ -83,6 +83,14 @@ public class VillagerScheduler {
     // Cleared when the meal window ends, preventing repeated feedVillager() calls.
     private final Set<UUID> fedThisMeal = new HashSet<>();
 
+    // Farming state machine — drives the in-place harvest/replant/water/weed loop while a
+    // farmer is at their farm and in WORKING activity. Stateless across restarts.
+    private final FarmerWorkBehavior farmerWork = new FarmerWorkBehavior();
+
+    // Cached during the current tick(): village owner UUID, used to route lookAtBlock packets
+    // for the farmer (mirrors how BuilderBehavior addresses the elf).
+    private UUID currentOwnerUuid;
+
     public static final String ACTIVITY_GOING_TO_WORK = "Going to work";
     public static final String ACTIVITY_WORKING        = "Working";
     public static final String ACTIVITY_GOING_TO_EAT  = "Going to eat";
@@ -128,6 +136,16 @@ public class VillagerScheduler {
     public void tick(Store<EntityStore> store, Ref<EntityStore> playerRef, VillageData village, World world) {
         double time24 = getTime24(store);
         if (time24 < 0) return;
+
+        // Cache the village owner UUID for this tick so per-villager hooks can route
+        // animation/rotation packets to the right player.
+        try {
+            var uuidComp = store.getComponent(playerRef,
+                    com.hypixel.hytale.server.core.entity.UUIDComponent.getComponentType());
+            currentOwnerUuid = uuidComp != null ? uuidComp.getUuid() : null;
+        } catch (Exception e) {
+            currentOwnerUuid = null;
+        }
 
         // Clear fed-tracking between meal windows so villagers can eat again next meal.
         if (!inWindow(time24, LUNCH_START, LUNCH_END) && !inWindow(time24, DINNER_START, DINNER_END)) {
@@ -206,13 +224,24 @@ public class VillagerScheduler {
             setGateState(houseTarget, world, true);
             lastTarget.put(uuid, target);
             activityLabel.put(uuid, travelActivity(target.activity()));
+            // Farming state is invalidated whenever the farmer leaves the farm — going home,
+            // going to eat, or being reassigned. Drop the runtime state so the next arrival
+            // starts a fresh pick.
+            farmerWork.clear(uuid);
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 startTraveling(ref, liveStore, target, world, uuid);
             });
         } else if (arrived) {
             switchRole(ref, store, target.arrivedRole(), world);
-            setLeashPoint(ref, store, new Vector3d(target.x(), target.y(), target.z()));
+            // Don't clobber the farmer's per-cell leashPoint with the farm-center one — the
+            // FarmerWorkBehavior tick below moves the leash to whichever crop/weed/tile it's
+            // currently working on. Other arrivedRoles get the standard center-pin.
+            boolean isFarmerWorking = ROLE_FARMER.equals(target.arrivedRole())
+                    && ACTIVITY_WORKING.equals(target.activity());
+            if (!isFarmerWorking) {
+                setLeashPoint(ref, store, new Vector3d(target.x(), target.y(), target.z()));
+            }
             removeMarker(uuid, world);
             activityLabel.put(uuid, target.activity());
             setGateState(houseTarget, world, false);
@@ -221,6 +250,12 @@ public class VillagerScheduler {
                     && !fedThisMeal.contains(uuid)) {
                 fedThisMeal.add(uuid);
                 feedVillager(ref, warehouse, world, uuid);
+            }
+
+            if (isFarmerWorking && effectiveFarm != null) {
+                // Hand the farmer off to its own fast (~0.3s) tick loop. start() is idempotent —
+                // calling it every village tick just refreshes the warehouse/owner context.
+                farmerWork.start(uuid, world, effectiveFarm, warehouse, currentOwnerUuid);
             }
         } else {
             // Still traveling — rebind marker every tick so Seek stays active
@@ -545,7 +580,27 @@ public class VillagerScheduler {
             LOGGER.warning("VillagerScheduler: role not registered: " + roleName);
             return;
         }
+        String oldRoleName = npc.getRole().getRoleName();
         RoleChangeSystem.requestRoleChange(ref, npc.getRole(), idx, false, store);
+        // RoleChangeSystem clears the Interactions component asynchronously, so the
+        // F-key UI binding (InteractionId="StayedVillager") is lost on every role
+        // swap unless we re-apply it. Skin/profession item are re-applied on the
+        // same retry schedule.
+        UUID uuid = NpcManager.extractUuid(store, ref);
+        if (uuid != null) {
+            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
+            if (record != null) {
+                LOGGER.info("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "→" + roleName
+                        + " scheduling restoreAfterRoleChange interaction=" + record.interaction);
+                NpcRestorer.restoreAfterRoleChange(ref, world, record);
+            } else {
+                LOGGER.warning("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "→" + roleName
+                        + " NO REGISTRY RECORD — interactions will not be restored");
+            }
+        } else {
+            LOGGER.warning("[ROLEBIND] " + oldRoleName + "→" + roleName
+                    + " NO UUID — interactions will not be restored");
+        }
         // After role change, re-equip profession item — RoleChangeSystem is async,
         // so delay to let the new role settle before touching inventory.
         TickScheduler.getExecutor().schedule(() ->

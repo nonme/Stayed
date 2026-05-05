@@ -320,9 +320,15 @@ public class PrefabLoader {
             int anchorLX = anchorLocal[0];
             int anchorLZ = anchorLocal[1];
 
-            DoorInfo[] result = {null};
+            // Some prefabs have multiple doors (e.g. ground entrance + upper balcony door).
+            // Picking the first one in iteration order grabs whichever the engine scans
+            // first, which can be the upper-floor door — wrong for both pathfinding and the
+            // open/close gate logic. Prefer the door whose bottom block sits closest to the
+            // anchor's Y level (the ground entrance), and tie-break by horizontal distance
+            // from the anchor so we still pick a sensible door if heights are equal.
+            DoorInfo[] best = {null};
+            int[] bestScore = {Integer.MAX_VALUE};
             selection.forEachBlock((bx, by, bz, holder) -> {
-                if (result[0] != null) return;
                 if (holder.filler() != 0) return;
                 BlockType bt = assetMap.getAsset(holder.blockId());
                 if (bt == null) return;
@@ -332,9 +338,18 @@ public class PrefabLoader {
                 int lx = (bx - prefabOriginX) - anchorLX;
                 int ly = (by - prefabOriginY) - anchorPrefabY;
                 int lz = (bz - prefabOriginZ) - anchorLZ;
-                result[0] = new DoorInfo(lx, ly, lz, holder.rotation() % 4, id);
+
+                // Doors are 2 blocks tall; we want the bottom half. Prefer ly closest to 0
+                // (entry floor), then prefer doors closer to the anchor in the XZ plane.
+                int yPenalty = Math.abs(ly) * 1000;
+                int xzPenalty = Math.abs(lx) + Math.abs(lz);
+                int score = yPenalty + xzPenalty;
+                if (score < bestScore[0]) {
+                    bestScore[0] = score;
+                    best[0] = new DoorInfo(lx, ly, lz, holder.rotation() % 4, id);
+                }
             });
-            return result[0];
+            return best[0];
         } catch (Exception e) {
             LOGGER.warning("PrefabLoader.findDoor failed for '" + prefabName + "': " + e.getMessage());
             return null;

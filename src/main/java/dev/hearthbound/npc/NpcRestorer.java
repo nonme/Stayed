@@ -69,21 +69,41 @@ public final class NpcRestorer {
                                             NpcRegistry.NpcRecord record, long delayMs) {
         TickScheduler.getExecutor().schedule(() ->
             world.execute(() -> {
-                if (!ref.isValid()) return;
-                applyInteraction(ref, world.getEntityStore().getStore(), record.interaction);
+                Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                // RoleChangeSystem can replace the underlying entity with a fresh
+                // Ref index; the captured ref goes invalid even though the NPC is
+                // still loaded under the same npcId. Mirror HyCitizens'
+                // findExistingCitizenNpcRef and re-resolve every retry.
+                Ref<EntityStore> liveRef = (ref != null && ref.isValid())
+                        ? ref : NpcLiveEntityResolver.findLiveNpcByRecord(liveStore, record);
+                if (liveRef == null || !liveRef.isValid()) {
+                    LOGGER.info("[ROLEBIND-APPLY] npcId=" + record.npcId
+                            + " delayMs=" + delayMs + " SKIP: no live ref");
+                    return;
+                }
+                applyInteraction(liveRef, liveStore, record.interaction);
+                NPCEntity npc = liveStore.getComponent(liveRef, NPCEntity.getComponentType());
+                String live = (npc != null && npc.getRole() != null)
+                        ? npc.getRole().getRoleName() : "?";
+                LOGGER.info("[ROLEBIND-APPLY] npcId=" + record.npcId
+                        + " delayMs=" + delayMs
+                        + " liveRole=" + live
+                        + " applied=" + record.interaction);
             }),
             delayMs, TimeUnit.MILLISECONDS);
     }
 
     private static void scheduleSkin(Ref<EntityStore> ref, World world, NpcRegistry.NpcRecord record) {
         Runnable apply = () -> world.execute(() -> {
-            if (!ref.isValid()) return;
             Store<EntityStore> store = world.getEntityStore().getStore();
+            Ref<EntityStore> liveRef = (ref != null && ref.isValid())
+                    ? ref : NpcLiveEntityResolver.findLiveNpcByRecord(store, record);
+            if (liveRef == null || !liveRef.isValid()) return;
             if (record.skinSeed != 0L) {
-                VillagerAppearance.apply(ref, store, record.skinSeed, 0);
-                equipProfessionItem(ref, store, record.roleName);
+                VillagerAppearance.apply(liveRef, store, record.skinSeed, 0);
+                equipProfessionItem(liveRef, store, record.roleName);
             } else if (record.interaction == NpcRegistry.InteractionType.ELF) {
-                ElfSage.applySageAppearance(ref, store);
+                ElfSage.applySageAppearance(liveRef, store);
             }
         });
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS, TimeUnit.MILLISECONDS);

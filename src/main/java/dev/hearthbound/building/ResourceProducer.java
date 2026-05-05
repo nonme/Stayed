@@ -10,17 +10,13 @@ import java.util.random.RandomGenerator;
  */
 public final class ResourceProducer {
 
-    // Chance per village tick (every 5s) that a building produces anything
-    public static final double FARM_PRODUCE_CHANCE     = 0.25;
+    // Chance per village tick (every 5s) that a building produces anything.
+    // FARM is not on the table any more — it's driven by FarmerWorkBehavior reading the
+    // actual planted crops on the plot, so the village only gets what the farmer harvests.
     public static final double SAWMILL_PRODUCE_CHANCE  = 0.25;
     public static final double MINE_PRODUCE_CHANCE     = 0.25;
 
     private record Drop(String itemId, double weight) {}
-
-    private static final Drop[] FARM_TABLE = {
-        new Drop("Plant_Crop_Wheat_Item",   0.50),
-        new Drop("Plant_Crop_Carrot_Item",  0.50),
-    };
 
     private static final Drop[] SAWMILL_TABLE = {
         new Drop("Wood_Beech_Trunk", 0.50),
@@ -42,9 +38,9 @@ public final class ResourceProducer {
      */
     public static String roll(String buildingType, RandomGenerator rng) {
         return switch (buildingType) {
-            case BuildingType.FARM     -> rollTable(FARM_TABLE,    FARM_PRODUCE_CHANCE,    rng);
             case BuildingType.SAWMILL  -> rollTable(SAWMILL_TABLE, SAWMILL_PRODUCE_CHANCE, rng);
             case BuildingType.MINE     -> rollTable(MINE_TABLE,    MINE_PRODUCE_CHANCE,    rng);
+            // FARM intentionally absent — see FarmerWorkBehavior.
             default -> null;
         };
     }

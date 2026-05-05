@@ -176,6 +176,13 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     }
 
     private void populateConstructionTab(UICommandBuilder b, BuildingRecord record) {
+        // Once the house is built, this tab becomes a placeholder for future upgrades —
+        // hide the resource list and build controls (mirrors TownHallPage.populateTownHallCompleted).
+        if (record != null && record.isCompleted()) {
+            populateHouseCompleted(b);
+            return;
+        }
+
         BuildingRecord active = BuildingSystem.get().getActiveRecord();
         boolean isBuilding = BuildingSystem.get().isBuilding()
                 && record != null && record == active;
@@ -185,10 +192,20 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         Map<String, Integer> required = BuildingSystem.getRequiredResources(BuildingType.HOUSE_HUMAN, variant);
         Map<String, Integer> have = readStorage(record);
 
+        b.set("#ResourceListContainer.Visible", true);
         boolean allSatisfied = renderResourceList(b, required, have);
 
-        boolean isCompleted = record != null && record.isCompleted();
-        applyConstructionState(b, isBuilding, isCompleted, allSatisfied, elfBusy);
+        applyConstructionState(b, isBuilding, false, allSatisfied, elfBusy);
+    }
+
+    private void populateHouseCompleted(UICommandBuilder b) {
+        b.set("#ConstructionStatus.Text",
+                "The house stands complete. Upgrades coming in a future update.");
+        b.set("#ResourceListContainer.Visible", false);
+        b.set("#StartBuildButton.Visible", false);
+        b.set("#DepositButton.Visible", false);
+        b.set("#BuildProgressLabel.Visible", false);
+        b.set("#DepositHint.Text", "");
     }
 
     private void setTabActive(UICommandBuilder b, String tab) {

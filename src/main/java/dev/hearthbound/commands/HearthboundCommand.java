@@ -32,5 +32,7 @@ public class HearthboundCommand extends AbstractCommandCollection {
         addSubCommand(new WarpCommand());
         addSubCommand(new PathwaysCommand());
         addSubCommand(new TestCommand());
+        addSubCommand(new CropInfoCommand());
+        addSubCommand(new FarmScanCommand());
     }
 }

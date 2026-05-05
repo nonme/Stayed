@@ -67,7 +67,7 @@
                       ]
                     }
                   ],
-                  "BodyMotion": { "Type": "WanderInCircle", "Radius": 12, "RelativeSpeed": 0.3 }
+                  "BodyMotion": { "Type": "WanderInCircle", "Radius": 3, "RelativeSpeed": 0.3 }
                 }
               ]
             }

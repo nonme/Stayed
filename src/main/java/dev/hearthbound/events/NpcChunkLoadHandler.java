@@ -18,7 +18,9 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import dev.hearthbound.npc.ElfNpcComponent;
 import dev.hearthbound.npc.HearthboundDataStore;
+import dev.hearthbound.npc.NpcLiveEntityResolver;
 import dev.hearthbound.npc.NpcManager;
+import dev.hearthbound.npc.NpcPositionTracker;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.npc.StayedNpcIdentityComponent;
@@ -27,6 +29,7 @@ import it.unimi.dsi.fastutil.Pair;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -46,11 +49,10 @@ import java.util.logging.Logger;
  *    - Identity but no record → orphan, queued for engine-level removal.
  *    - Legacy elf entity      → migrate {@code HB_ELF} into {@code HB_NPCID}
  *                                so future scans find it through the new index.
- * 4. For records whose stored chunkIndex equals the loading chunk yet whose
- *    entity is missing from this chunk's holders, spawns a fresh entity at the
- *    last known position. The newly-spawned entity carries the same npcId,
- *    so {@link dev.hearthbound.npc.DuplicateNpcPrevention} eats any stale
- *    duplicate that surfaces afterwards.
+ * 4. Collects restore candidates the same way HyCitizens does: current saved
+ *    chunk, base/home chunk, and entities already present in the chunk holders.
+ *    Missing candidates are resolved by npcId/UUID before any fresh spawn is
+ *    allowed.
  */
 @SuppressWarnings("rawtypes")
 public class NpcChunkLoadHandler {
@@ -58,6 +60,8 @@ public class NpcChunkLoadHandler {
     private static final Logger LOGGER = Logger.getLogger(NpcChunkLoadHandler.class.getName());
     private static final int MAX_FRESH_SPAWN_ATTEMPTS = 40;
     private static final int MAX_PENDING_REMOVAL_ATTEMPTS = 240;
+    private static final long FRESH_SPAWN_RESOLVE_TIMEOUT_MS = 15_000L;
+    private static final long FRESH_SPAWN_RETRY_MS = 500L;
     private static final Set<String> freshSpawnsInFlight = ConcurrentHashMap.newKeySet();
     private static final Set<UUID> pendingRemovalTasks = ConcurrentHashMap.newKeySet();
 
@@ -71,6 +75,7 @@ public class NpcChunkLoadHandler {
 
         long chunkIndex = chunk.getIndex();
         NpcRegistry registry = NpcRegistry.get();
+        NpcPositionTracker.requestSync(world);
 
         Set<String> seenNpcIds = new HashSet<>();
         List<UUID> orphansToRemove = new ArrayList<>();
@@ -80,6 +85,8 @@ public class NpcChunkLoadHandler {
         EntityChunk entityChunk = chunkHolder != null
                 ? (EntityChunk) chunkHolder.getComponent(EntityChunk.getComponentType())
                 : null;
+
+        Set<NpcRegistry.NpcRecord> chunkCandidates = collectChunkRecords(registry, chunkIndex, entityChunk);
 
         if (entityChunk != null) {
             int scanned = 0;
@@ -132,6 +139,7 @@ public class NpcChunkLoadHandler {
                     orphansToRemove.add(entityUuid);
                     continue;
                 }
+                chunkCandidates.add(record);
 
                 boolean alreadySeen = seenNpcIds.contains(npcId);
                 seenNpcIds.add(npcId);
@@ -157,15 +165,16 @@ public class NpcChunkLoadHandler {
             }
         }
 
-        // Records that claim this chunk but have no surviving entity in the
-        // holders we just scanned. Spawn a fresh entity at the saved position.
-        for (NpcRegistry.NpcRecord record : registry.getForChunk(chunkIndex)) {
+        // HyCitizens-style candidate pass: do not trust only one saved chunk.
+        // Process records whose current position, base/home position, or chunk
+        // holder identity links them to this loading chunk.
+        for (NpcRegistry.NpcRecord record : chunkCandidates) {
             if (seenNpcIds.contains(record.npcId)) continue;
             // Goblins and other NONE-interaction extras are disposable — we
             // record them for housekeeping but never resurrect them.
             if (record.interaction == NpcRegistry.InteractionType.NONE) continue;
             if (!record.hasPosition) continue;
-            scheduleFreshSpawn(world, record);
+            scheduleFreshSpawn(world, record, chunkIndex);
         }
 
         for (UUID orphanUuid : orphansToRemove) {
@@ -226,6 +235,51 @@ public class NpcChunkLoadHandler {
         return npcId;
     }
 
+    private static Set<NpcRegistry.NpcRecord> collectChunkRecords(NpcRegistry registry,
+                                                                  long chunkIndex,
+                                                                  EntityChunk entityChunk) {
+        Set<NpcRegistry.NpcRecord> candidates = new LinkedHashSet<>();
+        for (NpcRegistry.NpcRecord record : registry.allRecords()) {
+            if (isRecordTrackedInChunk(record, chunkIndex)) {
+                candidates.add(record);
+            }
+        }
+        if (entityChunk == null) return candidates;
+
+        for (Holder entityHolder : entityChunk.getEntityHolders()) {
+            NpcRegistry.NpcRecord matched = resolveChunkEntityRecord(entityHolder, registry);
+            if (matched != null) candidates.add(matched);
+        }
+        return candidates;
+    }
+
+    private static boolean isRecordTrackedInChunk(NpcRegistry.NpcRecord record, long chunkIndex) {
+        if (record == null) return false;
+        if (record.hasPosition && record.chunkIndex == chunkIndex) return true;
+        return record.hasBasePosition && record.baseChunkIndex == chunkIndex;
+    }
+
+    private static NpcRegistry.NpcRecord resolveChunkEntityRecord(Holder entityHolder,
+                                                                  NpcRegistry registry) {
+        if (entityHolder == null) return null;
+        NPCEntity npc = (NPCEntity) entityHolder.getComponent(NPCEntity.getComponentType());
+        if (npc == null) return null;
+
+        String npcId = readNpcIdFromHolder(entityHolder);
+        if (npcId != null) {
+            NpcRegistry.NpcRecord byIdentity = registry.getRecordByNpcId(npcId);
+            if (byIdentity != null) return byIdentity;
+        }
+
+        UUIDComponent uc = (UUIDComponent) entityHolder.getComponent(UUIDComponent.getComponentType());
+        if (uc != null) {
+            NpcRegistry.NpcRecord byUuid = registry.getRecord(uc.getUuid());
+            if (byUuid != null) return byUuid;
+        }
+
+        return null;
+    }
+
     // -------------------------------------------------------------------------
     // Restore / spawn
     // -------------------------------------------------------------------------
@@ -263,16 +317,19 @@ public class NpcChunkLoadHandler {
      * stable npcId so duplicates that surface later are erased by
      * {@link dev.hearthbound.npc.DuplicateNpcPrevention}.
      */
-    private static void scheduleFreshSpawn(World world, NpcRegistry.NpcRecord record) {
+    private static void scheduleFreshSpawn(World world, NpcRegistry.NpcRecord record, long triggerChunkIndex) {
         final String npcId = record.npcId;
         final String role = record.roleName;
         final Vector3d pos = new Vector3d(record.lastX, record.lastY, record.lastZ);
+        final long resolveStartMs = System.currentTimeMillis();
         if (!freshSpawnsInFlight.add(npcId)) {
             LOGGER.info("[FRESHSPAWN-DEFER] npcId=" + npcId + " already has a retry task");
             return;
         }
 
-        int[] attempts = {0};
+        int[] resolveAttempts = {0};
+        int[] spawnAttempts = {0};
+        int[] edgeDefers = {0};
         ScheduledFuture<?>[] taskRef = {null};
         taskRef[0] = TickScheduler.getExecutor().scheduleAtFixedRate(() ->
             world.execute(() -> {
@@ -291,7 +348,7 @@ public class NpcChunkLoadHandler {
                 // holders (the pre-load event fires before BSON components are materialised
                 // into the live ECS store). Scanning the live store avoids both issues.
                 Store<EntityStore> store = world.getEntityStore().getStore();
-                Ref<EntityStore> alreadyLoaded = findLiveNpcByNpcId(store, npcId);
+                Ref<EntityStore> alreadyLoaded = NpcLiveEntityResolver.findLiveNpcByRecord(store, live);
                 if (alreadyLoaded != null) {
                     // Entity loaded from BSON — bind the (possibly new) UUID and restore.
                     UUID loadedUuid = NpcManager.extractUuid(store, alreadyLoaded);
@@ -309,19 +366,43 @@ public class NpcChunkLoadHandler {
                     return;
                 }
 
+                long elapsedMs = System.currentTimeMillis() - resolveStartMs;
+                if (elapsedMs < FRESH_SPAWN_RESOLVE_TIMEOUT_MS) {
+                    int attempt = ++resolveAttempts[0];
+                    if (attempt == 1 || attempt % 10 == 0) {
+                        LOGGER.info("[FRESHSPAWN-RESOLVE] npcId=" + npcId
+                                + " role=" + role
+                                + " waitingForEntity elapsedMs=" + elapsedMs
+                                + " timeoutMs=" + FRESH_SPAWN_RESOLVE_TIMEOUT_MS);
+                    }
+                    return;
+                }
+
+                if (shouldDeferFreshSpawnForEdgeCandidate(world, live)) {
+                    LOGGER.info("[FRESHSPAWN-DEFER] npcId=" + npcId
+                            + " role=" + role
+                            + " triggerChunk=" + triggerChunkIndex
+                            + " reason=EDGE_CANDIDATE_CHUNKS_NOT_READY");
+                    if (++edgeDefers[0] >= 120) {
+                        freshSpawnsInFlight.remove(npcId);
+                        if (taskRef[0] != null) taskRef[0].cancel(false);
+                    }
+                    return;
+                }
+
                 Pair<Ref<EntityStore>, INonPlayerCharacter> spawn;
                 try {
                     spawn = NpcManager.spawnNpc(store, pos, new Vector3f(0, 0, 0), role);
                 } catch (Exception e) {
                     LOGGER.warning("NpcChunkLoadHandler: respawn threw for npcId=" + npcId + ": " + e.getMessage());
-                    if (++attempts[0] >= MAX_FRESH_SPAWN_ATTEMPTS) {
+                    if (++spawnAttempts[0] >= MAX_FRESH_SPAWN_ATTEMPTS) {
                         freshSpawnsInFlight.remove(npcId);
                         if (taskRef[0] != null) taskRef[0].cancel(false);
                     }
                     return;
                 }
                 if (spawn == null || spawn.first() == null) {
-                    int attempt = ++attempts[0];
+                    int attempt = ++spawnAttempts[0];
                     if (attempt >= MAX_FRESH_SPAWN_ATTEMPTS) {
                         LOGGER.warning("NpcChunkLoadHandler: respawn returned null for npcId=" + npcId
                                 + " role=" + role + " after " + attempt + " attempt(s)");
@@ -359,7 +440,7 @@ public class NpcChunkLoadHandler {
                 freshSpawnsInFlight.remove(npcId);
                 if (taskRef[0] != null) taskRef[0].cancel(false);
             }),
-        500L, 500L, TimeUnit.MILLISECONDS);
+        FRESH_SPAWN_RETRY_MS, FRESH_SPAWN_RETRY_MS, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -501,34 +582,53 @@ public class NpcChunkLoadHandler {
     }
 
     /**
-     * Scans all live NPC entities in the store and returns the first one whose
-     * {@link StayedNpcIdentityComponent} matches {@code npcId}. Returns null if
-     * no matching entity is found.
-     *
-     * This is used instead of {@code world.getEntityRef(uuid)} in
-     * {@link #scheduleFreshSpawn} because the engine may assign a fresh UUID to
-     * an entity when it deserialises it from BSON — making the UUID stored in
-     * the registry stale. Scanning by npcId through the live store is reliable
-     * regardless of UUID reuse.
+     * Extra safety beyond HyCitizens: if the saved position is close enough to
+     * a chunk border that a crash could have left data.json one chunk behind,
+     * do not respawn until the adjacent candidate chunk is loaded or at least
+     * loadable from memory. This avoids creating a replacement in the stale
+     * chunk while the real entity is asleep just across the border.
      */
-    @SuppressWarnings("unchecked")
-    private static Ref<EntityStore> findLiveNpcByNpcId(Store<EntityStore> store, String npcId) {
-        if (npcId == null || npcId.isBlank()) return null;
-        Ref<EntityStore>[] found = new Ref[]{null};
-        com.hypixel.hytale.component.Archetype<EntityStore> query =
-                com.hypixel.hytale.component.Archetype.of(NPCEntity.getComponentType());
-        store.forEachChunk(query, (chunk, buf) -> {
-            if (found[0] != null) return;
-            for (int i = 0; i < chunk.size(); i++) {
-                Ref<EntityStore> ref = chunk.getReferenceTo(i);
-                StayedNpcIdentityComponent id = store.getComponent(
-                        ref, StayedNpcIdentityComponent.getComponentType());
-                if (id != null && npcId.equals(id.getNpcId())) {
-                    found[0] = ref;
-                    return;
-                }
-            }
-        });
-        return found[0];
+    private static boolean shouldDeferFreshSpawnForEdgeCandidate(World world,
+                                                                 NpcRegistry.NpcRecord record) {
+        if (world == null || record == null || !record.hasPosition) return false;
+        return shouldDeferEdgePosition(world, record.lastX, record.lastZ)
+                || (record.hasBasePosition && shouldDeferEdgePosition(world, record.baseX, record.baseZ));
+    }
+
+    private static boolean shouldDeferEdgePosition(World world, double x, double z) {
+        int blockX = (int) Math.floor(x);
+        int blockZ = (int) Math.floor(z);
+        int localX = Math.floorMod(blockX, com.hypixel.hytale.math.util.ChunkUtil.SIZE);
+        int localZ = Math.floorMod(blockZ, com.hypixel.hytale.math.util.ChunkUtil.SIZE);
+        if (localX > 1
+                && localX < com.hypixel.hytale.math.util.ChunkUtil.SIZE - 2
+                && localZ > 1
+                && localZ < com.hypixel.hytale.math.util.ChunkUtil.SIZE - 2) {
+            return false;
+        }
+
+        long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z);
+        int chunkX = com.hypixel.hytale.math.util.ChunkUtil.xOfChunkIndex(chunkIndex);
+        int chunkZ = com.hypixel.hytale.math.util.ChunkUtil.zOfChunkIndex(chunkIndex);
+
+        boolean defer = false;
+        if (localX <= 1) defer |= ensureCandidateChunkLoaded(world, chunkX - 1, chunkZ);
+        if (localX >= com.hypixel.hytale.math.util.ChunkUtil.SIZE - 2) {
+            defer |= ensureCandidateChunkLoaded(world, chunkX + 1, chunkZ);
+        }
+        if (localZ <= 1) defer |= ensureCandidateChunkLoaded(world, chunkX, chunkZ - 1);
+        if (localZ >= com.hypixel.hytale.math.util.ChunkUtil.SIZE - 2) {
+            defer |= ensureCandidateChunkLoaded(world, chunkX, chunkZ + 1);
+        }
+        return defer;
+    }
+
+    private static boolean ensureCandidateChunkLoaded(World world, int chunkX, int chunkZ) {
+        long candidate = com.hypixel.hytale.math.util.ChunkUtil.indexChunk(chunkX, chunkZ);
+        if (world.getChunkIfLoaded(candidate) != null) return false;
+        if (world.getChunkIfInMemory(candidate) != null) {
+            world.loadChunkIfInMemory(candidate);
+        }
+        return true;
     }
 }

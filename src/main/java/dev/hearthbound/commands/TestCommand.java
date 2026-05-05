@@ -15,12 +15,17 @@ import dev.hearthbound.test.engine.StayedIntegrationTestRunner;
 import dev.hearthbound.test.engine.TestCase;
 import dev.hearthbound.test.engine.TestCleanup;
 import dev.hearthbound.test.engine.TestPackage;
+import dev.hearthbound.test.packages.AelinPackage;
 import dev.hearthbound.test.packages.ChunksPackage;
 import dev.hearthbound.test.packages.HousingPackage;
+import dev.hearthbound.test.packages.RestartPackage;
+import dev.hearthbound.test.packages.RescuePackage;
 import dev.hearthbound.test.packages.RolesPackage;
 import dev.hearthbound.test.packages.SmokePackage;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -32,6 +37,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@code /hb test list}   — show all packages</li>
  *   <li>{@code /hb test pkg <name>} — run a whole package</li>
+ *   <li>{@code /hb test all} — run every non-restart package</li>
  *   <li>{@code /hb test run <case>} — run a single case from any package</li>
  *   <li>{@code /hb test status} — current step (if running)</li>
  *   <li>{@code /hb test abort}  — request graceful abort</li>
@@ -51,12 +57,16 @@ public class TestCommand extends AbstractCommandCollection {
         PACKAGES.put("chunks",  ChunksPackage::build);
         PACKAGES.put("housing", HousingPackage::build);
         PACKAGES.put("roles",   RolesPackage::build);
+        PACKAGES.put("aelin",   AelinPackage::build);
+        PACKAGES.put("restart", RestartPackage::build);
+        PACKAGES.put("rescue",  RescuePackage::build);
     }
 
     public TestCommand() {
         super("test", "Integration test framework");
         addSubCommand(new ListCommand());
         addSubCommand(new PkgCommand());
+        addSubCommand(new AllCommand());
         addSubCommand(new RunCommand());
         addSubCommand(new StatusCommand());
         addSubCommand(new AbortCommand());
@@ -112,6 +122,34 @@ public class TestCommand extends AbstractCommandCollection {
                 return;
             }
             TestPackage pkg = supplier.get();
+            StayedIntegrationTestRunner.get().runPackage(
+                    pkg, world, store, playerRef, player, chatHandler(ctx));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    private static TestPackage buildAllPackage() {
+        List<TestCase> cases = new ArrayList<>();
+        for (Map.Entry<String, Supplier<TestPackage>> entry : PACKAGES.entrySet()) {
+            if ("restart".equals(entry.getKey())) continue;
+            TestPackage pkg = entry.getValue().get();
+            cases.addAll(pkg.getCases());
+        }
+        return new TestPackage("all", cases);
+    }
+
+    private static class AllCommand extends AbstractPlayerCommand {
+        AllCommand() {
+            super("all", "Run every test package except restart");
+        }
+
+        @Override
+        protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> playerRef,
+                               PlayerRef player, World world) {
+            TestPackage pkg = buildAllPackage();
+            ctx.sendMessage(Message.raw("Running full non-restart suite: "
+                    + pkg.getCases().size() + " case(s). Restart remains manual."));
             StayedIntegrationTestRunner.get().runPackage(
                     pkg, world, store, playerRef, player, chatHandler(ctx));
         }

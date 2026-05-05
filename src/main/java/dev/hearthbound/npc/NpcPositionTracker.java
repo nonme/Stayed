@@ -8,6 +8,7 @@ import dev.hearthbound.util.TickScheduler;
 
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 /**
@@ -24,10 +25,11 @@ import java.util.logging.Logger;
 public final class NpcPositionTracker {
 
     private static final Logger LOGGER = Logger.getLogger(NpcPositionTracker.class.getName());
-    private static final long SYNC_INTERVAL_MS = 5_000L;
+    private static final long SYNC_INTERVAL_MS = 15L;
 
     private static volatile World trackedWorld = null;
     private static ScheduledFuture<?> task = null;
+    private static final AtomicBoolean tickInFlight = new AtomicBoolean(false);
 
     private NpcPositionTracker() {}
 
@@ -50,21 +52,50 @@ public final class NpcPositionTracker {
     private static void tick() {
         World world = trackedWorld;
         if (world == null) return;
-        world.execute(() -> {
-            var store = world.getEntityStore().getStore();
-            boolean anyChanged = false;
-            for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
-                if (record.entityUuid == null) continue;
-                Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
-                if (ref == null || !ref.isValid()) continue;
-                TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
-                if (tc == null || tc.getPosition() == null) continue;
-                var pos = tc.getPosition();
-                if (NpcRegistry.get().updatePosition(record.entityUuid, pos.x, pos.y, pos.z)) {
-                    anyChanged = true;
+        requestSync(world);
+    }
+
+    /**
+     * Requests an immediate live-position sync on the world's owning thread.
+     * Safe to call from async engine callbacks such as chunk pre-load events.
+     */
+    public static void requestSync(World world) {
+        if (world == null) return;
+        if (!tickInFlight.compareAndSet(false, true)) return;
+        try {
+            world.execute(() -> {
+                try {
+                    var store = world.getEntityStore().getStore();
+                    boolean anyChanged = syncLoadedNow(world, store);
+                    if (anyChanged) HearthboundDataStore.get().markDirty();
+                } finally {
+                    tickInFlight.set(false);
                 }
+            });
+        } catch (RuntimeException e) {
+            tickInFlight.set(false);
+            throw e;
+        }
+    }
+
+    /**
+     * Synchronously copies every loaded registered NPC transform into the
+     * registry. Returns true if at least one record moved far enough that the
+     * data store should be flushed soon.
+     */
+    public static boolean syncLoadedNow(World world, com.hypixel.hytale.component.Store<EntityStore> store) {
+        boolean anyChanged = false;
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record.entityUuid == null) continue;
+            Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
+            if (ref == null || !ref.isValid()) continue;
+            TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+            if (tc == null || tc.getPosition() == null) continue;
+            var pos = tc.getPosition();
+            if (NpcRegistry.get().updatePosition(record.entityUuid, pos.x, pos.y, pos.z)) {
+                anyChanged = true;
             }
-            if (anyChanged) HearthboundDataStore.get().markDirty();
-        });
+        }
+        return anyChanged;
     }
 }

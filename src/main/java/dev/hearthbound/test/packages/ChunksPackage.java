@@ -3,10 +3,12 @@ package dev.hearthbound.test.packages;
 import dev.hearthbound.test.engine.TestCase;
 import dev.hearthbound.test.engine.TestPackage;
 import dev.hearthbound.test.steps.AuditStep;
+import dev.hearthbound.test.steps.AssertNpcPositionsSyncedStep;
 import dev.hearthbound.test.steps.ChangeRoleStep;
 import dev.hearthbound.test.steps.CleanupTestNpcsStep;
 import dev.hearthbound.test.steps.DiffStep;
 import dev.hearthbound.test.steps.LogStep;
+import dev.hearthbound.test.steps.MoveNpcsToChunkStep;
 import dev.hearthbound.test.steps.NudgeNpcStep;
 import dev.hearthbound.test.steps.SetupVillageStep;
 import dev.hearthbound.test.steps.SnapshotStep;
@@ -35,9 +37,30 @@ public final class ChunksPackage {
     public static TestPackage build() {
         return new TestPackage("chunks", List.of(
                 buildChunkBorder(),
+                buildChunkCrossChunk(),
                 buildChunkCycle(),
                 buildChunkFarRoleChange(),
                 buildChunkConcurrent()));
+    }
+
+    private static TestCase buildChunkCrossChunk() {
+        return TestCase.of("chunk_cross_chunk",
+                new LogStep("chunk_cross_chunk — move villagers to another chunk center and verify registry follows"),
+                new SetupVillageStep(),
+                new SpawnVillagersStep(10),
+                new AuditStep(true, "post-spawn"),
+                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.roleName), 2, 0, 16.0, 16.0),
+                new WaitStep(7_000),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new TeleportPlayerFarStep(),
+                new WaitStep(60_000),
+                new TeleportPlayerHomeStep(),
+                new WaitStep(10_000),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new AuditStep(true, "post-reload"))
+                .withTeardown(
+                        new CleanupTestNpcsStep(),
+                        new AuditStep(true, "post-cleanup"));
     }
 
     private static TestCase buildChunkBorder() {
@@ -47,10 +70,13 @@ public final class ChunksPackage {
                 new SpawnVillagersStep(20),
                 new AuditStep(true, "post-spawn"),
                 new SnapshotStep("before"),
-                // Push every villager 16 blocks east — guarantees several cross a
-                // chunk boundary (chunks are 32 wide, spawn radius is 5).
-                new NudgeNpcStep(r -> true, 16, 0, 0),
-                new WaitStep(2_000),
+                // Put every villager near the east edge of the neighbouring chunk.
+                // The move step also updates their leash point so AI does not
+                // immediately drag them back to the founding stone before the
+                // position tracker can observe the new chunk.
+                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.roleName), 1, 0, 30.0, 16.0),
+                new WaitStep(12_000),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
                 new TeleportPlayerFarStep(),
                 new WaitStep(60_000),
                 new TeleportPlayerHomeStep(),

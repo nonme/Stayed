@@ -138,14 +138,17 @@ public class ElfSage {
             return;
         }
 
-        int newRoleIndex = com.hypixel.hytale.server.npc.NPCPlugin.get().getIndex(role);
-        if (newRoleIndex < 0) {
-            LOGGER.warning("respawnAs: role index not found for " + role);
-            return;
-        }
+        boolean roleActuallyChanges = !role.equals(npcEntity.getRoleName());
+        if (roleActuallyChanges) {
+            int newRoleIndex = com.hypixel.hytale.server.npc.NPCPlugin.get().getIndex(role);
+            if (newRoleIndex < 0) {
+                LOGGER.warning("respawnAs: role index not found for " + role);
+                return;
+            }
 
-        com.hypixel.hytale.server.npc.systems.RoleChangeSystem.requestRoleChange(
-                elfRef, npcEntity.getRole(), newRoleIndex, false, store);
+            com.hypixel.hytale.server.npc.systems.RoleChangeSystem.requestRoleChange(
+                    elfRef, npcEntity.getRole(), newRoleIndex, false, store);
+        }
 
         // Move the entity if a non-null position was supplied. Skipping the move
         // when the elf is already where we want them avoids unnecessary chunk
@@ -167,7 +170,11 @@ public class ElfSage {
         NpcRegistry.get().updateRecord(updated);
         HearthboundDataStore.get().markDirty();
 
-        NpcRestorer.restoreAfterRoleChange(elfRef, world, updated);
+        if (roleActuallyChanges) {
+            NpcRestorer.restoreAfterRoleChange(elfRef, world, updated);
+        } else {
+            NpcRestorer.restore(elfRef, store, world, updated);
+        }
 
         LOGGER.info("Elf role-changed to " + role + " (UUID: " + oldId + ", npcId=" + updated.npcId + ")");
     }

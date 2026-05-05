@@ -132,7 +132,8 @@ public final class StayedIntegrationTestRunner {
 
         // Before the very first case run a best-effort cleanup of any leftovers
         // from a previous session that ended with a server crash before teardown.
-        if (caseIndex == 0) {
+        TestCase testCase = pkg.getCases().get(caseIndex);
+        if (caseIndex == 0 && !testCase.isSkipPreRunCleanup()) {
             TestCleanup.Result pre = TestCleanup.fullCleanup(world, store, playerRef);
             if (pre.entitiesRemoved > 0 || pre.registryUnregistered > 0
                     || pre.villageBuildingsRemoved > 0 || pre.villageSummariesRemoved > 0) {
@@ -140,7 +141,6 @@ public final class StayedIntegrationTestRunner {
             }
         }
 
-        TestCase testCase = pkg.getCases().get(caseIndex);
         chatHandler.accept("▶ " + testCase.getName());
 
         TestLogger logger = TestLogger.open(pkg.getName() + "_" + testCase.getName());
@@ -317,6 +317,7 @@ public final class StayedIntegrationTestRunner {
         chatHandler.accept(report.allPassed()
                 ? "✔ " + report.summaryLine()
                 : "✘ " + report.summaryLine());
+        chatHandler.accept(report.summaryTable());
         if (lastLogFile != null) {
             chatHandler.accept("Logs: " + lastLogFile);
         }

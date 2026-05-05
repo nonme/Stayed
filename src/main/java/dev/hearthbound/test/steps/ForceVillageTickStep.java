@@ -1,11 +1,8 @@
 package dev.hearthbound.test.steps;
 
-import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.HearthboundPlugin;
 import dev.hearthbound.events.VillageTickHandler;
-import dev.hearthbound.npc.NpcRegistry;
+import dev.hearthbound.npc.NpcPositionTracker;
 import dev.hearthbound.test.engine.StepResult;
 import dev.hearthbound.test.engine.TestContext;
 import dev.hearthbound.test.engine.TestStep;
@@ -38,21 +35,9 @@ public final class ForceVillageTickStep implements TestStep {
         // which leaves NpcPositionTracker (5s scheduler) lagging. Sync the
         // registry positions now so a follow-up audit sees fresh data instead
         // of stale spawn coordinates.
-        int synced = 0;
-        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
-            if (record.entityUuid == null) continue;
-            Ref<EntityStore> ref = ctx.getWorld().getEntityRef(record.entityUuid);
-            if (ref == null || !ref.isValid()) continue;
-            TransformComponent tc = ctx.getStore().getComponent(
-                    ref, TransformComponent.getComponentType());
-            if (tc == null || tc.getPosition() == null) continue;
-            var pos = tc.getPosition();
-            NpcRegistry.get().updatePosition(record.entityUuid, pos.x, pos.y, pos.z);
-            synced++;
-        }
+        NpcPositionTracker.syncLoadedNow(ctx.getWorld(), ctx.getStore());
 
-        ctx.getLogger().info("ForceVillageTick: ran " + count + " tick(s), synced "
-                + synced + " positions");
+        ctx.getLogger().info("ForceVillageTick: ran " + count + " tick(s), synced loaded NPC positions");
         return StepResult.pass(count + " ticks");
     }
 

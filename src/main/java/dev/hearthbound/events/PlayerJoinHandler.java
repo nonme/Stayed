@@ -38,7 +38,7 @@ public class PlayerJoinHandler {
             VillageTickHandler tickHandler = HearthboundPlugin.get().getVillageTickHandler();
             tickHandler.start(store, playerRef, pRef, world);
 
-            // Sync live NPC positions every few seconds — keeps registry chunkIndex
+            // Sync live NPC positions aggressively — keeps registry chunkIndex
             // and lastX/Y/Z accurate so we can recover NPCs that wander out of
             // their original chunk before being saved.
             dev.hearthbound.npc.NpcPositionTracker.start(world);

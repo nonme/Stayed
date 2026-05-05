@@ -53,7 +53,7 @@ public final class HearthboundDataStore {
 
     private final AtomicBoolean dirty = new AtomicBoolean(false);
     private ScheduledFuture<?> flushTask = null;
-    private static final long PERIODIC_SAVE_INTERVAL_MS = 30_000L;
+    private static final long PERIODIC_SAVE_INTERVAL_MS = 5_000L;
 
     public void markDirty() {
         dirty.set(true);
@@ -97,6 +97,12 @@ public final class HearthboundDataStore {
                 if (r.hasPosition != null && r.hasPosition
                         && r.lastX != null && r.lastY != null && r.lastZ != null) {
                     record.setPosition(r.lastX, r.lastY, r.lastZ);
+                }
+                if (r.hasBasePosition != null && r.hasBasePosition
+                        && r.baseX != null && r.baseY != null && r.baseZ != null) {
+                    record.setBasePosition(r.baseX, r.baseY, r.baseZ);
+                } else if (record.hasPosition) {
+                    record.setBasePosition(record.lastX, record.lastY, record.lastZ);
                 }
                 if (r.testMarker != null && !r.testMarker.isBlank()) {
                     record.testMarker = r.testMarker;
@@ -144,6 +150,12 @@ public final class HearthboundDataStore {
                 pr.lastX = r.lastX;
                 pr.lastY = r.lastY;
                 pr.lastZ = r.lastZ;
+            }
+            if (r.hasBasePosition) {
+                pr.hasBasePosition = true;
+                pr.baseX = r.baseX;
+                pr.baseY = r.baseY;
+                pr.baseZ = r.baseZ;
             }
             if (r.testMarker != null && !r.testMarker.isBlank()) {
                 pr.testMarker = r.testMarker;
@@ -214,6 +226,8 @@ public final class HearthboundDataStore {
         long   chunkIndex;
         Double lastX, lastY, lastZ;
         Boolean hasPosition;
+        Double baseX, baseY, baseZ;
+        Boolean hasBasePosition;
         /**
          * Set on records spawned by the integration test framework. Lets
          * {@code /hb test cleanup} find and delete leftover test NPCs after

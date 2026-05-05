@@ -31,6 +31,7 @@ public final class NpcRestorer {
 
     private static final long APPLY_DELAY_MS = 500;
     private static final long APPLY_RETRY_MS = 2_000;
+    private static final long APPLY_LATE_RETRY_MS = 5_000;
 
     private NpcRestorer() {}
 
@@ -42,6 +43,7 @@ public final class NpcRestorer {
                                World world, NpcRegistry.NpcRecord record) {
         if (record == null) return;
         applyInteraction(ref, store, record.interaction);
+        scheduleInteractionRetries(ref, world, record);
         scheduleSkin(ref, world, record);
     }
 
@@ -52,19 +54,25 @@ public final class NpcRestorer {
     public static void restoreAfterRoleChange(Ref<EntityStore> ref, World world,
                                               NpcRegistry.NpcRecord record) {
         if (record == null) return;
-        TickScheduler.getExecutor().schedule(() ->
-            world.execute(() -> {
-                if (!ref.isValid()) return;
-                applyInteraction(ref, world.getEntityStore().getStore(), record.interaction);
-            }),
-            APPLY_DELAY_MS, TimeUnit.MILLISECONDS);
-        TickScheduler.getExecutor().schedule(() ->
-            world.execute(() -> {
-                if (!ref.isValid()) return;
-                applyInteraction(ref, world.getEntityStore().getStore(), record.interaction);
-            }),
-            APPLY_DELAY_MS + APPLY_RETRY_MS, TimeUnit.MILLISECONDS);
+        scheduleInteractionRetries(ref, world, record);
         scheduleSkin(ref, world, record);
+    }
+
+    private static void scheduleInteractionRetries(Ref<EntityStore> ref, World world,
+                                                   NpcRegistry.NpcRecord record) {
+        scheduleInteraction(ref, world, record, APPLY_DELAY_MS);
+        scheduleInteraction(ref, world, record, APPLY_DELAY_MS + APPLY_RETRY_MS);
+        scheduleInteraction(ref, world, record, APPLY_DELAY_MS + APPLY_LATE_RETRY_MS);
+    }
+
+    private static void scheduleInteraction(Ref<EntityStore> ref, World world,
+                                            NpcRegistry.NpcRecord record, long delayMs) {
+        TickScheduler.getExecutor().schedule(() ->
+            world.execute(() -> {
+                if (!ref.isValid()) return;
+                applyInteraction(ref, world.getEntityStore().getStore(), record.interaction);
+            }),
+            delayMs, TimeUnit.MILLISECONDS);
     }
 
     private static void scheduleSkin(Ref<EntityStore> ref, World world, NpcRegistry.NpcRecord record) {
@@ -80,6 +88,7 @@ public final class NpcRestorer {
         });
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS, TimeUnit.MILLISECONDS);
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS + APPLY_RETRY_MS, TimeUnit.MILLISECONDS);
+        TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS + APPLY_LATE_RETRY_MS, TimeUnit.MILLISECONDS);
     }
 
     public static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {

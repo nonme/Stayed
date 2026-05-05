@@ -12,6 +12,7 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.StayedNpcIdentityComponent;
+import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
@@ -117,6 +118,7 @@ public final class NpcRegistryInvariantAudit {
         Set<Long> observedChunks = new HashSet<>(entityUuidToObservedChunk.values());
         for (NpcRegistry.NpcRecord record : allRecords) {
             if (record.entityUuid == null) continue;
+            if (RescueQuestManager.isQuestEnemyRecord(record)) continue;
             if (!observedChunks.contains(record.chunkIndex)) continue;
 
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
@@ -134,7 +136,7 @@ public final class NpcRegistryInvariantAudit {
         }
 
         // Invariant 4: POSITION_DRIFT — live entity is far from the chunk the
-        // registry record claims. NpcPositionTracker syncs every ~5 s, so a 1–2
+        // registry record claims. NpcPositionTracker syncs aggressively, so a 1–2
         // chunk drift between syncs is normal (Wander behavior moves NPCs across
         // boundaries between updates). We only flag a drift if the entity is
         // more than DRIFT_TOLERANCE_CHUNKS away — that's the size of "tracker

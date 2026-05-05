@@ -126,6 +126,24 @@ public final class RescueQuestManager {
 
     private static final String VARIANT_VICTIM_ROLE = "Villager_Rescue_Trapped";
 
+    private static final Set<String> QUEST_ENEMY_ROLES = new HashSet<>(Arrays.asList(
+            TRAP_GUARD_ROLE,
+            "Wolf_Black",
+            "Skeleton_Archer",
+            "Goblin_Scrapper",
+            "Goblin_Scavenger",
+            "Goblin_Miner"));
+
+    public static boolean isQuestEnemyRole(String roleName) {
+        return roleName != null && QUEST_ENEMY_ROLES.contains(roleName);
+    }
+
+    public static boolean isQuestEnemyRecord(NpcRegistry.NpcRecord record) {
+        return record != null
+                && record.interaction == NpcRegistry.InteractionType.NONE
+                && isQuestEnemyRole(record.roleName);
+    }
+
     // Prefab surface Y: the prefab-local Y layer that should align with groundY.
     // CAMP: subsoil fill at Y=0..1, main pathway at Y=2.
     // CABIN: subsoil fill at Y=0, ground surface at Y=1.
@@ -217,10 +235,12 @@ public final class RescueQuestManager {
         activeNpcRefs.clear();
 
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
-            if (record.interaction != NpcRegistry.InteractionType.RESCUE) {
+            if (record.interaction != NpcRegistry.InteractionType.RESCUE
+                    && !isQuestEnemyRecord(record)) {
                 continue;
             }
-            LOGGER.info("cleanup: removing stale RESCUE record uuid=" + record.entityUuid);
+            LOGGER.info("cleanup: removing stale quest NPC record uuid=" + record.entityUuid
+                    + " role=" + record.roleName);
             removeQuestNpc(store, record.entityUuid, null);
         }
 
@@ -604,11 +624,9 @@ public final class RescueQuestManager {
     }
 
     /**
-     * Spawns a hostile mob as part of a rescue camp. Enemies are intentionally
-     * NOT registered in {@link NpcRegistry}: a killed goblin should stay dead,
-     * and orphan duplicates in unloaded chunks are not our problem (they have
-     * no Stayed identity component, so {@link dev.hearthbound.npc.DuplicateNpcPrevention}
-     * leaves them alone).
+     * Spawns a hostile mob as part of a rescue camp. Enemies are registered
+     * with interaction NONE: duplicate prevention and cleanup can manage them,
+     * but chunk restore never resurrects them after death.
      */
     private static void spawnEnemy(Store<EntityStore> store, Vector3d pos, String role) {
         Pair<Ref<EntityStore>, INonPlayerCharacter> result
@@ -619,6 +637,16 @@ public final class RescueQuestManager {
         }
         Ref<EntityStore> enemyRef = result.first();
         activeNpcRefs.add(enemyRef);
+
+        UUID enemyUuid = NpcManager.extractUuid(store, enemyRef);
+        if (enemyUuid != null) {
+            long chunkIndex = NpcManager.chunkIndexFor(pos);
+            NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
+                    enemyUuid, role, NpcRegistry.InteractionType.NONE, 0L, chunkIndex);
+            record.setPosition(pos.getX(), pos.getY(), pos.getZ());
+            NpcRegistry.get().registerWithIdentity(store, enemyRef, record);
+            HearthboundDataStore.get().markDirty();
+        }
     }
 
     private static String[] enemyRolesFor(QuestVariant variant) {

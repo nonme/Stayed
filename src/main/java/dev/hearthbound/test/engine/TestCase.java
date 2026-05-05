@@ -26,15 +26,22 @@ public final class TestCase {
     private final String name;
     private final List<TestStep> steps;
     private final List<TestStep> teardown;
+    private final boolean skipPreRunCleanup;
 
     public TestCase(String name, List<TestStep> steps) {
         this(name, steps, List.of());
     }
 
     public TestCase(String name, List<TestStep> steps, List<TestStep> teardown) {
+        this(name, steps, teardown, false);
+    }
+
+    private TestCase(String name, List<TestStep> steps, List<TestStep> teardown,
+                     boolean skipPreRunCleanup) {
         this.name = name;
         this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
         this.teardown = Collections.unmodifiableList(new ArrayList<>(teardown));
+        this.skipPreRunCleanup = skipPreRunCleanup;
     }
 
     public static TestCase of(String name, TestStep... steps) {
@@ -47,10 +54,15 @@ public final class TestCase {
      */
     public TestCase withTeardown(TestStep... teardownSteps) {
         return new TestCase(this.name, this.steps,
-                new ArrayList<>(Arrays.asList(teardownSteps)));
+                new ArrayList<>(Arrays.asList(teardownSteps)), skipPreRunCleanup);
+    }
+
+    public TestCase skipPreRunCleanup() {
+        return new TestCase(this.name, this.steps, this.teardown, true);
     }
 
     public String getName() { return name; }
     public List<TestStep> getSteps() { return steps; }
     public List<TestStep> getTeardown() { return teardown; }
+    public boolean isSkipPreRunCleanup() { return skipPreRunCleanup; }
 }

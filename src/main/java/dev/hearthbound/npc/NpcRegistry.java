@@ -66,6 +66,10 @@ public final class NpcRegistry {
         public volatile double lastX, lastY, lastZ;
         /** False until the first position sync. */
         public volatile boolean hasPosition;
+        /** Stable original/home position used as a second chunk anchor. */
+        public volatile double baseX, baseY, baseZ;
+        public volatile long baseChunkIndex;
+        public volatile boolean hasBasePosition;
         /** Reserved — no longer set by registry code; kept so older save files load. */
         public volatile boolean restorePending = false;
         /** Reserved — no longer set by registry code; kept so older save files load. */
@@ -96,10 +100,30 @@ public final class NpcRegistry {
         }
 
         public void setPosition(double x, double y, double z) {
+            if (!hasBasePosition) {
+                setBasePosition(x, y, z);
+            }
             this.lastX = x;
             this.lastY = y;
             this.lastZ = z;
             this.hasPosition = true;
+        }
+
+        public void setBasePosition(double x, double y, double z) {
+            this.baseX = x;
+            this.baseY = y;
+            this.baseZ = z;
+            this.baseChunkIndex = ChunkUtil.indexChunkFromBlock(x, z);
+            this.hasBasePosition = true;
+        }
+
+        public void copyBasePositionFrom(NpcRecord other) {
+            if (other == null || !other.hasBasePosition) return;
+            this.baseX = other.baseX;
+            this.baseY = other.baseY;
+            this.baseZ = other.baseZ;
+            this.baseChunkIndex = other.baseChunkIndex;
+            this.hasBasePosition = true;
         }
     }
 
@@ -156,6 +180,7 @@ public final class NpcRegistry {
             // is preserved even when callers construct a fresh NpcRecord with the
             // legacy 5-arg constructor (which generates a new npcId).
             newRecord.npcId = old.npcId;
+            newRecord.copyBasePositionFrom(old);
             byNpcId.put(old.npcId, newRecord);
         } else {
             byNpcId.put(newRecord.npcId, newRecord);

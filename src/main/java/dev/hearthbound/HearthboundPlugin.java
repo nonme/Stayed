@@ -66,8 +66,8 @@ public class HearthboundPlugin extends JavaPlugin {
         // can find records for NPC chunks that load near the spawn.
         dev.hearthbound.npc.HearthboundDataStore.get().loadAndPopulateRegistry();
         // Periodic flush: NpcPositionTracker marks the store dirty as villagers
-        // walk; this drains the flag to disk every 30s so a crash loses at most
-        // half a minute of position drift instead of every move since boot.
+        // walk; this drains the flag to disk every 5s so a crash loses at most
+        // a few seconds of position drift instead of every move since boot.
         dev.hearthbound.npc.HearthboundDataStore.get().startPeriodicFlush();
 
         // Register ECS components

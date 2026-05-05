@@ -61,4 +61,28 @@ public final class TestReport {
         return packageName + ": " + passedCount() + "/" + outcomes.size() + " passed in "
                 + (elapsedMs() / 1000) + "s";
     }
+
+    public String summaryTable() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== TEST SUMMARY ===\n");
+        sb.append(summaryLine()).append('\n');
+        sb.append("--------------------\n");
+        for (CaseOutcome outcome : outcomes) {
+            sb.append(outcome.passed ? "PASS " : "FAIL ");
+            sb.append(padRight(outcome.caseName, 34));
+            sb.append(' ');
+            sb.append(outcome.durationMs / 1000).append("s");
+            if (!outcome.passed && !outcome.message.isBlank()) {
+                sb.append(" — ").append(outcome.message);
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    private static String padRight(String value, int width) {
+        String s = value != null ? value : "";
+        if (s.length() >= width) return s;
+        return s + " ".repeat(width - s.length());
+    }
 }

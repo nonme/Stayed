@@ -4,7 +4,6 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
-import com.hypixel.hytale.server.core.entity.Entity;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
@@ -13,13 +12,9 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
-import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.math.vector.Vector3d;
 import dev.hearthbound.building.BuildingSystem;
-import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -137,6 +132,13 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         b.set("#PanelConstruction.Visible", "construction".equals(activeTab));
 
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village != null && village.isFounded()) {
+            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+            if (reconciled > 0) {
+                village = VillageManager.get().getVillageData(store, playerRef);
+                record = findHouseRecord(store);
+            }
+        }
         String subtitle = (record != null && record.isCompleted()) ? "Built" : "Planned";
         b.set("#HouseSubtitle.Text", subtitle);
 
@@ -374,15 +376,21 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
 
             case "recall" -> {
                 if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+                VillageData village = VillageManager.get().getVillageData(store, playerRef);
+                if (village != null && village.isFounded()) {
+                    VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+                }
                 BuildingRecord record = findHouseRecord(store);
                 if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
                 UUID assignedId = record.getAssignedVillagerId();
                 if (assignedId == null) { sendUpdate(new UICommandBuilder(), false); return; }
 
-                recallVillager(assignedId, record);
+                boolean ok = recallVillager(assignedId, record);
 
                 UICommandBuilder b = new UICommandBuilder();
-                b.set("#ResidentStatus.Text", "Recalled to house.");
+                b.set("#ResidentStatus.Text", ok
+                        ? "Recalled to house."
+                        : "This resident is missing — they will be replaced shortly.");
                 sendUpdate(b, false);
             }
 
@@ -475,55 +483,20 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         return total;
     }
 
-    private void recallVillager(UUID villagerUuid, BuildingRecord house) {
+    private boolean recallVillager(UUID villagerUuid, BuildingRecord house) {
         // Stand one block in front of the brazier, inside the house. Brazier is always
         // placed with its open face toward the interior, so its world rotation tells us
         // which direction is "into the room".
         double[] stand = BuildingType.getInteriorStandPoint(
                 house.getPosX(), house.getPosY(), house.getPosZ(), house.getRotation());
-        double standX = stand[0], standY = stand[1], standZ = stand[2];
         LOGGER.info("recallVillager: brazier=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
-                + ") rotation=" + house.getRotation() + " → stand=(" + standX + "," + standY + "," + standZ + ")");
-
-        Entity entity = world.getEntity(villagerUuid);
-        if (entity != null) {
-            doMoveTo(villagerUuid, standX, standY, standZ);
-            return;
-        }
-
-        // Entity not in any loaded chunk. Force-load the last-known chunk and
-        // try moveTo. If the entity is gone for good, NpcChunkLoadHandler will
-        // spawn a fresh one at the saved position next time a relevant chunk
-        // loads — we don't run a parallel respawn path here.
-        NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(villagerUuid);
-        if (record == null) {
-            LOGGER.warning("recallVillager: no NpcRecord for uuid=" + villagerUuid);
-            return;
-        }
-        world.getChunkAsync(record.chunkIndex).thenRun(() -> world.execute(() -> {
-            dev.hearthbound.util.TickScheduler.runLater(world, 1500L, () -> {
-                Entity reloaded = world.getEntity(villagerUuid);
-                if (reloaded != null) {
-                    doMoveTo(villagerUuid, standX, standY, standZ);
-                    return;
-                }
-                LOGGER.warning("recallVillager: entity not in chunk after force-load uuid="
-                        + villagerUuid + " — record kept; NpcChunkLoadHandler will respawn on next chunk reload");
-            });
-        }));
-    }
-
-    private void doMoveTo(UUID villagerUuid, double x, double y, double z) {
-        Store<EntityStore> liveStore = world.getEntityStore().getStore();
-        Entity entity = world.getEntity(villagerUuid);
-        if (entity == null) return;
-        Ref<EntityStore> ref = world.getEntityRef(villagerUuid);
-        if (ref == null || !ref.isValid()) return;
-        entity.moveTo(ref, x, y, z, liveStore);
-        NPCEntity npcEntity = liveStore.getComponent(ref, NPCEntity.getComponentType());
-        if (npcEntity != null) {
-            npcEntity.setLeashPoint(new Vector3d(x, y, z));
-        }
+                + ") rotation=" + house.getRotation() + " → stand=(" + stand[0] + "," + stand[1] + "," + stand[2] + ")");
+        VillageData village = VillageManager.get().getVillageData(world.getEntityStore().getStore(), playerRef);
+        dev.hearthbound.npc.NpcRegistry.NpcRecord record =
+                VillageManager.get().findVillagerRecord(village, villagerUuid);
+        return record != null
+                ? dev.hearthbound.npc.NpcTeleporter.recall(world, record, stand[0], stand[1], stand[2])
+                : dev.hearthbound.npc.NpcTeleporter.recall(world, villagerUuid, stand[0], stand[1], stand[2]);
     }
 
     private int depositFromInventory(Player player, BuildingRecord target, Map<String, Integer> required) {

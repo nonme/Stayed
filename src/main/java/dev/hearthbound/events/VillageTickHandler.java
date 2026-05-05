@@ -118,6 +118,11 @@ public class VillageTickHandler {
         if (village == null || !village.isFounded()) return;
 
         convertAllFollowers(store, playerRef, village, world);
+        int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+        if (reconciled > 0) {
+            village = VillageManager.get().getVillageData(store, playerRef);
+            if (village == null) return;
+        }
         // Free buildings whose assigned villager is permanently lost. Runs
         // before the assign* passes so a freed slot can immediately be picked
         // up by another villager on the same tick — no empty house or
@@ -402,7 +407,16 @@ public class VillageTickHandler {
         for (BuildingRecord building : village.getBuildings()) {
             UUID assigned = building.getAssignedVillagerId();
             if (assigned == null) continue;
-            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(assigned);
+            NpcRegistry.NpcRecord record = VillageManager.get().findVillagerRecord(village, assigned);
+            if (record != null && record.entityUuid != null && !assigned.equals(record.entityUuid)) {
+                int rewritten = VillageManager.get().replaceVillagerUuid(village, assigned, record.entityUuid);
+                if (rewritten > 0) {
+                    assigned = record.entityUuid;
+                    anyFreed = true;
+                    LOGGER.info("cleanupOrphanedAssignments: rewrote stale assignment refs to "
+                            + assigned + " (" + rewritten + " refs)");
+                }
+            }
             boolean orphaned = record == null || record.broken;
             if (orphaned) {
                 String reason = record == null ? "no registry entry" : "broken=true";

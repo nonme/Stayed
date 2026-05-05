@@ -76,18 +76,28 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         founded = village != null && village.isFounded();
+        if (founded) {
+            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+            if (reconciled > 0) {
+                village = VillageManager.get().getVillageData(store, playerRef);
+            }
+        }
 
         if (founded) {
-            populatePostFounding(builder, village);
+            populatePostFounding(builder, events, village);
         } else {
             populatePreFounding(builder);
         }
 
-        // Tab buttons — bind all 4 variants (active + inactive for each tab)
+        // Tab buttons — every tab has an active and inactive variant; both bind the same action
         events.addEventBinding(CustomUIEventBindingType.Activating, "#TabVillage",
                 EventData.of(DialogEventData.ACTION_KEY, "tab_village"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#TabVillageInactive",
                 EventData.of(DialogEventData.ACTION_KEY, "tab_village"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#TabPopulation",
+                EventData.of(DialogEventData.ACTION_KEY, "tab_population"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#TabPopulationInactive",
+                EventData.of(DialogEventData.ACTION_KEY, "tab_population"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#TabConstruction",
                 EventData.of(DialogEventData.ACTION_KEY, "tab_construction"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#TabConstructionInactive",
@@ -115,11 +125,15 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private void setTabActive(UICommandBuilder builder, String tab) {
         boolean villageActive = "village".equals(tab);
+        boolean populationActive = "population".equals(tab);
+        boolean constructionActive = "construction".equals(tab);
         builder.set("#TabVillage.Visible", villageActive);
-        builder.set("#TabVillageInactive.Visible", !villageActive);
-        // Construction tab buttons are only shown after founding
-        builder.set("#TabConstruction.Visible", founded && !villageActive);
-        builder.set("#TabConstructionInactive.Visible", founded && villageActive);
+        builder.set("#TabVillageInactive.Visible", founded && !villageActive);
+        // Population/Construction tabs only visible after founding
+        builder.set("#TabPopulation.Visible", founded && populationActive);
+        builder.set("#TabPopulationInactive.Visible", founded && !populationActive);
+        builder.set("#TabConstruction.Visible", founded && constructionActive);
+        builder.set("#TabConstructionInactive.Visible", founded && !constructionActive);
     }
 
     private void populatePreFounding(UICommandBuilder builder) {
@@ -145,7 +159,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
     // ========== Post-founding UI ==========
 
-    private void populatePostFounding(UICommandBuilder builder, VillageData village) {
+    private void populatePostFounding(UICommandBuilder builder, UIEventBuilder events, VillageData village) {
         String name = village.getVillageName().isEmpty() ? "Unnamed Village" : village.getVillageName();
         builder.set("#VillageName.Text", name);
 
@@ -163,28 +177,116 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         builder.set("#PostFoundingGroup.Visible", true);
         setTabActive(builder, activeTab);
         builder.set("#PanelVillage.Visible", "village".equals(activeTab));
+        builder.set("#PanelPopulation.Visible", "population".equals(activeTab));
         builder.set("#PanelConstruction.Visible", "construction".equals(activeTab));
 
-        // Buildings list
+        // Buildings list (Village tab)
         StringBuilder buildings = new StringBuilder();
         for (BuildingRecord b : village.getBuildings()) {
             String status = b.isCompleted() ? "[Done]" : "[" + b.getBuildProgress() + "%]";
             buildings.append(status).append(" ").append(BuildingType.getDisplayName(b.getType())).append("\n");
         }
         builder.set("#BuildingsList.Text", buildings.isEmpty() ? "No buildings yet" : buildings.toString());
-        boolean hasElf = village.getElfId() != null;
-        int total = village.getVillagerCount() + (hasElf ? 1 : 0);
-        builder.set("#PopulationCount.Text", "— " + total + " residents");
-        StringBuilder pop = new StringBuilder();
-        if (hasElf) pop.append(getElfName(village)).append("\n");
-        for (dev.hearthbound.village.VillagerSummary v : village.getVillagers()) {
-            pop.append(v.getFullName()).append("\n");
-        }
-        builder.set("#PopulationInfo.Text", pop.isEmpty() ? "No residents yet" : pop.toString().stripTrailing());
         builder.set("#ContainerHint.Text", "Use the Construction tab to deposit and manage resources.");
 
-        // Set up construction tab content
+        // Population tab content (rows + per-row Recall bindings)
+        populatePopulationTab(builder, events, village);
+
+        // Construction tab content
         populateConstructionTab(builder, village);
+    }
+
+    /**
+     * Renders the Population tab: one row per resident with a Recall button.
+     * Aelin appears first (she is registered separately from VillagerSummary).
+     * Each Recall button is bound during build() with the resident's UUID — the
+     * page must be reopened to see newly-recruited villagers.
+     */
+    private void populatePopulationTab(UICommandBuilder builder, UIEventBuilder events, VillageData village) {
+        builder.clear("#PopulationListContainer");
+
+        int rowIndex = 0;
+        if (village.getElfId() != null) {
+            String elfName = dev.hearthbound.npc.ElfSage.resolveElfName();
+            dev.hearthbound.npc.NpcRegistry.NpcRecord record =
+                    dev.hearthbound.npc.NpcRegistry.get().getRecord(village.getElfId());
+            appendPopulationRow(builder, events, rowIndex, elfName, "Sage",
+                    record != null && record.entityUuid != null ? record.entityUuid : village.getElfId(),
+                    record != null);
+            rowIndex++;
+        }
+        for (dev.hearthbound.village.VillagerSummary v : village.getVillagers()) {
+            String role = roleLabel(v);
+            dev.hearthbound.npc.NpcRegistry.NpcRecord record =
+                    VillageManager.get().findVillagerRecord(village, v.getVillagerUuid());
+            appendPopulationRow(builder, events, rowIndex, v.getFullName(), role,
+                    record != null && record.entityUuid != null ? record.entityUuid : v.getVillagerUuid(),
+                    record != null);
+            rowIndex++;
+        }
+        builder.set("#PopulationCount.Text", "— " + rowIndex + " residents");
+    }
+
+    private static String roleLabel(dev.hearthbound.village.VillagerSummary v) {
+        String prof = v.getProfession();
+        if (prof == null || prof.isBlank()) return "Resident";
+        return switch (prof) {
+            case dev.hearthbound.village.VillagerData.PROF_FARMER -> "Farmer";
+            case dev.hearthbound.village.VillagerData.PROF_LUMBERJACK -> "Lumberjack";
+            case dev.hearthbound.village.VillagerData.PROF_MASON -> "Miner";
+            default -> "Resident";
+        };
+    }
+
+    /**
+     * Inserts one row into {@code #PopulationListContainer}. When {@code hasRecord}
+     * is true the row carries a working Recall button bound to a "recall" action
+     * carrying the NPC's UUID via {@code VALUE_KEY}; when false the resident is
+     * a tombstone (registry record was lost) — the row is rendered with a
+     * "(missing)" tag and no button, since teleport would silently fail and the
+     * cleanup tick will eventually free the slot.
+     *
+     * <p>The inlined DSL fragment is parsed in isolation, so it cannot reference
+     * named expressions from the host {@code .ui} document — every style must be
+     * written out inline. The binding selector includes the container path plus
+     * the row index so it resolves to the unique button in this row even though
+     * sibling rows reuse the same {@code #RecallBtn} id.
+     */
+    private void appendPopulationRow(UICommandBuilder builder, UIEventBuilder events,
+                                     int rowIndex, String name, String role,
+                                     java.util.UUID npcUuid, boolean hasRecord) {
+        if (hasRecord) {
+            builder.appendInline("#PopulationListContainer",
+                    "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 4); Padding: (Horizontal: 6); " +
+                    "  Label { FlexWeight: 1; Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #cdd8e0, FontSize: 12); Text: \"" + escape(name) + "\"; } " +
+                    "  Label { Anchor: (Width: 90); Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #6a8898, FontSize: 10); Text: \"" + escape(role) + "\"; } " +
+                    "  TextButton #RecallBtn { Anchor: (Width: 80, Height: 26); " +
+                    "    Style: (" +
+                    "      Default: (Background: #2a3f56, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #b8d0e4, FontSize: 11))," +
+                    "      Hovered: (Background: #3a526e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d8e8f4, FontSize: 11))," +
+                    "      Pressed: (Background: #1c2c40, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #b8d0e4, FontSize: 11))" +
+                    "    );" +
+                    "    Text: \"Recall\";" +
+                    "  } " +
+                    "}");
+            events.addEventBinding(CustomUIEventBindingType.Activating,
+                    "#PopulationListContainer[" + rowIndex + "] #RecallBtn",
+                    EventData.of(DialogEventData.ACTION_KEY, "recall")
+                            .append(DialogEventData.VALUE_KEY, npcUuid.toString()),
+                    false);
+        } else {
+            builder.appendInline("#PopulationListContainer",
+                    "Group { LayoutMode: Left; Anchor: (Height: 32, Bottom: 4); Padding: (Horizontal: 6); " +
+                    "  Label { FlexWeight: 1; Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #6a7882, FontSize: 12); Text: \"" + escape(name) + "\"; } " +
+                    "  Label { Anchor: (Width: 90); Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #6a8898, FontSize: 10); Text: \"" + escape(role) + "\"; } " +
+                    "  Label { Anchor: (Width: 80); Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c87878, FontSize: 10, RenderItalics: true); Text: \"(missing)\"; } " +
+                    "}");
+        }
+    }
+
+    private static String escape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private void populateConstructionTab(UICommandBuilder builder, VillageData village) {
@@ -332,8 +434,26 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 activeTab = "village";
                 UICommandBuilder builder = new UICommandBuilder();
                 builder.set("#PanelVillage.Visible", true);
+                builder.set("#PanelPopulation.Visible", false);
                 builder.set("#PanelConstruction.Visible", false);
                 setTabActive(builder, "village");
+                sendUpdate(builder, false);
+            }
+
+            case "tab_population" -> {
+                if (!founded) return;
+                activeTab = "population";
+                UICommandBuilder builder = new UICommandBuilder();
+                builder.set("#PanelVillage.Visible", false);
+                builder.set("#PanelPopulation.Visible", true);
+                builder.set("#PanelConstruction.Visible", false);
+                setTabActive(builder, "population");
+                // Rows were rendered in build(); just refresh the count in case it changed.
+                VillageData v = VillageManager.get().getVillageData(store, playerRef);
+                if (v != null) {
+                    int total = v.getVillagerCount() + (v.getElfId() != null ? 1 : 0);
+                    builder.set("#PopulationCount.Text", "— " + total + " residents");
+                }
                 sendUpdate(builder, false);
             }
 
@@ -342,6 +462,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 activeTab = "construction";
                 UICommandBuilder builder = new UICommandBuilder();
                 builder.set("#PanelVillage.Visible", false);
+                builder.set("#PanelPopulation.Visible", false);
                 builder.set("#PanelConstruction.Visible", true);
                 setTabActive(builder, "construction");
 
@@ -350,6 +471,41 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                     populateConstructionTab(builder, village);
                 }
                 sendUpdate(builder, false);
+            }
+
+            case "recall" -> {
+                if (!founded) return;
+                String uuidStr = data.getValue();
+                if (uuidStr == null || uuidStr.isBlank()) return;
+                java.util.UUID npcUuid;
+                try {
+                    npcUuid = java.util.UUID.fromString(uuidStr);
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warning("recall: invalid uuid '" + uuidStr + "'");
+                    return;
+                }
+                VillageData v = VillageManager.get().getVillageData(store, playerRef);
+                if (v != null) {
+                    int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, v, world);
+                    if (reconciled > 0) {
+                        v = VillageManager.get().getVillageData(store, playerRef);
+                    }
+                }
+                double[] stand = dev.hearthbound.building.BuildingLayout.townHallStandPoint(v);
+                if (stand == null) {
+                    LOGGER.warning("recall: town hall layout missing — village not founded?");
+                    return;
+                }
+                dev.hearthbound.npc.NpcRegistry.NpcRecord record =
+                        dev.hearthbound.npc.NpcRegistry.get().getRecord(npcUuid);
+                if (record == null && v != null) {
+                    record = VillageManager.get().findVillagerRecord(v, npcUuid);
+                }
+                boolean ok = record != null
+                        ? dev.hearthbound.npc.NpcTeleporter.recall(world, record, stand[0], stand[1], stand[2])
+                        : dev.hearthbound.npc.NpcTeleporter.recall(world, npcUuid, stand[0], stand[1], stand[2]);
+                LOGGER.info("recall: " + npcUuid + " → town hall stand=("
+                        + stand[0] + "," + stand[1] + "," + stand[2] + ") ok=" + ok);
             }
 
             case "suggest" -> {

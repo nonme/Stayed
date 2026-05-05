@@ -189,6 +189,27 @@ public final class BuildingLayout {
                 && !lower.contains("sign") && !lower.contains("ore_");
     }
 
+    /**
+     * World position of the Town Hall interior stand-point for {@code village}.
+     * This is where the elf ends up after finishing any build (see
+     * {@code BuildingSystem.onBuildingComplete}) and the canonical recall target
+     * for Aelin and any villager pulled back from the Town Hall UI.
+     *
+     * <p>Returns {@code null} if the village has no founding stone yet — callers
+     * must fall back to a safe spot of their own choosing in that case.
+     */
+    public static double[] townHallStandPoint(dev.hearthbound.village.VillageData village) {
+        if (village == null || !village.isFounded()) return null;
+        Layout layout = get(dev.hearthbound.village.BuildingType.TOWN_HALL);
+        int steps = layout.rotationSteps(village.getRotation());
+        int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
+        return new double[]{
+                village.getFoundingStoneX() + center[0] + 0.5,
+                village.getFoundingStoneY() + layout.floorLY() + 1.0,
+                village.getFoundingStoneZ() + center[2] + 0.5
+        };
+    }
+
     /** Rotates native-local coords (lx, ly, lz) by the given number of 90° CCW steps. */
     public static int[] rotateLocalOffset(int lx, int ly, int lz, int steps) {
         steps = ((steps % 4) + 4) % 4;

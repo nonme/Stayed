@@ -19,6 +19,7 @@ public class VillagerSummary {
                     .append(new KeyedCodec<>("Race", Codec.STRING), VillagerSummary::setRace, VillagerSummary::getRace).add()
                     .append(new KeyedCodec<>("Profession", Codec.STRING), VillagerSummary::setProfession, VillagerSummary::getProfession).add()
                     .append(new KeyedCodec<>("VillagerUuid", Codec.UUID_STRING), VillagerSummary::setVillagerUuid, VillagerSummary::getVillagerUuid).add()
+                    .append(new KeyedCodec<>("SkinSeed", Codec.LONG), VillagerSummary::setSkinSeed, VillagerSummary::getSkinSeed).add()
                     .build();
 
     private String firstName = "";
@@ -26,6 +27,7 @@ public class VillagerSummary {
     private String race = VillagerData.RACE_HUMAN;
     private String profession = VillagerData.PROF_NONE;
     private UUID villagerUuid;
+    private long skinSeed = 0L;
 
     public VillagerSummary() {}
 
@@ -34,6 +36,7 @@ public class VillagerSummary {
         this.lastName = data.getLastName();
         this.race = data.getRace();
         this.profession = data.getProfession();
+        this.skinSeed = data.getSkinSeed();
     }
 
     public String getFirstName() { return firstName; }
@@ -50,6 +53,9 @@ public class VillagerSummary {
 
     public UUID getVillagerUuid() { return villagerUuid; }
     public void setVillagerUuid(UUID villagerUuid) { this.villagerUuid = villagerUuid; }
+
+    public long getSkinSeed() { return skinSeed; }
+    public void setSkinSeed(long skinSeed) { this.skinSeed = skinSeed; }
 
     public String getFullName() {
         if (firstName.isEmpty() && lastName.isEmpty()) return "Unknown";

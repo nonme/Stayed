@@ -90,26 +90,39 @@ Group {
 
       // Village tab: active version shown by default, inactive hidden
       TextButton #TabVillage {
-        Anchor: (Width: 160, Height: 28);
+        Anchor: (Width: 130, Height: 28);
         Style: @TabActiveStyle;
         Text: "Village";
       }
       TextButton #TabVillageInactive {
-        Anchor: (Width: 160, Height: 28);
+        Anchor: (Width: 130, Height: 28);
         Visible: false;
         Style: @TabInactiveStyle;
         Text: "Village";
       }
 
+      // Population tab
+      TextButton #TabPopulation {
+        Anchor: (Left: 4, Width: 130, Height: 28);
+        Visible: false;
+        Style: @TabActiveStyle;
+        Text: "Population";
+      }
+      TextButton #TabPopulationInactive {
+        Anchor: (Left: 4, Width: 130, Height: 28);
+        Style: @TabInactiveStyle;
+        Text: "Population";
+      }
+
       // Construction tab: inactive shown by default, active hidden
       TextButton #TabConstruction {
-        Anchor: (Left: 4, Width: 160, Height: 28);
+        Anchor: (Left: 4, Width: 130, Height: 28);
         Visible: false;
         Style: @TabActiveStyle;
         Text: "Construction";
       }
       TextButton #TabConstructionInactive {
-        Anchor: (Left: 4, Width: 160, Height: 28);
+        Anchor: (Left: 4, Width: 130, Height: 28);
         Style: @TabInactiveStyle;
         Text: "Construction";
       }
@@ -217,44 +230,57 @@ Group {
           }
         }
 
-        // Population card
-        Group {
-          Anchor: (Top: 10, Full: 0);
-          LayoutMode: Top;
-          Background: #0a0e14;
-          OutlineColor: #1e2a34(0.8);
-          OutlineSize: 1;
-          Padding: (Full: 12);
-
-          Group {
-            Anchor: (Height: 16);
-            LayoutMode: Left;
-
-            Label #SectionPopulation {
-              Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 10, RenderBold: true);
-              Text: "POPULATION";
-            }
-
-            Label #PopulationCount {
-              Anchor: (Left: 8);
-              Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #4e6878, FontSize: 10);
-            }
-          }
-
-          Group {
-            Anchor: (Top: 8, Height: 1);
-            Background: #1e2a34;
-          }
-
-          Label #PopulationInfo {
-            Anchor: (Top: 8, Full: 0);
-            Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 12, Wrap: true);
-          }
-        }
-
         Label #ContainerHint {
           Anchor: (Top: 16, Full: 0);
           Style: (HorizontalAlignment: Center, TextColor: #2e4050, FontSize: 10, Wrap: true);
+        }
+      }
+    }
+
+    // --- Population tab ---
+    Group #PanelPopulation {
+      Visible: false;
+      FlexWeight: 1;
+      LayoutMode: Top;
+      Padding: (Top: 14, Bottom: 12, Left: 20, Right: 20);
+
+      Group {
+        Anchor: (Height: 16);
+        LayoutMode: Left;
+
+        Label {
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 11, RenderBold: true);
+          Text: "RESIDENTS";
+        }
+
+        Label #PopulationCount {
+          Anchor: (Left: 8);
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #4e6878, FontSize: 10);
+        }
+      }
+
+      Group {
+        Anchor: (Top: 6, Height: 1);
+        Background: #1e2d3a;
+      }
+
+      Label #PopulationHint {
+        Anchor: (Top: 6);
+        Style: (HorizontalAlignment: Start, TextColor: #4e6878, FontSize: 10, Wrap: true);
+        Text: "Use Recall if a resident is stuck. They will be teleported to the Town Hall.";
+      }
+
+      // Scrollable resident list (one row per villager + Aelin first)
+      Group {
+        Anchor: (Top: 8, Height: 320);
+        Background: #080c10;
+        OutlineColor: #1a2530(0.8);
+        OutlineSize: 1;
+
+        Group #PopulationListContainer {
+          Anchor: (Full: 0);
+          LayoutMode: TopScrolling;
+          Padding: (Vertical: 6, Horizontal: 6);
         }
       }
     }

@@ -4,7 +4,11 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.npc.NpcLiveEntityResolver;
+import dev.hearthbound.npc.NpcRegistry;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -69,6 +73,66 @@ public class VillageManager {
     }
 
     /**
+     * Repairs VillageData references that still point at old engine UUIDs after
+     * an NPC was recovered with a new live UUID. The durable source of truth is
+     * NpcRegistry.npcId; VillageData still stores UUIDs for houses/workers/UI, so
+     * a crash between respawn and VillageData save can leave those UUIDs stale.
+     *
+     * This method is intentionally conservative: it first uses direct registry
+     * references, then matches loaded villagers by persisted name/skin data, and
+     * only falls back to a single remaining candidate when the mapping is
+     * unambiguous.
+     *
+     * @return number of UUID references rewritten in VillageData.
+     */
+    public int reconcileNpcReferences(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, World world) {
+        if (store == null || playerRef == null || data == null) return 0;
+        int changed = 0;
+
+        UUID elfId = data.getElfId();
+        if (elfId != null && NpcRegistry.get().getRecord(elfId) == null) {
+            NpcRegistry.NpcRecord elf = singleUnclaimedRecord(NpcRegistry.InteractionType.ELF, new HashSet<>());
+            if (elf != null && elf.entityUuid != null) {
+                data.setElfId(elf.entityUuid);
+                changed++;
+                LOGGER.info("reconcileNpcReferences: elf " + elfId + " -> " + elf.entityUuid);
+            }
+        }
+
+        HashSet<NpcRegistry.NpcRecord> claimed = new HashSet<>();
+        for (VillagerSummary summary : data.getVillagers()) {
+            UUID uuid = summary.getVillagerUuid();
+            if (uuid == null) continue;
+            NpcRegistry.NpcRecord direct = NpcRegistry.get().getRecord(uuid);
+            if (direct != null) claimed.add(direct);
+        }
+
+        for (VillagerSummary summary : data.getVillagers()) {
+            UUID oldUuid = summary.getVillagerUuid();
+            if (oldUuid == null) continue;
+            if (NpcRegistry.get().getRecord(oldUuid) != null) continue;
+
+            NpcRegistry.NpcRecord match = findReplacementVillagerRecord(store, world, data, summary, oldUuid, claimed);
+            if (match == null || match.entityUuid == null || oldUuid.equals(match.entityUuid)) continue;
+
+            int touched = replaceVillagerUuid(data, oldUuid, match.entityUuid);
+            if (touched > 0) {
+                claimed.add(match);
+                changed += touched;
+                LOGGER.info("reconcileNpcReferences: villager " + summary.getFullName()
+                        + " " + oldUuid + " -> " + match.entityUuid
+                        + " npcId=" + match.npcId + " refs=" + touched);
+            }
+        }
+
+        if (changed > 0) {
+            save(store, playerRef, data);
+        }
+        return changed;
+    }
+
+    /**
      * Add a building record to the village.
      */
     public void addBuilding(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -123,9 +187,23 @@ public class VillageManager {
         for (VillagerSummary summary : data.getVillagers()) {
             UUID uuid = summary.getVillagerUuid();
             if (uuid == null) continue;
+            if (isOrphanedSummary(uuid)) continue;
             if (!isVillagerAssignedToAnyHouse(data, uuid)) return uuid;
         }
         return null;
+    }
+
+    /**
+     * True when the given villager UUID has no live registry record (or its
+     * record is broken). Such a summary is a tombstone — keeping it preserves
+     * the player-visible resident count but it must not be considered for
+     * housing/profession assignments, otherwise cleanupOrphanedAssignments
+     * frees the slot every tick and assignHomelessVillagers/assignUnstaffed*
+     * re-assign it on the same tick, producing an infinite log loop.
+     */
+    private static boolean isOrphanedSummary(UUID villagerUuid) {
+        NpcRegistry.NpcRecord r = NpcRegistry.get().getRecord(villagerUuid);
+        return r == null || r.broken;
     }
 
     private boolean isVillagerAssignedToAnyHouse(VillageData data, UUID villagerUuid) {
@@ -191,6 +269,7 @@ public class VillageManager {
             if (!VillagerData.PROF_NONE.equals(summary.getProfession())) continue;
             UUID uuid = summary.getVillagerUuid();
             if (uuid == null) continue;
+            if (isOrphanedSummary(uuid)) continue;
 
             if (!isVillagerAssignedToAnyHouse(data, uuid)) continue;
 
@@ -241,6 +320,15 @@ public class VillageManager {
         return null;
     }
 
+    public NpcRegistry.NpcRecord findVillagerRecord(VillageData data, UUID uuid) {
+        NpcRegistry.NpcRecord direct = NpcRegistry.get().getRecord(uuid);
+        if (direct != null) return direct;
+        if (data == null || uuid == null) return null;
+        VillagerSummary summary = findVillagerSummary(data, uuid);
+        if (summary == null) return null;
+        return findReplacementVillagerRecord(null, null, data, summary, uuid, new HashSet<>());
+    }
+
     /**
      * Rewrites every UUID reference from oldUuid → newUuid across the village data.
      * Called when an NPC is replaced by a fresh entity (the engine always assigns
@@ -269,6 +357,110 @@ public class VillageManager {
             LOGGER.info("replaceVillagerUuid: " + oldUuid + " → " + newUuid + " (" + touched + " refs)");
         }
         return touched;
+    }
+
+    private NpcRegistry.NpcRecord findReplacementVillagerRecord(Store<EntityStore> store, World world,
+                                                               VillageData data, VillagerSummary summary,
+                                                               UUID oldUuid,
+                                                               HashSet<NpcRegistry.NpcRecord> claimed) {
+        List<NpcRegistry.NpcRecord> candidates = new ArrayList<>();
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record == null || record.entityUuid == null) continue;
+            if (record.interaction != NpcRegistry.InteractionType.VILLAGER) continue;
+            if (record.broken) continue;
+            if (claimed.contains(record)) continue;
+            candidates.add(record);
+        }
+        if (candidates.isEmpty()) return null;
+
+        NpcRegistry.NpcRecord best = null;
+        int bestScore = Integer.MIN_VALUE;
+        int secondScore = Integer.MIN_VALUE;
+        for (NpcRegistry.NpcRecord record : candidates) {
+            int score = scoreReplacementRecord(store, world, data, summary, oldUuid, record);
+            if (score > bestScore) {
+                secondScore = bestScore;
+                bestScore = score;
+                best = record;
+            } else if (score > secondScore) {
+                secondScore = score;
+            }
+        }
+        if (best != null && bestScore >= 100) return best;
+        if (best != null && bestScore >= 30 && bestScore > secondScore) return best;
+
+        int orphanSummaries = 0;
+        for (VillagerSummary s : data.getVillagers()) {
+            UUID uuid = s.getVillagerUuid();
+            if (uuid != null && NpcRegistry.get().getRecord(uuid) == null) orphanSummaries++;
+        }
+        if (orphanSummaries == 1 && candidates.size() == 1) return candidates.get(0);
+
+        return null;
+    }
+
+    private int scoreReplacementRecord(Store<EntityStore> store, World world, VillageData data,
+                                       VillagerSummary summary, UUID oldUuid,
+                                       NpcRegistry.NpcRecord record) {
+        int score = 0;
+        VillagerData liveData = liveVillagerData(store, record);
+        if (liveData != null) {
+            if (same(summary.getFirstName(), liveData.getFirstName())
+                    && same(summary.getLastName(), liveData.getLastName())) {
+                score += 120;
+            }
+            if (summary.getSkinSeed() != 0L && summary.getSkinSeed() == liveData.getSkinSeed()) {
+                score += 80;
+            }
+            if (same(summary.getRace(), liveData.getRace())) score += 5;
+        }
+        if (summary.getSkinSeed() != 0L && summary.getSkinSeed() == record.skinSeed) {
+            score += 80;
+        }
+        score += assignedBuildingDistanceScore(data, oldUuid, record);
+        return score;
+    }
+
+    private VillagerData liveVillagerData(Store<EntityStore> store, NpcRegistry.NpcRecord record) {
+        if (store == null || record == null) return null;
+        Ref<EntityStore> ref = NpcLiveEntityResolver.findLiveNpcByRecord(store, record);
+        if (ref == null || !ref.isValid()) return null;
+        return store.getComponent(ref, VillagerData.getComponentType());
+    }
+
+    private int assignedBuildingDistanceScore(VillageData data, UUID oldUuid, NpcRegistry.NpcRecord record) {
+        if (data == null || oldUuid == null || record == null || !record.hasPosition) return 0;
+        int best = 0;
+        for (BuildingRecord b : data.getBuildings()) {
+            if (!oldUuid.equals(b.getAssignedVillagerId())) continue;
+            double dx = record.lastX - b.getPosX();
+            double dz = record.lastZ - b.getPosZ();
+            double distSq = dx * dx + dz * dz;
+            if (distSq <= 40.0 * 40.0) {
+                best = Math.max(best, 40 - (int) Math.sqrt(distSq));
+            }
+        }
+        return best;
+    }
+
+    private NpcRegistry.NpcRecord singleUnclaimedRecord(NpcRegistry.InteractionType type,
+                                                       HashSet<NpcRegistry.NpcRecord> claimed) {
+        NpcRegistry.NpcRecord found = null;
+        for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (record == null || record.entityUuid == null) continue;
+            if (record.interaction != type) continue;
+            if (record.broken) continue;
+            if (claimed.contains(record)) continue;
+            if (found != null) return null;
+            found = record;
+        }
+        return found;
+    }
+
+    private static boolean same(String a, String b) {
+        if (a == null) a = "";
+        if (b == null) b = "";
+        return a.equals(b);
     }
 
     /**

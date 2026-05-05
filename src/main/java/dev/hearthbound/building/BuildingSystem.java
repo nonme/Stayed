@@ -506,18 +506,9 @@ public class BuildingSystem {
     private Vector3d elfReturnPos(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                    BuildingRecord record, double fallbackX, double fallbackY, double fallbackZ) {
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
-        if (village == null) return new Vector3d(fallbackX, fallbackY, fallbackZ);
-
-        int sx = village.getFoundingStoneX();
-        int sy = village.getFoundingStoneY();
-        int sz = village.getFoundingStoneZ();
-        int rot = village.getRotation();
-
-        BuildingLayout.Layout layout = BuildingLayout.get(BuildingType.TOWN_HALL);
-        int steps = layout.rotationSteps(rot);
-        int[] center = BuildingLayout.rotateLocalOffset(
-                layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
-        return new Vector3d(sx + center[0] + 0.5, sy + layout.floorLY() + 1.0, sz + center[2] + 0.5);
+        double[] stand = BuildingLayout.townHallStandPoint(village);
+        if (stand == null) return new Vector3d(fallbackX, fallbackY, fallbackZ);
+        return new Vector3d(stand[0], stand[1], stand[2]);
     }
 
     /**

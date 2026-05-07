@@ -141,6 +141,13 @@ Use `NpcLiveEntityResolver.findLiveNpcByRecord(store, record)` when a direct
 `world.getEntityRef(record.entityUuid)` lookup may be stale around chunk load,
 chunk transfer, or restart boundaries.
 
+`NpcMissingEntityRecovery` is the last-resort restore path for records that are
+already known to be missing while their saved chunk is loaded. It is used by
+Recall and by the periodic self-check. It must always resolve by `npcId` before
+spawning, load both the current and base chunks, keep only one in-flight recovery
+per `npcId`, and rate-limit spawn attempts. Do not add other ad hoc respawn
+paths; route them through this service so duplicate prevention stays centralized.
+
 ## Deletion and Cleanup
 
 For managed NPC deletion:
@@ -211,4 +218,3 @@ The important invariant is always the same: no duplicate managed NPCs, no
 orphan entities carrying `HB_NPCID` without a registry record, no missing live
 entity for a loaded registered persistent NPC, and skin/interaction restored
 after chunk reload and restart.
-

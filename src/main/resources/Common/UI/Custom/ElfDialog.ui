@@ -73,7 +73,7 @@ Group {
 
     // Choice buttons
     Group #ChoiceContainer {
-      Anchor: (Height: 244);
+      Anchor: (Height: 282);
       LayoutMode: Top;
       Padding: (Horizontal: 16, Top: 12, Bottom: 10);
 
@@ -103,6 +103,13 @@ Group {
       }
 
       TextButton #BtnChoice5 {
+        Anchor: (Height: 32, Bottom: 6);
+        Style: @ChoiceBtnStyle;
+        Text: "";
+        Visible: false;
+      }
+
+      TextButton #BtnChoice7 {
         Anchor: (Height: 32, Bottom: 6);
         Style: @ChoiceBtnStyle;
         Text: "";

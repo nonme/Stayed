@@ -14,6 +14,8 @@ public final class BuildingType {
     public static final String FARM = "farm";
     public static final String SAWMILL = "sawmill";
     public static final String MINE = "mine";
+    public static final String GUARD_HOUSE = "guard_house";
+    public static final String FORGE = "forge";
 
     // Anchor block IDs (custom Hearthbound blocks)
     public static final String FOUNDING_STONE_BLOCK = "Stayed_Founding_Stone";
@@ -22,6 +24,8 @@ public final class BuildingType {
     public static final String COUNTER_BLOCK = "Stayed_Counter";
     public static final String LUMBERMILL_BLOCK = "Stayed_Lumbermill";
     public static final String MINE_SIGN_BLOCK = "Stayed_Mine_Sign";
+    public static final String TARGET_DUMMY_BLOCK = "Stayed_Target_Dummy";
+    public static final String FORGE_BLOCK = "Stayed_Forge";
 
     // Per-variant tables for HOUSE_HUMAN. variant=0 maps to the original v1 prefab so
     // existing village data (which has no variant field, defaults to 0) keeps rendering
@@ -49,6 +53,8 @@ public final class BuildingType {
             case COUNTER_BLOCK -> WAREHOUSE;
             case LUMBERMILL_BLOCK -> SAWMILL;
             case MINE_SIGN_BLOCK -> MINE;
+            case TARGET_DUMMY_BLOCK -> GUARD_HOUSE;
+            case FORGE_BLOCK -> FORGE;
             default -> null;
         };
     }
@@ -78,6 +84,8 @@ public final class BuildingType {
             case WAREHOUSE -> "Warehouse_lvl1_v1";
             case SAWMILL -> "Sawmill_lvl1_v1";
             case MINE -> "Mine_lvl1_v1";
+            case GUARD_HOUSE -> "GuardHouse_lvl1_v1";
+            case FORGE -> "Forge_lvl1_v1";
             default -> null;
         };
     }
@@ -113,6 +121,8 @@ public final class BuildingType {
             case WAREHOUSE -> COUNTER_BLOCK;
             case SAWMILL -> LUMBERMILL_BLOCK;
             case MINE -> MINE_SIGN_BLOCK;
+            case GUARD_HOUSE -> TARGET_DUMMY_BLOCK;
+            case FORGE -> FORGE_BLOCK;
             default -> FOUNDING_STONE_BLOCK;
         };
     }
@@ -142,6 +152,8 @@ public final class BuildingType {
             case WAREHOUSE -> 1;
             case SAWMILL -> 2;
             case MINE -> 10;
+            case GUARD_HOUSE -> 1;
+            case FORGE -> 2;
             default -> 0;
         };
     }
@@ -157,6 +169,33 @@ public final class BuildingType {
         return switch (type) {
             case MINE -> new int[]{-12, -10, 2};
             default -> null;
+        };
+    }
+
+    /**
+     * Override the elf's "safe spawn" offset (relative to the anchor block, before world rotation
+     * is applied) for buildings where the standard {@code doorOffset + doorOffset.sign() * 2}
+     * trick lands inside a wall. Returns null for buildings that should use the default logic.
+     *
+     * <p>GuardHouse: anchor (Target Dummy) is OUTSIDE the building on the training yard, so
+     * "continue past the door" pushes the elf into the building. Pin him to the dummy's own
+     * tile (offset 0,0) — the yard is open ground, no collision.
+     *
+     * @param type             building type constant
+     * @param recordRotation   yaw rotation of the placed anchor block (0..3)
+     * @return {dx, dz} world-rotated offset from anchor to elf spawn, or null for default
+     */
+    public static int[] getSafeBuildOffset(String type, int recordRotation) {
+        if (!GUARD_HOUSE.equals(type)) return null;
+        // Native offset: one tile to the -X side of the dummy (open yard, no wall there).
+        // Apply the same rotation transform getDoorOffset uses (anchorPrefabRotation = 1).
+        int dx = -1, dz = 0, anchorPrefabRotation = 1;
+        int steps = (recordRotation - anchorPrefabRotation + 4) % 4;
+        return switch (steps) {
+            case 1 -> new int[]{-dz,  dx};
+            case 2 -> new int[]{-dx, -dz};
+            case 3 -> new int[]{ dz, -dx};
+            default -> new int[]{dx,   dz};
         };
     }
 
@@ -196,6 +235,15 @@ public final class BuildingType {
             case SAWMILL     -> { dx =  0; dz = -3; anchorPrefabRotation = 2; }
             // Mine: door at prefab (7,10,-5), anchor at (4,10,1) → dx=3, dz=-6. anchorPrefabRotation=1.
             case MINE        -> { dx =  3; dz = -6; anchorPrefabRotation = 1; }
+            // GuardHouse: anchor (Target Dummy) sits OUTSIDE the building on the training yard
+            // at prefab (5,1,-1). External door is at (2,1,3) facing +X — so dx=-3, dz=4 from
+            // anchor to door. anchorPrefabRotation=1 because the dummy is stored with rot=1.
+            // Note: anchor outside the building means the safeBuildPos/dir extension trick used
+            // for other types lands inside walls. The placement code special-cases this type.
+            case GUARD_HOUSE -> { dx = -3; dz =  4; anchorPrefabRotation = 1; }
+            // Forge: anvil anchor at prefab (2,2,3) rot=3; door at (3,2,-10) rot=1.
+            // Stand one tile past the door (z=-11) → from anchor: dx=1, dz=-14.
+            case FORGE       -> { dx =  1; dz =-14; anchorPrefabRotation = 3; }
             default          -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
         }
         int steps = (recordRotation - anchorPrefabRotation + 4) % 4;
@@ -250,6 +298,8 @@ public final class BuildingType {
             case FARM -> "Farm";
             case SAWMILL -> "Sawmill";
             case MINE -> "Mine";
+            case GUARD_HOUSE -> "Guard House";
+            case FORGE -> "Forge";
             default -> type;
         };
     }

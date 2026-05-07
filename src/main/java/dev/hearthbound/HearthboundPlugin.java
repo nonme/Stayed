@@ -18,9 +18,11 @@ import dev.hearthbound.events.BlockPlaceHandler;
 import dev.hearthbound.events.BrazierHandler;
 import dev.hearthbound.events.FoundingStoneHandler;
 import dev.hearthbound.events.CounterHandler;
+import dev.hearthbound.events.ForgeHandler;
 import dev.hearthbound.events.LumbermillHandler;
 import dev.hearthbound.events.MineTorchHandler;
 import dev.hearthbound.events.ScarecrowHandler;
+import dev.hearthbound.events.TargetDummyHandler;
 import dev.hearthbound.events.NpcChunkLoadHandler;
 import dev.hearthbound.events.PlayerJoinHandler;
 import dev.hearthbound.events.VillageTickHandler;
@@ -90,6 +92,8 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new CounterHandler());
         this.getEntityStoreRegistry().registerSystem(new LumbermillHandler());
         this.getEntityStoreRegistry().registerSystem(new MineTorchHandler());
+        this.getEntityStoreRegistry().registerSystem(new ForgeHandler());
+        this.getEntityStoreRegistry().registerSystem(new TargetDummyHandler());
         // Engine-level guard against duplicate NPC entities sharing one npcId.
         this.getEntityStoreRegistry().registerSystem(new dev.hearthbound.npc.DuplicateNpcPrevention());
 

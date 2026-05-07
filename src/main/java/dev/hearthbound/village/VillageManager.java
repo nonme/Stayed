@@ -259,6 +259,24 @@ public class VillageManager {
     }
 
     /**
+     * Returns the first completed guard house, or null.
+     */
+    public BuildingRecord findCompletedGuardHouse(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.GUARD_HOUSE.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Returns the first completed forge, or null.
+     */
+    public BuildingRecord findCompletedForge(VillageData data) {
+        return data.getBuildings().stream()
+                .filter(b -> b.isCompleted() && BuildingType.FORGE.equals(b.getType()))
+                .findFirst().orElse(null);
+    }
+
+    /**
      * Assigns a profession to the first eligible (housed, no profession) villager and
      * links them to the given building record.
      * Returns the UUID of the assigned villager, or null if nobody eligible.
@@ -307,6 +325,22 @@ public class VillageManager {
     public UUID assignMinerProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                       VillageData data, BuildingRecord mine) {
         return assignWorkProfession(store, playerRef, data, mine, VillagerData.PROF_MASON);
+    }
+
+    /**
+     * Assigns PROF_GUARD to the first eligible villager and links them to the guard house.
+     */
+    public UUID assignGuardProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, BuildingRecord guardHouse) {
+        return assignWorkProfession(store, playerRef, data, guardHouse, VillagerData.PROF_GUARD);
+    }
+
+    /**
+     * Assigns PROF_BLACKSMITH to the first eligible villager and links them to the forge.
+     */
+    public UUID assignBlacksmithProfession(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                           VillageData data, BuildingRecord forge) {
+        return assignWorkProfession(store, playerRef, data, forge, VillagerData.PROF_BLACKSMITH);
     }
 
     /**

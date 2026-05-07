@@ -32,21 +32,7 @@
           "To": ["Idle"]
         }
       ],
-      "Actions": [
-        {
-          "Type": "Inventory",
-          "Operation": "SetHotbar",
-          "Item": "Plant_Crop_Carrot_Item",
-          "Slot": 0,
-          "UseTarget": false
-        },
-        {
-          "Type": "Inventory",
-          "Operation": "EquipHotbar",
-          "Slot": 0,
-          "UseTarget": false
-        }
-      ]
+      "Actions": []
     }
   ],
   "Instructions": [

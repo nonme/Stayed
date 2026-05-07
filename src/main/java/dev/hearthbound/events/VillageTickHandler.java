@@ -135,6 +135,8 @@ public class VillageTickHandler {
         assignUnstaffedFarms(store, playerRef, village);
         assignUnstaffedSawmills(store, playerRef, village);
         assignUnstaffedMines(store, playerRef, village);
+        assignUnstaffedGuardHouses(store, playerRef, village);
+        assignUnstaffedForges(store, playerRef, village);
         tickHunger(store, village);
         tickProduction(store, playerRef, village, world);
         villagerScheduler.tick(store, playerRef, village, world);
@@ -299,7 +301,7 @@ public class VillageTickHandler {
     }
 
     // Hunger increase per tick (every 5 seconds)
-    private static final int HUNGER_PER_TICK = 2;
+    private static final int HUNGER_PER_TICK = 1;
 
     /**
      * Increases hunger for every registered villager and saves updated VillagerData.
@@ -590,6 +592,42 @@ public class VillageTickHandler {
             UUID uuid = mgr.assignMinerProfession(store, playerRef, village, building);
             if (uuid != null) {
                 LOGGER.info("assignUnstaffedMines: assigned " + uuid + " to mine at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
+                village = mgr.getVillageData(store, playerRef);
+                if (village == null) return;
+            }
+        }
+    }
+
+    private void assignUnstaffedGuardHouses(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                            VillageData village) {
+        VillageManager mgr = VillageManager.get();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (!BuildingType.GUARD_HOUSE.equals(building.getType())) continue;
+            if (building.getAssignedVillagerId() != null) continue;
+
+            UUID uuid = mgr.assignGuardProfession(store, playerRef, village, building);
+            if (uuid != null) {
+                LOGGER.info("assignUnstaffedGuardHouses: assigned " + uuid + " to guard house at "
+                        + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
+                village = mgr.getVillageData(store, playerRef);
+                if (village == null) return;
+            }
+        }
+    }
+
+    private void assignUnstaffedForges(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                       VillageData village) {
+        VillageManager mgr = VillageManager.get();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            if (!BuildingType.FORGE.equals(building.getType())) continue;
+            if (building.getAssignedVillagerId() != null) continue;
+
+            UUID uuid = mgr.assignBlacksmithProfession(store, playerRef, village, building);
+            if (uuid != null) {
+                LOGGER.info("assignUnstaffedForges: assigned " + uuid + " to forge at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;

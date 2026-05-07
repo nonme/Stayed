@@ -623,16 +623,18 @@ public class FarmerWorkBehavior {
 
     private static void unfreezeLive(UUID uuid, World world) {
         if (uuid == null || world == null) return;
-        try {
-            Ref<EntityStore> ref = world.getEntityRef(uuid);
-            if (ref == null || !ref.isValid()) return;
-            Store<EntityStore> store = world.getEntityStore().getStore();
-            if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
-            store.tryRemoveComponent(ref, Frozen.getComponentType());
-            LOGGER.info("Farmer " + uuid + " stale Frozen removed");
-        } catch (Exception e) {
-            LOGGER.fine("Farmer live unfreeze failed for " + uuid + ": " + e.getMessage());
-        }
+        world.execute(() -> {
+            try {
+                Ref<EntityStore> ref = world.getEntityRef(uuid);
+                if (ref == null || !ref.isValid()) return;
+                Store<EntityStore> store = world.getEntityStore().getStore();
+                if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
+                store.tryRemoveComponent(ref, Frozen.getComponentType());
+                LOGGER.info("Farmer " + uuid + " stale Frozen removed");
+            } catch (Exception e) {
+                LOGGER.fine("Farmer live unfreeze failed for " + uuid + ": " + e.getMessage());
+            }
+        });
     }
 
     /**

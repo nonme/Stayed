@@ -234,6 +234,8 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
             case dev.hearthbound.village.VillagerData.PROF_FARMER -> "Farmer";
             case dev.hearthbound.village.VillagerData.PROF_LUMBERJACK -> "Lumberjack";
             case dev.hearthbound.village.VillagerData.PROF_MASON -> "Miner";
+            case dev.hearthbound.village.VillagerData.PROF_GUARD -> "Guard";
+            case dev.hearthbound.village.VillagerData.PROF_BLACKSMITH -> "Blacksmith";
             default -> "Resident";
         };
     }

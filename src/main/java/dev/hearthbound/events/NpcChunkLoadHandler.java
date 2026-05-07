@@ -466,8 +466,8 @@ public class NpcChunkLoadHandler {
      * directly. For villagers we delegate to
      * {@link dev.hearthbound.village.VillageManager#replaceVillagerUuid}.
      */
-    private static void rewriteVillageReferences(World world, Store<EntityStore> store,
-                                                 UUID oldUuid, UUID newUuid) {
+    public static void rewriteVillageReferences(World world, Store<EntityStore> store,
+                                                UUID oldUuid, UUID newUuid) {
         try {
             var universe = com.hypixel.hytale.server.core.universe.Universe.get();
             for (var pr : universe.getPlayers()) {

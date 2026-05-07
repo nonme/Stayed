@@ -3,7 +3,9 @@ package dev.hearthbound.npc;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -17,6 +19,10 @@ import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
+import com.hypixel.hytale.protocol.AnimationSlot;
+import com.hypixel.hytale.server.core.asset.type.item.config.Item;
+import com.hypixel.hytale.server.core.asset.type.itemanimation.config.ItemPlayerAnimations;
+import com.hypixel.hytale.server.core.entity.AnimationUtils;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.entities.ProjectileComponent;
 import com.hypixel.hytale.server.core.modules.entity.component.Intangible;
@@ -59,6 +65,8 @@ public class VillagerScheduler {
     private static final String ROLE_FARMER      = "Villager_Human_Farmer";
     private static final String ROLE_LUMBERJACK  = "Villager_Human_Lumberjack";
     private static final String ROLE_MINER       = "Villager_Human_Miner";
+    private static final String ROLE_GUARD       = "Villager_Human_Guard";
+    private static final String ROLE_BLACKSMITH  = "Villager_Human_Blacksmith";
     private static final String ROLE_TRAVELING   = "Villager_Human_Traveling";
     private static final String ROLE_EATING      = "Villager_Human_Eating";
 
@@ -72,9 +80,18 @@ public class VillagerScheduler {
 
     // Switch to "arrived" once the NPC is within this distance of the target
     private static final double ARRIVAL_RADIUS_SQ = 3.0 * 3.0;
+    private static final long TRAVEL_STUCK_MS = 15_000L;
+    private static final double TRAVEL_PROGRESS_EPS_SQ = 1.0;
+    private static final double TRAVEL_MOVE_EPS_SQ = 0.25;
 
     // Per-villager last scheduled target (to detect changes)
     private final Map<UUID, ScheduleTarget> lastTarget = new HashMap<>();
+    // Per-villager route origin. Needed when leaving work/eating buildings whose doors
+    // may block pathfinding before the destination route has a chance to open.
+    private final Map<UUID, ScheduleTarget> routeOrigin = new HashMap<>();
+    private final Map<UUID, Set<GateKey>> activeRouteGates = new HashMap<>();
+    private final Map<GateKey, Gate> knownGates = new HashMap<>();
+    private final Map<UUID, TravelProgress> travelProgress = new HashMap<>();
     // Per-villager marker entity ref (invisible Seek target)
     private final Map<UUID, Ref<EntityStore>> markerRefs = new HashMap<>();
     // Per-villager current activity label for UI
@@ -82,6 +99,8 @@ public class VillagerScheduler {
     // Villagers already fed during the current meal window (lunch or dinner)
     // Cleared when the meal window ends, preventing repeated feedVillager() calls.
     private final Set<UUID> fedThisMeal = new HashSet<>();
+    private final Set<UUID> eatingVillagers = new HashSet<>();
+    private final Random foodRandom = new Random();
 
     // Farming state machine — drives the in-place harvest/replant/water/weed loop while a
     // farmer is at their farm and in WORKING activity. Stateless across restarts.
@@ -116,21 +135,40 @@ public class VillagerScheduler {
             }
         }
         lastTarget.clear();
+        routeOrigin.clear();
+        activeRouteGates.clear();
+        knownGates.clear();
+        travelProgress.clear();
         markerRefs.clear();
         activityLabel.clear();
         fedThisMeal.clear();
+        eatingVillagers.clear();
         LOGGER.info("VillagerScheduler cleared");
     }
 
     // null gateX means "no gate/door to manage"
+    private record Gate(int x, int y, int z, int rotation, String openBlock, String closeBlock) {}
+    private record GateKey(int x, int y, int z) {}
+    private record TravelProgress(double x, double y, double z, double distanceSq, long lastProgressAt) {}
+
     private record ScheduleTarget(double x, double y, double z, String arrivedRole, String activity,
                                    Integer gateX, Integer gateY, Integer gateZ,
                                    int gateRotation,
-                                   String openBlock, String closeBlock) {
-        ScheduleTarget(double x, double y, double z, String arrivedRole, String activity) {
-            this(x, y, z, arrivedRole, activity, null, null, null, 0, null, null);
+                                   String openBlock, String closeBlock,
+                                   List<Gate> gates) {
+        ScheduleTarget(double x, double y, double z, String arrivedRole, String activity,
+                       Integer gateX, Integer gateY, Integer gateZ,
+                       int gateRotation, String openBlock, String closeBlock) {
+            this(x, y, z, arrivedRole, activity,
+                    gateX, gateY, gateZ, gateRotation, openBlock, closeBlock,
+                    gateX != null
+                            ? List.of(new Gate(gateX, gateY, gateZ, gateRotation, openBlock, closeBlock))
+                            : List.of());
         }
-        boolean hasGate() { return gateX != null; }
+        ScheduleTarget(double x, double y, double z, String arrivedRole, String activity) {
+            this(x, y, z, arrivedRole, activity, null, null, null, 0, null, null, List.of());
+        }
+        boolean hasGate() { return !gates.isEmpty(); }
     }
 
     public void tick(Store<EntityStore> store, Ref<EntityStore> playerRef, VillageData village, World world) {
@@ -148,6 +186,8 @@ public class VillagerScheduler {
         }
 
         // Clear fed-tracking between meal windows so villagers can eat again next meal.
+        // Do not clear eatingVillagers here: a meal that already started should finish,
+        // otherwise late arrivals can consume one item and leave still hungry.
         if (!inWindow(time24, LUNCH_START, LUNCH_END) && !inWindow(time24, DINNER_START, DINNER_END)) {
             fedThisMeal.clear();
         }
@@ -156,6 +196,8 @@ public class VillagerScheduler {
         BuildingRecord warehouse = VillageManager.get().findCompletedWarehouse(village);
         BuildingRecord sawmill   = VillageManager.get().findCompletedSawmill(village);
         BuildingRecord mine      = VillageManager.get().findCompletedMine(village);
+        BuildingRecord guardHouse = VillageManager.get().findCompletedGuardHouse(village);
+        BuildingRecord forge     = VillageManager.get().findCompletedForge(village);
 
         Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
         store.forEachChunk(query, (chunk, buffer) -> {
@@ -176,7 +218,8 @@ public class VillagerScheduler {
                             data.setHasHouse(true);
                             store.putComponent(ref, VillagerData.getComponentType(), data);
                         }
-                        tickVillager(ref, store, data, village, farm, warehouse, sawmill, mine, time24, world);
+                        tickVillager(ref, store, data, village, farm, warehouse, sawmill,
+                                mine, guardHouse, forge, time24, world);
                     }
                 } catch (Exception e) {
                     LOGGER.warning("VillagerScheduler tick error: " + e.getMessage());
@@ -188,6 +231,7 @@ public class VillagerScheduler {
     private void tickVillager(Ref<EntityStore> ref, Store<EntityStore> store, VillagerData data,
                               VillageData village, BuildingRecord farm, BuildingRecord warehouse,
                               BuildingRecord sawmill, BuildingRecord mine,
+                              BuildingRecord guardHouse, BuildingRecord forge,
                               double time24, World world) {
         UUID uuid = NpcManager.extractUuid(store, ref);
         if (uuid == null) return;
@@ -201,13 +245,18 @@ public class VillagerScheduler {
         BuildingRecord ownFarm    = findVillagerWorkplace(village, uuid, BuildingType.FARM);
         BuildingRecord ownSawmill = findVillagerWorkplace(village, uuid, BuildingType.SAWMILL);
         BuildingRecord ownMine    = findVillagerWorkplace(village, uuid, BuildingType.MINE);
+        BuildingRecord ownGuardHouse = findVillagerWorkplace(village, uuid, BuildingType.GUARD_HOUSE);
+        BuildingRecord ownForge   = findVillagerWorkplace(village, uuid, BuildingType.FORGE);
 
         BuildingRecord effectiveFarm    = ownFarm    != null ? ownFarm    : farm;
         BuildingRecord effectiveSawmill = ownSawmill != null ? ownSawmill : sawmill;
         BuildingRecord effectiveMine    = ownMine    != null ? ownMine    : mine;
+        BuildingRecord effectiveGuardHouse = ownGuardHouse != null ? ownGuardHouse : guardHouse;
+        BuildingRecord effectiveForge   = ownForge   != null ? ownForge   : forge;
 
         ScheduleTarget target = resolveTarget(uuid, data, profession, village, house,
-                effectiveFarm, warehouse, effectiveSawmill, effectiveMine, time24);
+                effectiveFarm, warehouse, effectiveSawmill, effectiveMine,
+                effectiveGuardHouse, effectiveForge, time24);
         if (target == null) return;
 
         ScheduleTarget prev = lastTarget.get(uuid);
@@ -218,16 +267,31 @@ public class VillagerScheduler {
         boolean arrived = !targetChanged && isNearTarget(store, ref, target);
 
         ScheduleTarget houseTarget = house != null ? homeTarget(house, village) : null;
+        boolean isFarmerWorkingTarget = ROLE_FARMER.equals(target.arrivedRole())
+                && ACTIVITY_WORKING.equals(target.activity());
 
         if (targetChanged) {
-            // Always open house door when NPC starts traveling (leaving or arriving)
-            setGateState(houseTarget, world, true);
+            ScheduleTarget originTarget = prev != null ? prev : inferCurrentOrigin(store, ref, village,
+                    houseTarget, effectiveFarm, warehouse, effectiveSawmill, effectiveMine,
+                    effectiveGuardHouse, effectiveForge);
+            // Open both ends of the route. Some work buildings have their own doors.
+            openRoute(uuid, originTarget, houseTarget, target, world);
             lastTarget.put(uuid, target);
+            routeOrigin.put(uuid, originTarget);
+            resetTravelProgress(uuid, store, ref, target);
             activityLabel.put(uuid, travelActivity(target.activity()));
             // Farming state is invalidated whenever the farmer leaves the farm — going home,
             // going to eat, or being reassigned. Drop the runtime state so the next arrival
             // starts a fresh pick.
-            farmerWork.clear(uuid, world);
+            if (!isFarmerWorkingTarget) {
+                farmerWork.clear(uuid, world);
+            }
+            LOGGER.info("scheduleTargetChanged uuid=" + uuid
+                    + " time24=" + String.format("%.2f", time24)
+                    + " profession=" + profession
+                    + " activity=" + travelActivity(target.activity())
+                    + " origin=" + describeTarget(originTarget)
+                    + " target=(" + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")");
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 startTraveling(ref, liveStore, target, world, uuid);
@@ -237,31 +301,57 @@ public class VillagerScheduler {
             // Don't clobber the farmer's per-cell leashPoint with the farm-center one — the
             // FarmerWorkBehavior tick below moves the leash to whichever crop/weed/tile it's
             // currently working on. Other arrivedRoles get the standard center-pin.
-            boolean isFarmerWorking = ROLE_FARMER.equals(target.arrivedRole())
-                    && ACTIVITY_WORKING.equals(target.activity());
-            if (!isFarmerWorking) {
+            if (!isFarmerWorkingTarget) {
                 setLeashPoint(ref, store, new Vector3d(target.x(), target.y(), target.z()));
             }
             removeMarker(uuid, world);
             activityLabel.put(uuid, target.activity());
-            setGateState(houseTarget, world, false);
+            closeRouteIfUnused(uuid, world);
+            routeOrigin.remove(uuid);
+            travelProgress.remove(uuid);
+            LOGGER.info("scheduleArrived uuid=" + uuid
+                    + " time24=" + String.format("%.2f", time24)
+                    + " activity=" + target.activity()
+                    + " role=" + target.arrivedRole());
 
             if (ACTIVITY_EATING.equals(target.activity()) && warehouse != null
                     && !fedThisMeal.contains(uuid)) {
-                fedThisMeal.add(uuid);
-                feedVillager(ref, warehouse, world, uuid);
+                tickMeal(ref, warehouse, world, uuid);
             }
 
-            if (isFarmerWorking && effectiveFarm != null) {
+            if (isFarmerWorkingTarget && effectiveFarm != null) {
                 // Hand the farmer off to its own fast (~0.3s) tick loop. start() is idempotent —
                 // calling it every village tick just refreshes the warehouse/owner context.
                 farmerWork.start(uuid, world, effectiveFarm, warehouse, currentOwnerUuid);
+            } else {
+                farmerWork.clear(uuid, world);
             }
         } else {
             // Still traveling — rebind marker every tick so Seek stays active
+            ScheduleTarget originTarget = routeOrigin.get(uuid);
+            if (originTarget == null) {
+                originTarget = inferCurrentOrigin(store, ref, village,
+                        houseTarget, effectiveFarm, warehouse, effectiveSawmill, effectiveMine,
+                        effectiveGuardHouse, effectiveForge);
+                routeOrigin.put(uuid, originTarget);
+            }
+            openRoute(uuid, originTarget, houseTarget, target, world);
+            if (!isFarmerWorkingTarget) {
+                farmerWork.clear(uuid, world);
+            }
+            boolean stuck = updateTravelProgress(uuid, store, ref, target);
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
-                maintainTraveling(ref, liveStore, target, world, uuid);
+                if (stuck) {
+                    removeMarker(uuid, world);
+                    LOGGER.info("scheduleTravelStuck uuid=" + uuid
+                            + " activity=" + travelActivity(target.activity())
+                            + " target=(" + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")"
+                            + " action=reissueRoute");
+                    startTraveling(ref, liveStore, target, world, uuid);
+                } else {
+                    maintainTraveling(ref, liveStore, target, world, uuid);
+                }
             });
         }
     }
@@ -373,6 +463,138 @@ public class VillagerScheduler {
         return distanceSq(pos.getX(), pos.getY(), pos.getZ(), target.x(), target.y(), target.z()) <= ARRIVAL_RADIUS_SQ;
     }
 
+    private void openRoute(UUID uuid, ScheduleTarget origin, ScheduleTarget house,
+                           ScheduleTarget target, World world) {
+        Set<GateKey> gates = new HashSet<>();
+        collectGateKeys(gates, origin);
+        collectGateKeys(gates, house);
+        collectGateKeys(gates, target);
+        activeRouteGates.put(uuid, gates);
+        setGateState(origin, world, true);
+        setGateState(house, world, true);
+        setGateState(target, world, true);
+    }
+
+    private void closeRouteIfUnused(UUID uuid, World world) {
+        Set<GateKey> gates = activeRouteGates.remove(uuid);
+        if (gates == null || gates.isEmpty()) return;
+        for (GateKey key : gates) {
+            if (isGateInUse(key)) continue;
+            Gate gate = knownGates.get(key);
+            if (gate != null) setSingleGateState(gate, world, false);
+        }
+    }
+
+    private boolean isGateInUse(GateKey key) {
+        for (Set<GateKey> route : activeRouteGates.values()) {
+            if (route.contains(key)) return true;
+        }
+        return false;
+    }
+
+    private void collectGateKeys(Set<GateKey> out, ScheduleTarget target) {
+        if (target == null || !target.hasGate()) return;
+        for (Gate gate : target.gates()) {
+            GateKey key = gateKey(gate);
+            out.add(key);
+            knownGates.put(key, gate);
+        }
+    }
+
+    private GateKey gateKey(Gate gate) {
+        return new GateKey(gate.x(), gate.y(), gate.z());
+    }
+
+    private ScheduleTarget inferCurrentOrigin(Store<EntityStore> store, Ref<EntityStore> ref,
+                                              VillageData village, ScheduleTarget houseTarget,
+                                              BuildingRecord farm, BuildingRecord warehouse,
+                                              BuildingRecord sawmill, BuildingRecord mine,
+                                              BuildingRecord guardHouse, BuildingRecord forge) {
+        TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+        if (tc == null) return null;
+        Vector3d pos = tc.getPosition();
+        ScheduleTarget best = null;
+        double bestDist = Double.MAX_VALUE;
+
+        bestDist = considerOrigin(pos, houseTarget, bestDist);
+        if (bestDist != Double.MAX_VALUE) best = houseTarget;
+
+        ScheduleTarget warehouseOrigin = warehouse != null ? warehouseTarget(warehouse) : null;
+        double dist = considerOrigin(pos, warehouseOrigin, bestDist);
+        if (dist < bestDist) { bestDist = dist; best = warehouseOrigin; }
+
+        ScheduleTarget farmOrigin = farm != null ? farmTarget(farm) : null;
+        dist = considerOrigin(pos, farmOrigin, bestDist);
+        if (dist < bestDist) { bestDist = dist; best = farmOrigin; }
+
+        ScheduleTarget sawmillOrigin = sawmill != null ? workTarget(sawmill, ROLE_LUMBERJACK) : null;
+        dist = considerOrigin(pos, sawmillOrigin, bestDist);
+        if (dist < bestDist) { bestDist = dist; best = sawmillOrigin; }
+
+        ScheduleTarget mineOrigin = mine != null ? workTarget(mine, ROLE_MINER) : null;
+        dist = considerOrigin(pos, mineOrigin, bestDist);
+        if (dist < bestDist) { bestDist = dist; best = mineOrigin; }
+
+        ScheduleTarget guardOrigin = guardHouse != null ? workTarget(guardHouse, ROLE_GUARD) : null;
+        dist = considerOrigin(pos, guardOrigin, bestDist);
+        if (dist < bestDist) { bestDist = dist; best = guardOrigin; }
+
+        ScheduleTarget forgeOrigin = forge != null ? workTarget(forge, ROLE_BLACKSMITH) : null;
+        dist = considerOrigin(pos, forgeOrigin, bestDist);
+        if (dist < bestDist) { best = forgeOrigin; }
+
+        return best;
+    }
+
+    private double considerOrigin(Vector3d pos, ScheduleTarget target, double bestDist) {
+        if (pos == null || target == null) return bestDist;
+        double dist = distanceSq(pos.getX(), pos.getY(), pos.getZ(), target.x(), target.y(), target.z());
+        return dist < bestDist && dist <= 20.0 * 20.0 ? dist : bestDist;
+    }
+
+    private void resetTravelProgress(UUID uuid, Store<EntityStore> store, Ref<EntityStore> ref, ScheduleTarget target) {
+        TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+        if (tc == null) {
+            travelProgress.remove(uuid);
+            return;
+        }
+        Vector3d pos = tc.getPosition();
+        travelProgress.put(uuid, new TravelProgress(
+                pos.getX(), pos.getY(), pos.getZ(),
+                distanceSq(pos.getX(), pos.getY(), pos.getZ(), target.x(), target.y(), target.z()),
+                System.currentTimeMillis()));
+    }
+
+    private boolean updateTravelProgress(UUID uuid, Store<EntityStore> store, Ref<EntityStore> ref, ScheduleTarget target) {
+        TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+        if (tc == null) return false;
+        Vector3d pos = tc.getPosition();
+        double distSqToTarget = distanceSq(pos.getX(), pos.getY(), pos.getZ(), target.x(), target.y(), target.z());
+        long now = System.currentTimeMillis();
+        TravelProgress prev = travelProgress.get(uuid);
+        if (prev == null) {
+            travelProgress.put(uuid, new TravelProgress(pos.getX(), pos.getY(), pos.getZ(), distSqToTarget, now));
+            return false;
+        }
+
+        double movedSq = distanceSq(prev.x(), prev.y(), prev.z(), pos.getX(), pos.getY(), pos.getZ());
+        boolean madeProgress = distSqToTarget < prev.distanceSq() - TRAVEL_PROGRESS_EPS_SQ
+                || movedSq > TRAVEL_MOVE_EPS_SQ;
+        if (madeProgress) {
+            travelProgress.put(uuid, new TravelProgress(pos.getX(), pos.getY(), pos.getZ(), distSqToTarget, now));
+            return false;
+        }
+        if (now - prev.lastProgressAt() < TRAVEL_STUCK_MS) return false;
+        travelProgress.put(uuid, new TravelProgress(pos.getX(), pos.getY(), pos.getZ(), distSqToTarget, now));
+        return true;
+    }
+
+    private String describeTarget(ScheduleTarget target) {
+        if (target == null) return "none";
+        return target.activity() + "@("
+                + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")";
+    }
+
     private String getCurrentRole(Store<EntityStore> store, Ref<EntityStore> ref) {
         NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
         if (npc == null || npc.getRole() == null) return "";
@@ -406,18 +628,21 @@ public class VillagerScheduler {
     private ScheduleTarget resolveTarget(UUID uuid, VillagerData data, String profession, VillageData village,
                                          BuildingRecord house, BuildingRecord farm,
                                          BuildingRecord warehouse, BuildingRecord sawmill,
-                                         BuildingRecord mine, double time24) {
+                                         BuildingRecord mine, BuildingRecord guardHouse,
+                                         BuildingRecord forge, double time24) {
         if (data.isStarving() && warehouse != null) return warehouseTarget(warehouse);
 
         boolean inMealWindow = inWindow(time24, LUNCH_START, LUNCH_END) || inWindow(time24, DINNER_START, DINNER_END);
 
-        // Keep villager at warehouse for the full meal window, even after hunger reset.
-        // Without this, hunger=0 after feedVillager → next tick resolves a different target → NPC leaves immediately.
-        if (inMealWindow && warehouse != null && fedThisMeal.contains(uuid)) {
-            return warehouseTarget(warehouse);
+        if (warehouse != null && eatingVillagers.contains(uuid)) {
+            if (data.getHunger() > 0) {
+                return warehouseTarget(warehouse);
+            }
+            eatingVillagers.remove(uuid);
+            fedThisMeal.add(uuid);
         }
 
-        if (data.isHungry() && warehouse != null && inMealWindow) {
+        if (data.isHungry() && warehouse != null && inMealWindow && !fedThisMeal.contains(uuid)) {
             return warehouseTarget(warehouse);
         }
 
@@ -426,6 +651,8 @@ public class VillagerScheduler {
         if (VillagerData.PROF_FARMER.equals(profession) && farm != null) return farmTarget(farm);
         if (VillagerData.PROF_LUMBERJACK.equals(profession) && sawmill != null) return workTarget(sawmill, ROLE_LUMBERJACK);
         if (VillagerData.PROF_MASON.equals(profession) && mine != null) return workTarget(mine, ROLE_MINER);
+        if (VillagerData.PROF_GUARD.equals(profession) && guardHouse != null) return workTarget(guardHouse, ROLE_GUARD);
+        if (VillagerData.PROF_BLACKSMITH.equals(profession) && forge != null) return workTarget(forge, ROLE_BLACKSMITH);
 
         return homeTarget(house, village);
     }
@@ -446,7 +673,8 @@ public class VillagerScheduler {
                         ROLE_VILLAGER, ACTIVITY_RESTING,
                         house.getPosX() + door[0], house.getPosY() + door[1], house.getPosZ() + door[2],
                         doorRot,
-                        layout.openBlock(), layout.closeBlock());
+                        layout.openBlock(), layout.closeBlock(),
+                        gatesForLayout(layout, house, steps));
             }
             return new ScheduleTarget(
                     house.getPosX() + center[0] + 0.5,
@@ -474,6 +702,13 @@ public class VillagerScheduler {
         if (layout.hasDoor()) {
             int[] door = rotateLocalOffset(layout.doorLX(), layout.doorLY(), layout.doorLZ(), steps);
             int doorRot = layout.doorWorldRotation(building.getRotation());
+            LOGGER.info("workTarget [" + building.getType() + "] door local=("
+                    + layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ()
+                    + ") world=(" + (building.getPosX() + door[0]) + ","
+                    + (building.getPosY() + door[1]) + ","
+                    + (building.getPosZ() + door[2]) + ") rot=" + doorRot
+                    + " openBlock=" + layout.openBlock()
+                    + " closeBlock=" + layout.closeBlock());
             return new ScheduleTarget(
                     building.getPosX() + center[0] + 0.5,
                     targetY,
@@ -481,7 +716,8 @@ public class VillagerScheduler {
                     arrivedRole, ACTIVITY_WORKING,
                     building.getPosX() + door[0], building.getPosY() + door[1], building.getPosZ() + door[2],
                     doorRot,
-                    layout.openBlock(), layout.closeBlock());
+                    layout.openBlock(), layout.closeBlock(),
+                    gatesForLayout(layout, building, steps));
         }
         return new ScheduleTarget(
                 building.getPosX() + center[0] + 0.5,
@@ -505,7 +741,8 @@ public class VillagerScheduler {
                     ROLE_FARMER, ACTIVITY_WORKING,
                     farm.getPosX() + door[0], farm.getPosY() + door[1], farm.getPosZ() + door[2],
                     doorRot,
-                    layout.openBlock(), layout.closeBlock());
+                    layout.openBlock(), layout.closeBlock(),
+                    gatesForLayout(layout, farm, steps));
         }
         return new ScheduleTarget(
                 farm.getPosX() + center[0] + 0.5,
@@ -520,6 +757,25 @@ public class VillagerScheduler {
      */
     private static int[] rotateLocalOffset(int lx, int ly, int lz, int rotation) {
         return dev.hearthbound.building.BuildingLayout.rotateLocalOffset(lx, ly, lz, rotation);
+    }
+
+    private static List<Gate> gatesForLayout(BuildingLayout.Layout layout,
+                                             BuildingRecord building,
+                                             int steps) {
+        if (layout == null || !layout.hasDoor()) return List.of();
+        return layout.doors().stream()
+                .map(door -> {
+                    int[] rotated = rotateLocalOffset(door.lx(), door.ly(), door.lz(), steps);
+                    int rot = door.worldRotation(building.getRotation(), layout.anchorPrefabRotation());
+                    return new Gate(
+                            building.getPosX() + rotated[0],
+                            building.getPosY() + rotated[1],
+                            building.getPosZ() + rotated[2],
+                            rot,
+                            door.openBlock(),
+                            door.closeBlock());
+                })
+                .toList();
     }
 
     private ScheduleTarget warehouseTarget(BuildingRecord warehouse) {
@@ -537,7 +793,8 @@ public class VillagerScheduler {
                     ROLE_EATING, ACTIVITY_EATING,
                     warehouse.getPosX() + door[0], warehouse.getPosY() + door[1], warehouse.getPosZ() + door[2],
                     doorRot,
-                    layout.openBlock(), layout.closeBlock());
+                    layout.openBlock(), layout.closeBlock(),
+                    gatesForLayout(layout, warehouse, steps));
         }
         return new ScheduleTarget(
                 warehouse.getPosX() + center[0] + 0.5,
@@ -547,28 +804,50 @@ public class VillagerScheduler {
     }
 
     /**
-     * Takes one food item from the warehouse, equips it in the NPC's hand, and resets hunger to 0.
-     * Called once when the villager arrives at the warehouse to eat.
+     * Takes one random edible food item from the warehouse and restores part of hunger.
+     * Called once per village tick while the villager is at the warehouse eating.
      * Deferred via world.execute() to avoid "Store is currently processing" — called from forEachChunk.
      */
-    private void feedVillager(Ref<EntityStore> ref, BuildingRecord warehouse, World world, UUID uuid) {
-        String foodId = WarehouseDepositor.withdrawFood(world, warehouse);
+    private void tickMeal(Ref<EntityStore> ref, BuildingRecord warehouse, World world, UUID uuid) {
+        String foodId = WarehouseDepositor.withdrawRandomFood(world, warehouse, foodRandom);
         if (foodId == null) {
-            LOGGER.fine("feedVillager: no food in warehouse for " + uuid);
+            eatingVillagers.remove(uuid);
+            fedThisMeal.add(uuid);
+            LOGGER.fine("tickMeal: no food in warehouse for " + uuid);
             return;
         }
 
-        // Defer store write — we are inside forEachChunk, can't call putComponent directly.
-        // Reset hunger — food display is handled by ROLE_EATING JSON StateTransitions (SetHotbar + EquipHotbar)
         world.execute(() -> {
             if (!ref.isValid()) return;
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
             VillagerData liveData = liveStore.getComponent(ref, VillagerData.getComponentType());
             if (liveData == null) return;
-            liveData.setHunger(0);
+            liveData.setHunger(liveData.getHunger() - 20);
             liveStore.putComponent(ref, VillagerData.getComponentType(), liveData);
-            LOGGER.fine("feedVillager: " + uuid + " ate " + foodId);
+            HotbarUtil.setSlot0(world, uuid, foodId);
+            playEatingAnimation(ref, liveStore, foodId);
+            if (liveData.getHunger() <= 0) {
+                eatingVillagers.remove(uuid);
+                fedThisMeal.add(uuid);
+            } else {
+                eatingVillagers.add(uuid);
+            }
+            LOGGER.info("tickMeal: " + uuid + " ate " + foodId + " hunger=" + liveData.getHunger());
         });
+    }
+
+    private void playEatingAnimation(Ref<EntityStore> ref, Store<EntityStore> store, String foodId) {
+        try {
+            Item item = Item.getAssetMap().getAsset(foodId);
+            if (item == null) return;
+            String animationsId = item.getPlayerAnimationsId();
+            if (animationsId == null || animationsId.isBlank()) return;
+            ItemPlayerAnimations animations = ItemPlayerAnimations.getAssetMap().getAsset(animationsId);
+            if (animations == null) return;
+            AnimationUtils.playAnimation(ref, AnimationSlot.Action, animations, "Consume", store);
+        } catch (RuntimeException e) {
+            LOGGER.fine("tickMeal: failed to play consume animation for " + foodId + ": " + e.getMessage());
+        }
     }
 
     private void switchRole(Ref<EntityStore> ref, Store<EntityStore> store, String roleName, World world) {
@@ -619,12 +898,22 @@ public class VillagerScheduler {
 
     private void setGateState(ScheduleTarget target, World world, boolean open) {
         if (target == null || !target.hasGate()) return;
-        int gx = target.gateX(), gy = target.gateY(), gz = target.gateZ();
-        int gateRotation = target.gateRotation();
+        for (Gate gate : target.gates()) {
+            setSingleGateState(gate, world, open);
+        }
+    }
+
+    private void setSingleGateState(Gate gate, World world, boolean open) {
+        int gx = gate.x(), gy = gate.y(), gz = gate.z();
+        int gateRotation = gate.rotation();
         // Use a single-door prefab + rotate() so the engine places state-variant with correct rotation.
         // world.setBlock("*...CloseDoorIn") resets rotation to 0; chunk.setBlock + setBlock combo
         // also loses rotation. Only BlockSelection.placeNoReturn preserves both state and rotation.
-        String prefabName = open ? "door_open_in" : "door_closed_in";
+        String stateBlock = open ? gate.openBlock() : gate.closeBlock();
+        boolean doorOut = stateBlock != null && stateBlock.contains("DoorOut");
+        String prefabName = open
+                ? (doorOut ? "door_open_out" : "door_open_in")
+                : (doorOut ? "door_closed_out" : "door_closed_in");
         world.execute(() -> {
             try {
                 com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection selection =
@@ -640,7 +929,10 @@ public class VillagerScheduler {
                         new com.hypixel.hytale.math.vector.Vector3i(gx, gy, gz);
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 rotated.placeNoReturn(world, gatePos, liveStore);
-                LOGGER.fine("setGateState: prefab=" + prefabName + " rot=" + gateRotation + " at (" + gx + "," + gy + "," + gz + ")");
+                LOGGER.info("setGateState: prefab=" + prefabName
+                        + " stateBlock=" + stateBlock
+                        + " rot=" + gateRotation
+                        + " at (" + gx + "," + gy + "," + gz + ")");
             } catch (Exception e) {
                 LOGGER.warning("setGateState failed: " + e.getMessage());
             }

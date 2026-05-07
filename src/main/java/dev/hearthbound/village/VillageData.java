@@ -58,6 +58,8 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("WarehouseQuestOffered", Codec.BOOLEAN), VillageData::setWarehouseQuestOffered, VillageData::isWarehouseQuestOffered).add()
             .append(new KeyedCodec<>("SawmillQuestOffered", Codec.BOOLEAN), VillageData::setSawmillQuestOffered, VillageData::isSawmillQuestOffered).add()
             .append(new KeyedCodec<>("MineQuestOffered", Codec.BOOLEAN), VillageData::setMineQuestOffered, VillageData::isMineQuestOffered).add()
+            .append(new KeyedCodec<>("GuardHouseQuestOffered", Codec.BOOLEAN), VillageData::setGuardHouseQuestOffered, VillageData::isGuardHouseQuestOffered).add()
+            .append(new KeyedCodec<>("ForgeQuestOffered", Codec.BOOLEAN), VillageData::setForgeQuestOffered, VillageData::isForgeQuestOffered).add()
             .append(new KeyedCodec<>("RescueQuestTrapDone", Codec.BOOLEAN), VillageData::setRescueQuestTrapDone, VillageData::isRescueQuestTrapDone).add()
             .append(new KeyedCodec<>("RescueQuestHistory", STRING_ARRAY_CODEC), VillageData::setRescueQuestHistoryArray, VillageData::getRescueQuestHistoryArray).add()
             .append(new KeyedCodec<>("RescueQuestSiteX", INT_ARRAY_CODEC), VillageData::setRescueQuestSiteXArray, VillageData::getRescueQuestSiteXArray).add()
@@ -105,6 +107,8 @@ public class VillageData implements Component<EntityStore> {
     private boolean warehouseQuestOffered = false;
     private boolean sawmillQuestOffered = false;
     private boolean mineQuestOffered = false;
+    private boolean guardHouseQuestOffered = false;
+    private boolean forgeQuestOffered = false;
     private boolean rescueQuestTrapDone = false;
     private List<String> rescueQuestHistory = new ArrayList<>();
     /**
@@ -237,6 +241,10 @@ public class VillageData implements Component<EntityStore> {
     public void setSawmillQuestOffered(boolean offered) { this.sawmillQuestOffered = offered; }
     public boolean isMineQuestOffered() { return mineQuestOffered; }
     public void setMineQuestOffered(boolean offered) { this.mineQuestOffered = offered; }
+    public boolean isGuardHouseQuestOffered() { return guardHouseQuestOffered; }
+    public void setGuardHouseQuestOffered(boolean offered) { this.guardHouseQuestOffered = offered; }
+    public boolean isForgeQuestOffered() { return forgeQuestOffered; }
+    public void setForgeQuestOffered(boolean offered) { this.forgeQuestOffered = offered; }
 
     // --- Rescue quest rotation ---
     public boolean isRescueQuestTrapDone() { return rescueQuestTrapDone; }
@@ -402,6 +410,8 @@ public class VillageData implements Component<EntityStore> {
         copy.warehouseQuestOffered = this.warehouseQuestOffered;
         copy.sawmillQuestOffered = this.sawmillQuestOffered;
         copy.mineQuestOffered = this.mineQuestOffered;
+        copy.guardHouseQuestOffered = this.guardHouseQuestOffered;
+        copy.forgeQuestOffered = this.forgeQuestOffered;
         copy.rescueQuestTrapDone = this.rescueQuestTrapDone;
         copy.rescueQuestHistory = new ArrayList<>(this.rescueQuestHistory);
         copy.rescueQuestSites = new ArrayList<>();

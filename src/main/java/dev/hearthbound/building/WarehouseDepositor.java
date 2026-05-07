@@ -12,6 +12,10 @@ import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import dev.hearthbound.village.BuildingRecord;
 
 import java.util.logging.Logger;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 
 /**
  * Deposits and withdraws items from Warehouse Storage Chests.
@@ -21,22 +25,17 @@ public final class WarehouseDepositor {
 
     private static final Logger LOGGER = Logger.getLogger(WarehouseDepositor.class.getName());
 
-    // Food items a villager can eat, in priority order. Any Plant_Crop_*_Item we can grow on
-    // a farm should be edible — the player shouldn't have to plant specific crops to keep
-    // their villagers fed. Cotton is excluded (it's a textile crop, not food).
+    // Food items villagers can plausibly eat raw. Wheat/rice and bulky cooking crops are
+    // intentionally excluded until we add prepared food recipes.
     public static final String[] FOOD_ITEMS = {
         "Plant_Crop_Carrot_Item",
-        "Plant_Crop_Wheat_Item",
         "Plant_Crop_Potato_Item",
         "Plant_Crop_Lettuce_Item",
         "Plant_Crop_Corn_Item",
         "Plant_Crop_Turnip_Item",
         "Plant_Crop_Cauliflower_Item",
-        "Plant_Crop_Aubergine_Item",
-        "Plant_Crop_Pumpkin_Item",
         "Plant_Crop_Tomato_Item",
         "Plant_Crop_Onion_Item",
-        "Plant_Crop_Rice_Item",
         "Plant_Crop_Chilli_Item",
     };
 
@@ -114,6 +113,25 @@ public final class WarehouseDepositor {
         int anchorZ = warehouse.getPosZ();
 
         for (String foodId : FOOD_ITEMS) {
+            for (int[] offset : rotatedOffsets) {
+                int wx = anchorX + offset[0];
+                int wy = anchorY + offset[1];
+                int wz = anchorZ + offset[2];
+                if (tryWithdrawAt(world, wx, wy, wz, foodId)) return foodId;
+            }
+        }
+        return null;
+    }
+
+    public static String withdrawRandomFood(World world, BuildingRecord warehouse, Random random) {
+        List<String> foods = new ArrayList<>(List.of(FOOD_ITEMS));
+        Collections.shuffle(foods, random != null ? random : new Random());
+        int[][] rotatedOffsets = buildRotatedOffsets(warehouse.getRotation() % 4);
+        int anchorX = warehouse.getPosX();
+        int anchorY = warehouse.getPosY();
+        int anchorZ = warehouse.getPosZ();
+
+        for (String foodId : foods) {
             for (int[] offset : rotatedOffsets) {
                 int wx = anchorX + offset[0];
                 int wy = anchorY + offset[1];

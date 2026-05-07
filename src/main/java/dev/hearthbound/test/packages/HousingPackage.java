@@ -3,6 +3,7 @@ package dev.hearthbound.test.packages;
 import dev.hearthbound.test.engine.TestCase;
 import dev.hearthbound.test.engine.TestPackage;
 import dev.hearthbound.test.steps.AssertHousingStep;
+import dev.hearthbound.test.steps.AssertWorkAssignmentsStep;
 import dev.hearthbound.test.steps.AuditStep;
 import dev.hearthbound.test.steps.CleanupTestNpcsStep;
 import dev.hearthbound.test.steps.FakeBuildingStep;
@@ -18,7 +19,9 @@ import dev.hearthbound.test.engine.TestStep;
 import dev.hearthbound.village.BuildingType;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Stage 2 — housing. Validates that VillageTickHandler's housing/work assignment
@@ -44,6 +47,7 @@ public final class HousingPackage {
                 buildHousingMany(),
                 buildHousingOverflow(),
                 buildHousingWork(),
+                buildHousingNewWorkplaces(),
                 buildHousingAfterChunkReload()));
     }
 
@@ -117,6 +121,39 @@ public final class HousingPackage {
         return new TestCase("housing_work", steps).withTeardown(
                 new CleanupTestNpcsStep(),
                 new AuditStep(true, "post-cleanup"));
+    }
+
+    private static TestCase buildHousingNewWorkplaces() {
+        List<TestStep> steps = new ArrayList<>();
+        steps.add(new LogStep("housing_new_workplaces — farm/sawmill/mine/guard/forge all staffed"));
+        steps.add(new SetupVillageStep());
+        for (int i = 0; i < 5; i++) {
+            steps.add(new FakeBuildingStep(
+                    BuildingType.HOUSE_HUMAN, FB_X + i * 8, FB_Y, FB_Z));
+        }
+        steps.add(new FakeBuildingStep(BuildingType.FARM,        FB_X,      FB_Y, FB_Z + 16));
+        steps.add(new FakeBuildingStep(BuildingType.SAWMILL,     FB_X + 16, FB_Y, FB_Z + 16));
+        steps.add(new FakeBuildingStep(BuildingType.MINE,        FB_X + 32, FB_Y, FB_Z + 16));
+        steps.add(new FakeBuildingStep(BuildingType.GUARD_HOUSE, FB_X + 48, FB_Y, FB_Z + 16));
+        steps.add(new FakeBuildingStep(BuildingType.FORGE,       FB_X + 64, FB_Y, FB_Z + 16));
+        steps.add(new SpawnVillagersStep(5));
+        steps.add(new ForceVillageTickStep(10));
+        steps.add(new AssertHousingStep(5, 0));
+        steps.add(new AssertWorkAssignmentsStep(workAssignmentExpectations()));
+        steps.add(new AuditStep(true, "post-assign"));
+        return new TestCase("housing_new_workplaces", steps).withTeardown(
+                new CleanupTestNpcsStep(),
+                new AuditStep(true, "post-cleanup"));
+    }
+
+    private static Map<String, Integer> workAssignmentExpectations() {
+        Map<String, Integer> expected = new LinkedHashMap<>();
+        expected.put(BuildingType.FARM, 1);
+        expected.put(BuildingType.SAWMILL, 1);
+        expected.put(BuildingType.MINE, 1);
+        expected.put(BuildingType.GUARD_HOUSE, 1);
+        expected.put(BuildingType.FORGE, 1);
+        return expected;
     }
 
     private static TestCase buildHousingAfterChunkReload() {

@@ -5,6 +5,8 @@ interactionHints.manage_farm = Press [{key}] to manage farm
 interactionHints.manage_warehouse = Press [{key}] to manage warehouse
 interactionHints.manage_lumbermill = Press [{key}] to manage sawmill
 interactionHints.manage_mine = Press [{key}] to manage mine
+interactionHints.manage_guardhouse = Press [{key}] to manage guard house
+interactionHints.manage_forge = Press [{key}] to manage forge
 
 # === Hearthbound items ===
 items.Stayed_Founding_Stone.name = Founding Stone
@@ -15,12 +17,16 @@ items.Stayed_Storage_Chest.name = Village Storage Chest
 items.Stayed_Ghost.name = Ghost Block
 items.Stayed_Lumbermill.name = Sawmill
 items.Stayed_Mine_Sign.name = Mine Sign
+items.Stayed_Target_Dummy.name = Training Dummy
+items.Stayed_Forge.name = Forge Anvil
 
 # === Hearthbound NPCs ===
 npcRoles.Elf_Sage.name = Aelin
 npcRoles.Villager_Rescue_Trapped.name = Trapped villager
 npcRoles.Villager_Human_Lumberjack.name = Lumberjack
 npcRoles.Villager_Human_Miner.name = Miner
+npcRoles.Villager_Human_Guard.name = Guard
+npcRoles.Villager_Human_Blacksmith.name = Blacksmith
 
 # === Hearthbound Quests — Objective Lines ===
 objectivelines.ObjectiveLine_RescueQuest_1.title = Step Right In

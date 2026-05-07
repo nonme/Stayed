@@ -37,7 +37,8 @@ public final class BuildingLayout {
     public record Layout(int centerLX, int centerLZ, int floorLY, int anchorPrefabRotation,
                          Integer doorLX, Integer doorLY, Integer doorLZ,
                          Integer doorNativeRotation,
-                         String openBlock, String closeBlock) {
+                         String openBlock, String closeBlock,
+                         List<DoorPlacement> doors) {
         public boolean hasDoor() { return doorLX != null; }
 
         /**
@@ -53,6 +54,14 @@ public final class BuildingLayout {
         /** Steps to rotate native-local coords to match this building's world orientation. */
         public int rotationSteps(int worldRotation) {
             return (worldRotation - anchorPrefabRotation + 4) % 4;
+        }
+    }
+
+    public record DoorPlacement(int lx, int ly, int lz, int nativeRotation,
+                                String openBlock, String closeBlock) {
+        public int worldRotation(int worldRotation, int anchorPrefabRotation) {
+            int steps = (worldRotation - anchorPrefabRotation + 4) % 4;
+            return PrefabLoader.rotateBlockRotation(nativeRotation, steps);
         }
     }
 
@@ -102,12 +111,17 @@ public final class BuildingLayout {
         // (they're placed atomically by the final replaceWithPrefab swap, not block-by-block),
         // so scanning the build plan would always return null.
         boolean hasManagedDoor = !BuildingType.MINE.equals(type) && !BuildingType.SAWMILL.equals(type);
-        PrefabLoader.DoorInfo doorInfo = hasManagedDoor
-                ? PrefabLoader.findDoor(prefabName, anchorId, anchorPrefabY)
-                : null;
+        List<PrefabLoader.DoorInfo> doorInfos = hasManagedDoor
+                ? PrefabLoader.findDoors(prefabName, anchorId, anchorPrefabY)
+                : List.of();
+        PrefabLoader.DoorInfo doorInfo = doorInfos.isEmpty() ? null : doorInfos.get(0);
 
         String openBlock  = doorInfo != null ? openVariant(doorInfo.blockId())  : null;
         String closeBlock = doorInfo != null ? closeVariant(doorInfo.blockId()) : null;
+        List<DoorPlacement> doors = doorInfos.stream()
+                .map(d -> new DoorPlacement(d.lx(), d.ly(), d.lz(), d.nativeRotation(),
+                        openVariant(d.blockId()), closeVariant(d.blockId())))
+                .toList();
 
         // Interior center: use hardcoded override if available, otherwise auto-detect.
         int centerLX = 0, centerLZ = 0, floorLY = 0;
@@ -144,24 +158,31 @@ public final class BuildingLayout {
                 doorInfo != null ? doorInfo.ly() : null,
                 doorInfo != null ? doorInfo.lz() : null,
                 doorInfo != null ? doorInfo.nativeRotation() : null,
-                openBlock, closeBlock);
+                openBlock, closeBlock,
+                doors);
 
         LOGGER.info(String.format("BuildingLayout computed for %s: center=(%d,%d)%s",
                 type, centerLX, centerLZ,
                 layout.hasDoor()
                         ? " door=(" + layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ() + ")"
+                                + " doorCount=" + layout.doors().size()
                         : " no-door"));
         return layout;
     }
 
     private static String openVariant(String id) {
         String base = stripStateVariant(id);
-        return "*" + base + "_State_Definitions_OpenDoorIn";
+        return "*" + base + "_State_Definitions_" + doorDirection(id, "OpenDoor");
     }
 
     private static String closeVariant(String id) {
         String base = stripStateVariant(id);
-        return "*" + base + "_State_Definitions_CloseDoorIn";
+        return "*" + base + "_State_Definitions_" + doorDirection(id, "CloseDoor");
+    }
+
+    private static String doorDirection(String id, String statePrefix) {
+        if (id != null && id.contains("DoorOut")) return statePrefix + "Out";
+        return statePrefix + "In";
     }
 
     private static String stripStateVariant(String id) {
@@ -222,6 +243,6 @@ public final class BuildingLayout {
     }
 
     private static Layout fallback() {
-        return new Layout(0, 0, 0, 0, null, null, null, null, null, null);
+        return new Layout(0, 0, 0, 0, null, null, null, null, null, null, List.of());
     }
 }

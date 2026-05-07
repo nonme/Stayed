@@ -1,8 +1,12 @@
 package dev.hearthbound.test.audit;
 
+import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.server.core.entity.Frozen;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import dev.hearthbound.npc.NpcMissingEntityRecovery;
+import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.util.TickScheduler;
 
 import java.util.concurrent.ScheduledFuture;
@@ -42,6 +46,12 @@ public final class NpcRegistrySelfCheck {
                     LOGGER.warning("NpcRegistrySelfCheck: " + result.summary());
                     for (Violation v : result.getViolations()) {
                         LOGGER.warning("  " + v);
+                        if (v.getType() == ViolationType.MISSING_ENTITY && v.getNpcId() != null) {
+                            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecordByNpcId(v.getNpcId());
+                            NpcMissingEntityRecovery.request(world, record, null, "self-check");
+                        } else if (v.getType() == ViolationType.STALE_FROZEN && v.getEntityUuid() != null) {
+                            removeStaleFrozen(world, v);
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -61,5 +71,22 @@ public final class NpcRegistrySelfCheck {
     /** Test runner uses this to silence WARN noise during deliberate test setup. */
     public static void setPaused(boolean value) {
         paused = value;
+    }
+
+    private static void removeStaleFrozen(World world, Violation violation) {
+        world.execute(() -> {
+            try {
+                Ref<EntityStore> ref = world.getEntityRef(violation.getEntityUuid());
+                if (ref == null || !ref.isValid()) return;
+                Store<EntityStore> store = world.getEntityStore().getStore();
+                if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
+                store.tryRemoveComponent(ref, Frozen.getComponentType());
+                LOGGER.info("NpcRegistrySelfCheck: removed stale Frozen from npcId="
+                        + violation.getNpcId() + " uuid=" + violation.getEntityUuid());
+            } catch (Exception e) {
+                LOGGER.fine("NpcRegistrySelfCheck: stale Frozen repair failed for npcId="
+                        + violation.getNpcId() + ": " + e.getMessage());
+            }
+        });
     }
 }

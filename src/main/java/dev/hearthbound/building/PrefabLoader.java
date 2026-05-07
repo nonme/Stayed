@@ -307,6 +307,11 @@ public class PrefabLoader {
      * are expected to fall back to no-door layout.
      */
     public static DoorInfo findDoor(String prefabName, String anchorBlockId, int anchorPrefabY) {
+        List<DoorInfo> doors = findDoors(prefabName, anchorBlockId, anchorPrefabY);
+        return doors.isEmpty() ? null : doors.get(0);
+    }
+
+    public static List<DoorInfo> findDoors(String prefabName, String anchorBlockId, int anchorPrefabY) {
         try {
             BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
             var assetMap = BlockType.getAssetMap();
@@ -326,8 +331,7 @@ public class PrefabLoader {
             // open/close gate logic. Prefer the door whose bottom block sits closest to the
             // anchor's Y level (the ground entrance), and tie-break by horizontal distance
             // from the anchor so we still pick a sensible door if heights are equal.
-            DoorInfo[] best = {null};
-            int[] bestScore = {Integer.MAX_VALUE};
+            List<DoorInfo> doors = new ArrayList<>();
             selection.forEachBlock((bx, by, bz, holder) -> {
                 if (holder.filler() != 0) return;
                 BlockType bt = assetMap.getAsset(holder.blockId());
@@ -339,21 +343,20 @@ public class PrefabLoader {
                 int ly = (by - prefabOriginY) - anchorPrefabY;
                 int lz = (bz - prefabOriginZ) - anchorLZ;
 
-                // Doors are 2 blocks tall; we want the bottom half. Prefer ly closest to 0
-                // (entry floor), then prefer doors closer to the anchor in the XZ plane.
-                int yPenalty = Math.abs(ly) * 1000;
-                int xzPenalty = Math.abs(lx) + Math.abs(lz);
-                int score = yPenalty + xzPenalty;
-                if (score < bestScore[0]) {
-                    bestScore[0] = score;
-                    best[0] = new DoorInfo(lx, ly, lz, holder.rotation() % 4, id);
-                }
+                doors.add(new DoorInfo(lx, ly, lz, holder.rotation() % 4, id));
             });
-            return best[0];
+            doors.sort((a, b) -> Integer.compare(doorScore(a), doorScore(b)));
+            return doors;
         } catch (Exception e) {
-            LOGGER.warning("PrefabLoader.findDoor failed for '" + prefabName + "': " + e.getMessage());
-            return null;
+            LOGGER.warning("PrefabLoader.findDoors failed for '" + prefabName + "': " + e.getMessage());
+            return List.of();
         }
+    }
+
+    private static int doorScore(DoorInfo door) {
+        int yPenalty = Math.abs(door.ly()) * 1000;
+        int xzPenalty = Math.abs(door.lx()) + Math.abs(door.lz());
+        return yPenalty + xzPenalty;
     }
 
     /** Reads the yaw rotation of the anchor block from the prefab (lowest 2 bits of RotationTuple index). */

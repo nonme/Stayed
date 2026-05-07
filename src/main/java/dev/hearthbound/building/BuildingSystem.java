@@ -382,13 +382,23 @@ public class BuildingSystem {
             LOGGER.info("Mine terrain cleared: " + belowEmpty.size() + " cells below anchor");
         }
 
-        // Safe position: a couple blocks in front of the building door.
+        // Safe position: a couple blocks in front of the building door, unless the building
+        // type provides an explicit override (anchors that sit OUTSIDE the building, like
+        // the GuardHouse training dummy, would otherwise land the elf inside a wall).
         int[] doorOffset = BuildingType.getDoorOffset(record.getType(), rotation, record.getVariant());
-        double dirX = doorOffset[0] == 0 ? 0 : (doorOffset[0] > 0 ? 2 : -2);
-        double dirZ = doorOffset[1] == 0 ? 0 : (doorOffset[1] > 0 ? 2 : -2);
-        double safeX = record.getPosX() + doorOffset[0] + dirX + 0.5;
-        double safeY = record.getPosY() + 1;
-        double safeZ = record.getPosZ() + doorOffset[1] + dirZ + 0.5;
+        int[] safeOverride = BuildingType.getSafeBuildOffset(record.getType(), rotation);
+        double safeX, safeY, safeZ;
+        if (safeOverride != null) {
+            safeX = record.getPosX() + safeOverride[0] + 0.5;
+            safeY = record.getPosY();
+            safeZ = record.getPosZ() + safeOverride[1] + 0.5;
+        } else {
+            double dirX = doorOffset[0] == 0 ? 0 : (doorOffset[0] > 0 ? 2 : -2);
+            double dirZ = doorOffset[1] == 0 ? 0 : (doorOffset[1] > 0 ? 2 : -2);
+            safeX = record.getPosX() + doorOffset[0] + dirX + 0.5;
+            safeY = record.getPosY() + 1;
+            safeZ = record.getPosZ() + doorOffset[1] + dirZ + 0.5;
+        }
 
         // Swap wanderer-role elf to builder-role elf at the safe position. The builder role
         // has BodyMotion: Nothing and no HeadMotion so our lookAtBlock packets steer him.

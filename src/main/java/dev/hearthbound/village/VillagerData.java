@@ -21,6 +21,8 @@ public class VillagerData implements Component<EntityStore> {
     public static final String PROF_LUMBERJACK = "lumberjack";
     public static final String PROF_MASON = "mason";
     public static final String PROF_FARMER = "farmer";
+    public static final String PROF_GUARD = "guard";
+    public static final String PROF_BLACKSMITH = "blacksmith";
 
     // States (activity — orthogonal to housing status)
     public static final String STATE_IDLE = "idle";
@@ -34,8 +36,8 @@ public class VillagerData implements Component<EntityStore> {
     public static final String RACE_ELF = "elf";
 
     // Hunger thresholds (0 = full, 100 = very hungry)
-    public static final int HUNGER_MODERATE = 40;
-    public static final int HUNGER_SEVERE   = 70;
+    public static final int HUNGER_MODERATE = 60;
+    public static final int HUNGER_SEVERE   = 90;
 
     // Happiness contributions
     public static final int HAPPINESS_BONUS_HOME      =  30;

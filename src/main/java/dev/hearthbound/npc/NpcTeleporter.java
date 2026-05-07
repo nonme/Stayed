@@ -103,7 +103,9 @@ public final class NpcTeleporter {
                     Ref<EntityStore> reloaded = NpcLiveEntityResolver.findLiveNpcByRecord(liveStore, record);
                     if (reloaded == null || !reloaded.isValid()) {
                         LOGGER.warning("NpcTeleporter.recall: no live entity after force-load npcId="
-                                + record.npcId + " — NpcChunkLoadHandler will respawn on next reload");
+                                + record.npcId + " — requesting guarded recovery at recall target");
+                        NpcMissingEntityRecovery.request(world, record,
+                                new NpcMissingEntityRecovery.Target(x, y, z), "recall");
                         return;
                     }
                     doMove(world, liveStore, reloaded, record, x, y, z);
@@ -111,8 +113,8 @@ public final class NpcTeleporter {
         return true;
     }
 
-    private static void doMove(World world, Store<EntityStore> store, Ref<EntityStore> ref,
-                               NpcRegistry.NpcRecord record, double x, double y, double z) {
+    static void doMove(World world, Store<EntityStore> store, Ref<EntityStore> ref,
+                       NpcRegistry.NpcRecord record, double x, double y, double z) {
         // The resolver already gave us a live ref keyed off npcId, so don't go
         // back through world.getEntity(record.entityUuid) — record.entityUuid
         // may not yet match the live UUIDComponent if bindEntityUuid hasn't

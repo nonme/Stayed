@@ -121,10 +121,11 @@ public final class NpcRestorer {
         String liveRole = npc.getRoleName();
         String effectiveRole = liveRole != null ? liveRole : roleName;
         String itemId = switch (effectiveRole) {
-            case "Villager_Human_Eating"     -> "Plant_Crop_Carrot_Item";
             case "Villager_Human_Farmer"     -> "Tool_Hoe_Crude";
             case "Villager_Human_Lumberjack" -> "Weapon_Axe_Crude";
             case "Villager_Human_Miner"      -> "Tool_Pickaxe_Crude";
+            case "Villager_Human_Guard"      -> "Weapon_Sword_Crude";
+            case "Villager_Human_Blacksmith" -> "Tool_Hammer_Crude";
             default -> null;
         };
         npc.getInventory().getHotbar().setItemStackForSlot((short) 0, null);

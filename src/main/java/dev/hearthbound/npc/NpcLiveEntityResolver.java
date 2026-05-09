@@ -36,6 +36,14 @@ public final class NpcLiveEntityResolver {
                     found[0] = ref;
                     return;
                 }
+                NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
+                if (npc != null && npc.getRole() != null) {
+                    String roleNpcId = StayedRoleNames.extractNpcId(npc.getRole().getRoleName());
+                    if (npcId != null && npcId.equals(roleNpcId)) {
+                        found[0] = ref;
+                        return;
+                    }
+                }
                 if (entityUuid != null) {
                     UUIDComponent uuidComponent = store.getComponent(ref, UUIDComponent.getComponentType());
                     if (uuidComponent != null && entityUuid.equals(uuidComponent.getUuid())) {

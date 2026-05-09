@@ -9,6 +9,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.npc.BuilderBehavior;
 import dev.hearthbound.npc.ElfSage;
+import dev.hearthbound.util.TickScheduler;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -44,6 +45,13 @@ public class BuildingSystem {
     private SiteClearer activeClearer;
     private ResourceBlockPlacer activeBuilder;
     private BuildingRecord activeRecord;
+
+    /**
+     * Match threshold (0.0–1.0) at which a player-built or pasted structure is recognized
+     * as the prefab and integrated as a completed building instead of being rebuilt by the
+     * elf. The prefab is still re-placed on top to fix up any missing/wrong blocks.
+     */
+    private static final double INTEGRATION_THRESHOLD = 0.90;
 
     /**
      * One ghost preview session per player. Cycling variants only affects the calling player,
@@ -316,13 +324,10 @@ public class BuildingSystem {
                 return;
             }
 
-            // Spawn elf near door via respawnAs so NpcRegistry is updated correctly.
-            int[] doorOffset = BuildingType.getDoorOffset(BuildingType.TOWN_HALL, rotation);
-            Vector3d elfPos = new Vector3d(
-                    anchorX + doorOffset[0],
-                    anchorY + 1,
-                    anchorZ + doorOffset[1]
-            );
+            double[] stand = BuildingLayout.townHallStandPoint(village);
+            Vector3d elfPos = stand != null
+                    ? new Vector3d(stand[0], stand[1], stand[2])
+                    : new Vector3d(anchorX + 0.5, anchorY + 1.0, anchorZ + 0.5);
             float elfYaw = switch (rotation) {
                 case 0 -> 180f;
                 case 1 -> 270f;
@@ -332,8 +337,42 @@ public class BuildingSystem {
             };
             ElfSage.respawnAs(worldStore, playerRef, world,
                     ElfSage.ROLE_WANDERER, elfPos, new Vector3f(0, elfYaw, 0));
-            LOGGER.info("Village elf respawned near door: " + elfPos);
+            LOGGER.info("Village elf respawned at town hall stand: " + elfPos);
         });
+    }
+
+    // ========== Pre-Confirm Integration Scan ==========
+
+    /**
+     * Called from a UI page's Confirm Placement handler before {@link #startResourceBuilding}.
+     * Scans the world against the prefab plan: if the player has already built (or pasted)
+     * the structure to {@link #INTEGRATION_THRESHOLD} or higher, the prefab is re-placed
+     * atomically and the building is marked complete. Returns true when integration ran —
+     * the caller must skip startResourceBuilding in that case.
+     */
+    public boolean tryIntegrateExisting(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                         World world, BuildingRecord record, int rotation) {
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null) return false;
+
+        int variant = record.getVariant();
+        List<BlockPlacer.BlockEntry> plan = loadBuildPlan(record.getType(),
+                record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
+        if (plan.isEmpty()) return false;
+
+        double match = BuildingScanner.scanMatchPercent(world, plan);
+        if (match < INTEGRATION_THRESHOLD) return false;
+
+        record.setRotation(rotation);
+        village.setConstructionStarted(true);
+        VillageManager.get().save(store, playerRef, village);
+        LOGGER.info("[Integrate] " + record.getType() + " matched at "
+                + (int)(match * 100) + "% — marking complete (prefab will be placed by onBuildingComplete)");
+        // Don't call replaceWithPrefab here — onBuildingComplete does it. A double placement
+        // re-rotates door state blocks and ends up with the wrong facing.
+        activeRecord = record;
+        onBuildingComplete(store, playerRef, world, record);
+        return true;
     }
 
     // ========== Resource-based Construction ==========
@@ -419,8 +458,8 @@ public class BuildingSystem {
         final double fSafeX = safeX, fSafeY = safeY, fSafeZ = safeZ;
         final UUID fElfUuid = elfUuid;
 
-        dev.hearthbound.npc.BuilderBehavior builderBehavior = fElfUuid != null
-                ? new dev.hearthbound.npc.BuilderBehavior(world, fElfUuid, ownerUuid)
+        BuilderBehavior builderBehavior = fElfUuid != null
+                ? new BuilderBehavior(world, fElfUuid, ownerUuid)
                 : null;
 
         // Pin the leash point to the horizontal center of the build plan so the elf
@@ -436,22 +475,48 @@ public class BuildingSystem {
         // player already broke. Phase 2: block-by-block construction starts on completion.
         java.util.Set<Long> occupiedCells = loadOccupiedCells(record.getType(),
                 record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
-        activeClearer = new SiteClearer(world, plan, occupiedCells, builderBehavior, () -> {
-            activeClearer = null;
-            activeBuilder = new ResourceBlockPlacer(world, plan, record,
-                    fSafeX, fSafeY, fSafeZ, fElfUuid, ownerUuid, () -> {
-                world.execute(() -> {
-                    Store<EntityStore> worldStore = world.getEntityStore().getStore();
-                    onBuildingComplete(worldStore, playerRef, world, record);
+        Runnable startClearing = () -> {
+            activeClearer = new SiteClearer(world, plan, occupiedCells, builderBehavior, () -> {
+                activeClearer = null;
+                activeBuilder = new ResourceBlockPlacer(world, plan, record,
+                        fSafeX, fSafeY, fSafeZ, fElfUuid, ownerUuid, () -> {
+                    world.execute(() -> {
+                        Store<EntityStore> worldStore = world.getEntityStore().getStore();
+                        onBuildingComplete(worldStore, playerRef, world, record);
+                    });
                 });
+                activeBuilder.start();
+                LOGGER.info("Site cleared — construction started: " + record.getType()
+                        + " (" + plan.size() + " blocks)");
             });
-            activeBuilder.start();
-            LOGGER.info("Site cleared — construction started: " + record.getType()
-                    + " (" + plan.size() + " blocks)");
-        });
-        activeClearer.start();
+            activeClearer.start();
+        };
+        waitForBuilderThenStart(store, playerRef, world, builderBehavior, startClearing, 0);
 
-        LOGGER.info("Site clearing started: " + record.getType() + " (" + plan.size() + " blocks to scan)");
+        LOGGER.info("Site clearing queued: " + record.getType() + " (" + plan.size() + " blocks to scan)");
+    }
+
+    private void waitForBuilderThenStart(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                         World world, BuilderBehavior builderBehavior,
+                                         Runnable startClearing, int attempts) {
+        if (builderBehavior == null || builderBehavior.getPosition() != null) {
+            startClearing.run();
+            LOGGER.info("Builder ready — site clearing started");
+            return;
+        }
+        if (attempts >= 40) {
+            VillageData village = VillageManager.get().getVillageData(store, playerRef);
+            if (village != null) {
+                village.setConstructionStarted(false);
+                VillageManager.get().save(store, playerRef, village);
+            }
+            activeRecord = null;
+            LOGGER.warning("Builder did not become live after chunk-load wait; construction cancelled");
+            return;
+        }
+        TickScheduler.runLater(world, 250L,
+                () -> waitForBuilderThenStart(world.getEntityStore().getStore(), playerRef,
+                        world, builderBehavior, startClearing, attempts + 1));
     }
 
     private void onBuildingComplete(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -463,14 +528,12 @@ public class BuildingSystem {
         // engine's connected-block resolver has the full neighborhood available.
         replaceWithPrefab(world, store, record, record.getRotation());
 
-        // After any build the elf moves inside the Town Hall and wanders there.
-        if (activeBuilder != null) {
-            Vector3d returnPos = elfReturnPos(store, playerRef, record,
-                    activeBuilder.getSafeX(), activeBuilder.getSafeY(), activeBuilder.getSafeZ());
-            ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_VILLAGER,
-                    returnPos, new Vector3f(0, 0, 0));
-
-        }
+        double fallbackX = activeBuilder != null ? activeBuilder.getSafeX() : record.getPosX() + 0.5;
+        double fallbackY = activeBuilder != null ? activeBuilder.getSafeY() : record.getPosY() + 1.0;
+        double fallbackZ = activeBuilder != null ? activeBuilder.getSafeZ() : record.getPosZ() + 0.5;
+        Vector3d returnPos = elfReturnPos(store, playerRef, record, fallbackX, fallbackY, fallbackZ);
+        ElfSage.respawnAs(store, playerRef, world, ElfSage.ROLE_VILLAGER,
+                returnPos, new Vector3f(0, 0, 0));
 
         VillageManager mgr = VillageManager.get();
         mgr.completeBuilding(store, playerRef, record);

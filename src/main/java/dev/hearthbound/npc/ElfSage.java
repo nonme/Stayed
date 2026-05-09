@@ -124,8 +124,30 @@ public class ElfSage {
         NpcRegistry.NpcRecord record = oldId != null ? NpcRegistry.get().getRecord(oldId) : null;
         Ref<EntityStore> elfRef = oldId != null ? world.getEntityRef(oldId) : null;
 
+        if (record != null && (elfRef == null || !elfRef.isValid())) {
+            NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
+                    record.npcId, record.entityUuid, role, NpcRegistry.InteractionType.ELF,
+                    record.skinSeed, position != null ? NpcManager.chunkIndexFor(position) : record.chunkIndex);
+            updated.copyBasePositionFrom(record);
+            if (position != null) {
+                updated.setPosition(position.getX(), position.getY(), position.getZ());
+            } else if (record.hasPosition) {
+                updated.setPosition(record.lastX, record.lastY, record.lastZ);
+            }
+            NpcRegistry.get().updateRecord(updated);
+            HearthboundDataStore.get().save();
+            LOGGER.info("respawnAs: elf chunk unloaded (oldId=" + oldId
+                    + "), requesting recovery as " + role);
+            NpcMissingEntityRecovery.request(world, updated,
+                    position != null
+                            ? new NpcMissingEntityRecovery.Target(position.getX(), position.getY(), position.getZ())
+                            : null,
+                    "elf-respawn-as-unloaded");
+            return;
+        }
+
         if (record == null || elfRef == null || !elfRef.isValid()) {
-            LOGGER.info("respawnAs: no live elf to role-change (oldId=" + oldId
+            LOGGER.info("respawnAs: no recorded elf to role-change (oldId=" + oldId
                     + "), falling back to fresh spawn");
             doSpawn(store, playerRef, world, position);
             return;
@@ -138,17 +160,12 @@ public class ElfSage {
             return;
         }
 
-        boolean roleActuallyChanges = !role.equals(npcEntity.getRoleName());
-        if (roleActuallyChanges) {
-            int newRoleIndex = com.hypixel.hytale.server.npc.NPCPlugin.get().getIndex(role);
-            if (newRoleIndex < 0) {
-                LOGGER.warning("respawnAs: role index not found for " + role);
-                return;
-            }
-
-            com.hypixel.hytale.server.npc.systems.RoleChangeSystem.requestRoleChange(
-                    elfRef, npcEntity.getRole(), newRoleIndex, false, store);
-        }
+        String currentBaseRole = StayedRoleNames.extractBaseRoleName(npcEntity.getRoleName());
+        boolean roleActuallyChanges = !role.equals(currentBaseRole);
+        NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
+                record.npcId, oldId, role, NpcRegistry.InteractionType.ELF,
+                record.skinSeed, record.chunkIndex);
+        if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
 
         // Move the entity if a non-null position was supplied. Skipping the move
         // when the elf is already where we want them avoids unnecessary chunk
@@ -158,21 +175,16 @@ public class ElfSage {
             if (entity != null) {
                 entity.moveTo(elfRef, position.getX(), position.getY(), position.getZ(), store);
             }
-            record.chunkIndex = NpcManager.chunkIndexFor(position);
-            record.setPosition(position.getX(), position.getY(), position.getZ());
+            updated.chunkIndex = NpcManager.chunkIndexFor(position);
+            updated.setPosition(position.getX(), position.getY(), position.getZ());
         }
 
-        // Update the persisted role so a server restart restores into the new role.
-        NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
-                record.npcId, oldId, role, NpcRegistry.InteractionType.ELF,
-                record.skinSeed, record.chunkIndex);
-        if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
-        NpcRegistry.get().updateRecord(updated);
-        HearthboundDataStore.get().markDirty();
-
         if (roleActuallyChanges) {
-            NpcRestorer.restoreAfterRoleChange(elfRef, world, updated);
+            StayedRoleChangeApplier.persistAndApply(elfRef, store, world, updated,
+                    false, "elf-respawn-as");
         } else {
+            NpcRegistry.get().updateRecord(updated);
+            HearthboundDataStore.get().save();
             NpcRestorer.restore(elfRef, store, world, updated);
         }
 
@@ -368,8 +380,14 @@ public class ElfSage {
             Vector3d anchorPos = placeWandererTent(world, liveStore, tentPos);
             if (anchorPos != null) finalPos = anchorPos;
 
-            Pair<Ref<EntityStore>, INonPlayerCharacter> result = NpcManager.spawnNpc(
-                    liveStore, finalPos, new Vector3f(0, 0, 0), ROLE_WANDERER);
+            String npcId = UUID.randomUUID().toString();
+            long elfChunk = NpcManager.chunkIndexFor(finalPos);
+            NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
+                    npcId, null, ROLE_WANDERER, NpcRegistry.InteractionType.ELF, 0L, elfChunk);
+            record.setPosition(finalPos.getX(), finalPos.getY(), finalPos.getZ());
+
+            Pair<Ref<EntityStore>, INonPlayerCharacter> result = StayedNpcSpawner.spawnPersistent(
+                    liveStore, finalPos, new Vector3f(0, 0, 0), record);
             if (result == null) {
                 LOGGER.warning("doSpawn: failed to spawn elf sage");
                 return;
@@ -387,15 +405,6 @@ public class ElfSage {
             liveVillage.setElfId(elfUuid);
             VillageManager.get().save(liveStore, playerRef, liveVillage);
 
-            String npcId = UUID.randomUUID().toString();
-            liveStore.putComponent(elfRef, StayedNpcIdentityComponent.getComponentType(),
-                    new StayedNpcIdentityComponent(npcId));
-
-            long elfChunk = NpcManager.chunkIndexFor(finalPos);
-            NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
-                    npcId, elfUuid, ROLE_WANDERER, NpcRegistry.InteractionType.ELF, 0L, elfChunk);
-            record.setPosition(finalPos.getX(), finalPos.getY(), finalPos.getZ());
-            NpcRegistry.get().register(record);
             HearthboundDataStore.get().save();
 
             // Entity is live on this thread — restore immediately (interaction + skin with delay).

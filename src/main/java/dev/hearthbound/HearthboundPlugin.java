@@ -63,10 +63,14 @@ public class HearthboundPlugin extends JavaPlugin {
         VillageManager.init();
         BuildingSystem.init();
 
+        dev.hearthbound.npc.StayedRoleAssetPackManager.setup();
+
         // Load persisted NPC records from disk and populate NpcRegistry.
         // Must happen before any player joins so ChunkPreLoadProcessEvent
         // can find records for NPC chunks that load near the spawn.
         dev.hearthbound.npc.HearthboundDataStore.get().loadAndPopulateRegistry();
+        dev.hearthbound.npc.StayedRoleGenerator.get().regenerateAllRoles(
+                dev.hearthbound.npc.NpcRegistry.get().allRecords());
         // Periodic flush: NpcPositionTracker marks the store dirty as villagers
         // walk; this drains the flag to disk every 5s so a crash loses at most
         // a few seconds of position drift instead of every move since boot.

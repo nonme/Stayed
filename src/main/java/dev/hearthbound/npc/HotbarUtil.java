@@ -40,6 +40,18 @@ public final class HotbarUtil {
         }
     }
 
+    public static void clearSlot0(World world, UUID npcUuid) {
+        try {
+            Entity entity = world.getEntity(npcUuid);
+            if (!(entity instanceof LivingEntity living)) return;
+            var inv = living.getInventory();
+            if (inv == null) return;
+            inv.getHotbar().setItemStackForSlot((short) 0, null);
+        } catch (Exception e) {
+            LOGGER.log(Level.FINE, "HotbarUtil.clearSlot0 failed", e);
+        }
+    }
+
     /**
      * Returns the item id currently in slot 0 of the NPC's hotbar, or {@code null} if the
      * entity isn't a LivingEntity, has no inventory, or the slot is empty.

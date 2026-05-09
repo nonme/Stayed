@@ -91,8 +91,11 @@ public final class HearthboundDataStore {
                 String npcId = (r.npcId != null && !r.npcId.isBlank()) ? r.npcId : r.uuid;
                 if (r.npcId == null || r.npcId.isBlank()) migrated++;
 
+                String baseRoleName = (r.baseRoleName != null && !r.baseRoleName.isBlank())
+                        ? r.baseRoleName
+                        : StayedRoleNames.extractBaseRoleName(r.role);
                 NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
-                        npcId, entityUuid, r.role, interaction, r.skinSeed, r.chunkIndex);
+                        npcId, entityUuid, baseRoleName, interaction, r.skinSeed, r.chunkIndex);
 
                 if (r.hasPosition != null && r.hasPosition
                         && r.lastX != null && r.lastY != null && r.lastZ != null) {
@@ -142,6 +145,7 @@ public final class HearthboundDataStore {
             pr.npcId       = r.npcId;
             pr.uuid        = r.entityUuid != null ? r.entityUuid.toString() : "";
             pr.role        = r.roleName;
+            pr.baseRoleName = r.baseRoleName();
             pr.interaction = r.interaction.name();
             pr.skinSeed    = r.skinSeed;
             pr.chunkIndex  = r.chunkIndex;
@@ -221,6 +225,7 @@ public final class HearthboundDataStore {
         String npcId;
         String uuid;
         String role;
+        String baseRoleName;
         String interaction;
         long   skinSeed;
         long   chunkIndex;

@@ -30,6 +30,10 @@ public final class StepResult {
         return new StepResult(true, message, 0);
     }
 
+    public static StepResult pass(String message, long waitMs) {
+        return new StepResult(true, message, Math.max(0, waitMs));
+    }
+
     public static StepResult fail(String message) {
         return new StepResult(false, message, 0);
     }

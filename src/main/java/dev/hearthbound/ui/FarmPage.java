@@ -277,6 +277,8 @@ public class FarmPage extends InteractiveCustomUIPage<DialogEventData> {
 
                 BuildingSystem.get().clearGhostPreview(store, playerRef, world);
 
+                BuildingSystem.get().tryIntegrateExisting(store, playerRef, world, record, record.getRotation());
+
                 confirmed = true;
                 activeTab = "construction";
 

@@ -303,6 +303,8 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
 
                 BuildingSystem.get().clearGhostPreview(store, playerEntityRef, world);
 
+                BuildingSystem.get().tryIntegrateExisting(store, playerEntityRef, world, record, record.getRotation());
+
                 confirmed = true;
                 activeTab = "construction";
 

@@ -6,6 +6,8 @@ import dev.hearthbound.test.audit.Violation;
 import dev.hearthbound.test.engine.StepResult;
 import dev.hearthbound.test.engine.TestContext;
 import dev.hearthbound.test.engine.TestStep;
+import dev.hearthbound.npc.HearthboundDataStore;
+import dev.hearthbound.npc.NpcPositionTracker;
 
 /**
  * Runs {@link NpcRegistryInvariantAudit}. If {@code failOnError} is true,
@@ -26,6 +28,8 @@ public final class AuditStep implements TestStep {
 
     @Override
     public StepResult execute(TestContext ctx) {
+        boolean changed = NpcPositionTracker.syncLoadedNow(ctx.getWorld(), ctx.getStore());
+        if (changed) HearthboundDataStore.get().markDirty();
         AuditResult result = NpcRegistryInvariantAudit.run(ctx.getWorld(), ctx.getStore());
         ctx.getLogger().info(label + ": " + result.summary());
         for (Violation v : result.getViolations()) {

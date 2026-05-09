@@ -1,0 +1,63 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Stayed_Target_Dummy.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Deco_Dummy.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Miscellaneous/TrainingDummy.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Texture": "Blocks/Miscellaneous/TrainingDummy_Default.png",
+        "Weight": 1
+      }
+    ],
+    "HitboxType": "Plant_Tall_Full",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Stayed_Target_Dummy"
+      }
+    },
+    "BlockSoundSetId": "Wood",
+    "ParticleColor": "#65482d",
+    "BlockParticleSetId": "Wood",
+    "Support": {
+      "Down": [
+        {
+          "FaceType": "Full"
+        }
+      ]
+    },
+    "InteractionHint": "server.interactionHints.manage_guardhouse",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "IconProperties": {
+    "Scale": 0.47,
+    "Translation": [
+      0,
+      -29.3
+    ],
+    "Rotation": [
+      22.5,
+      45,
+      22.5
+    ]
+  },
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Stayed"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

@@ -17,12 +17,12 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
-import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
-import dev.hearthbound.npc.NpcRestorer;
+import dev.hearthbound.npc.StayedRoleChangeApplier;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.village.VillageData;
@@ -300,33 +300,18 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 LOGGER.warning("spawnFollowerAndAdvanceObjective: NPCEntity null on rescue NPC");
                 return;
             }
-            int followerRoleIndex = com.hypixel.hytale.server.npc.NPCPlugin.get()
-                    .getIndex("Villager_Rescue_Follower");
-            if (followerRoleIndex < 0) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: follower role not registered");
-                return;
-            }
-            com.hypixel.hytale.server.npc.systems.RoleChangeSystem.requestRoleChange(
-                    npcRef, npcEntity.getRole(), followerRoleIndex, false, store);
-
-            // Update the registry to reflect the new role + interaction so a
-            // restart loads the NPC straight as a follower.
             NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
                     record.npcId, rescueUuid, "Villager_Rescue_Follower",
                     NpcRegistry.InteractionType.FOLLOWER, record.skinSeed, record.chunkIndex);
             if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
-            NpcRegistry.get().updateRecord(updated);
-            HearthboundDataStore.get().markDirty();
+
+            Player playerEntity = store.getComponent(playerRef, Player.getComponentType());
+            World world = playerEntity != null ? playerEntity.getWorld() : null;
+            StayedRoleChangeApplier.persistAndApply(npcRef, store, world, updated,
+                    false, "rescue-victim-to-follower");
 
             RescueQuestManager.registerFollower(npcRef);
             LOGGER.info("Rescue NPC role-changed to follower (UUID: " + rescueUuid + ")");
-
-            // Re-apply interaction (None for follower) and refresh skin after the
-            // async role change completes.
-            Player playerEntity = store.getComponent(playerRef, Player.getComponentType());
-            if (playerEntity != null) {
-                NpcRestorer.restoreAfterRoleChange(npcRef, playerEntity.getWorld(), updated);
-            }
 
         } catch (Exception e) {
             LOGGER.warning("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());

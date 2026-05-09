@@ -1,0 +1,25 @@
+{
+  "version": 8,
+  "blockIdVersion": 11,
+  "anchorX": 0,
+  "anchorY": 0,
+  "anchorZ": 0,
+  "blocks": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "name": "*Furniture_Village_Door_State_Definitions_OpenDoorOut",
+      "rotation": 0
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "name": "*Furniture_Village_Door_State_Definitions_OpenDoorOut",
+      "filler": 1024,
+      "rotation": 0
+    }
+  ],
+  "fluids": []
+}

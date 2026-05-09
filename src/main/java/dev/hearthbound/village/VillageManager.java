@@ -87,6 +87,16 @@ public class VillageManager {
      */
     public int reconcileNpcReferences(Store<EntityStore> store, Ref<EntityStore> playerRef,
                                       VillageData data, World world) {
+        return reconcileNpcReferences(store, playerRef, data, world, true);
+    }
+
+    /**
+     * Variant for UI build paths where the entity store may currently be inside
+     * engine processing. The object is still repaired for the current UI render;
+     * a later village tick can persist the same reconciliation safely.
+     */
+    public int reconcileNpcReferences(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                      VillageData data, World world, boolean persistChanges) {
         if (store == null || playerRef == null || data == null) return 0;
         int changed = 0;
 
@@ -126,7 +136,7 @@ public class VillageManager {
             }
         }
 
-        if (changed > 0) {
+        if (changed > 0 && persistChanges) {
             save(store, playerRef, data);
         }
         return changed;

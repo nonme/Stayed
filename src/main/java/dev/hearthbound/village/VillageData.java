@@ -68,6 +68,7 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("PathwayX", INT_ARRAY_CODEC), VillageData::setPathwayXArray, VillageData::getPathwayXArray).add()
             .append(new KeyedCodec<>("PathwayY", INT_ARRAY_CODEC), VillageData::setPathwayYArray, VillageData::getPathwayYArray).add()
             .append(new KeyedCodec<>("PathwayZ", INT_ARRAY_CODEC), VillageData::setPathwayZArray, VillageData::getPathwayZArray).add()
+            .append(new KeyedCodec<>("PathwayOriginal", STRING_ARRAY_CODEC), VillageData::setPathwayOriginalArray, VillageData::getPathwayOriginalArray).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;
@@ -131,11 +132,17 @@ public class VillageData implements Component<EntityStore> {
      */
     private Map<String, String> pendingGhostSnapshot = new HashMap<>();
     /**
-     * World coordinates of every block we converted to Soil_Pathway. Persisted so we can
+     * World coordinates of every block we converted to a road tile. Persisted so we can
      * remove or regenerate the network across restarts. Stored as parallel int arrays in
      * BSON because that's the pattern already used elsewhere in this codec.
      */
     private List<int[]> pathwayBlocks = new ArrayList<>();
+    /**
+     * Original block ids per entry in {@link #pathwayBlocks}, used to restore terrain on
+     * clear. Parallel list — index-aligned. Old saves without this field load as an empty
+     * list; consumers fall back to {@code Soil_Grass} for those entries (legacy behaviour).
+     */
+    private List<String> pathwayOriginals = new ArrayList<>();
 
     public VillageData() {}
 
@@ -299,15 +306,32 @@ public class VillageData implements Component<EntityStore> {
     // --- Pathway blocks ---
     public List<int[]> getPathwayBlocks() { return pathwayBlocks; }
 
+    /**
+     * Original block id at index i (parallel to {@code pathwayBlocks}). Returns {@code null}
+     * if not recorded — old saves predate the {@code PathwayOriginal} field.
+     */
+    public String getPathwayOriginal(int index) {
+        return index < pathwayOriginals.size() ? pathwayOriginals.get(index) : null;
+    }
+
+    /** Legacy 3-arg form — keeps backward compat for any caller that doesn't have the original yet. */
     public void addPathwayBlock(int x, int y, int z) {
+        addPathwayBlock(x, y, z, null);
+    }
+
+    public void addPathwayBlock(int x, int y, int z, String originalBlockId) {
         // Idempotent — repeated generate calls shouldn't double-register the same cell.
         for (int[] p : pathwayBlocks) {
             if (p[0] == x && p[1] == y && p[2] == z) return;
         }
         pathwayBlocks.add(new int[]{x, y, z});
+        pathwayOriginals.add(originalBlockId);
     }
 
-    public void clearPathwayBlocks() { pathwayBlocks.clear(); }
+    public void clearPathwayBlocks() {
+        pathwayBlocks.clear();
+        pathwayOriginals.clear();
+    }
 
     private int[] getPathwayXArray() {
         int[] out = new int[pathwayBlocks.size()];
@@ -327,12 +351,27 @@ public class VillageData implements Component<EntityStore> {
         return out;
     }
 
-    // Codec calls X first, then Y, then Z. X seeds the list with placeholders; Y and Z fill
-    // their slots. If lengths differ (corrupt data), excess entries keep their 0 default.
+    private String[] getPathwayOriginalArray() {
+        // Pad with empty strings up to pathwayBlocks.size() so reload finds parallel arrays
+        // even if some entries were added without an original (legacy 3-arg overload).
+        String[] out = new String[pathwayBlocks.size()];
+        for (int i = 0; i < out.length; i++) {
+            String o = i < pathwayOriginals.size() ? pathwayOriginals.get(i) : null;
+            out[i] = o != null ? o : "";
+        }
+        return out;
+    }
+
+    // Codec calls X first, then Y, then Z, then Original. X seeds the list with placeholders;
+    // Y and Z fill their slots. If lengths differ (corrupt data), excess entries keep their 0 default.
     private void setPathwayXArray(int[] arr) {
         this.pathwayBlocks = new ArrayList<>();
+        this.pathwayOriginals = new ArrayList<>();
         if (arr == null) return;
-        for (int x : arr) pathwayBlocks.add(new int[]{x, 0, 0});
+        for (int x : arr) {
+            pathwayBlocks.add(new int[]{x, 0, 0});
+            pathwayOriginals.add(null);
+        }
     }
 
     private void setPathwayYArray(int[] arr) {
@@ -345,6 +384,15 @@ public class VillageData implements Component<EntityStore> {
         if (arr == null) return;
         int n = Math.min(arr.length, pathwayBlocks.size());
         for (int i = 0; i < n; i++) pathwayBlocks.get(i)[2] = arr[i];
+    }
+
+    private void setPathwayOriginalArray(String[] arr) {
+        if (arr == null) return;
+        int n = Math.min(arr.length, pathwayOriginals.size());
+        for (int i = 0; i < n; i++) {
+            String s = arr[i];
+            pathwayOriginals.set(i, (s == null || s.isEmpty()) ? null : s);
+        }
     }
 
     // --- Pending ghost snapshot (persisted so ghost preview survives server restart) ---
@@ -420,6 +468,7 @@ public class VillageData implements Component<EntityStore> {
         copy.selectedHouseVariant = this.selectedHouseVariant;
         copy.pathwayBlocks = new ArrayList<>();
         for (int[] p : this.pathwayBlocks) copy.pathwayBlocks.add(p.clone());
+        copy.pathwayOriginals = new ArrayList<>(this.pathwayOriginals);
         return copy;
     }
 }

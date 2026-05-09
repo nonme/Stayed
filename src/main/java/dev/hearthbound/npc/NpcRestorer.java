@@ -6,8 +6,11 @@ import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.modules.entity.component.Interactable;
 import com.hypixel.hytale.server.core.modules.interaction.Interactions;
+import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
+import com.hypixel.hytale.server.core.modules.entity.component.PersistentModel;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import java.util.concurrent.TimeUnit;
@@ -42,7 +45,10 @@ public final class NpcRestorer {
     public static void restore(Ref<EntityStore> ref, Store<EntityStore> store,
                                World world, NpcRegistry.NpcRecord record) {
         if (record == null) return;
+        StayedRoleChangeApplier.applyOrSchedule(ref, store, world, record,
+                false, "restore-desired-role");
         applyInteraction(ref, store, record.interaction);
+        applySkin(ref, store, record);
         scheduleInteractionRetries(ref, world, record);
         scheduleSkin(ref, world, record);
     }
@@ -56,6 +62,32 @@ public final class NpcRestorer {
         if (record == null) return;
         scheduleInteractionRetries(ref, world, record);
         scheduleSkin(ref, world, record);
+    }
+
+    public static boolean ensureRestoredNow(Ref<EntityStore> ref, Store<EntityStore> store,
+                                            NpcRegistry.NpcRecord record) {
+        if (ref == null || !ref.isValid() || store == null || record == null) return false;
+        boolean repaired = false;
+        if (requiresInteraction(record.interaction)
+                && (store.getComponent(ref, Interactable.getComponentType()) == null
+                || store.getComponent(ref, Interactions.getComponentType()) == null)) {
+            applyInteraction(ref, store, record.interaction);
+            repaired = true;
+        }
+        if (store.getComponent(ref, PlayerSkinComponent.getComponentType()) == null
+                || store.getComponent(ref, ModelComponent.getComponentType()) == null
+                || store.getComponent(ref, PersistentModel.getComponentType()) == null) {
+            applySkin(ref, store, record);
+            repaired = true;
+        }
+        if (repaired) {
+            NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
+            String live = npc != null && npc.getRole() != null ? npc.getRole().getRoleName() : "?";
+            LOGGER.info("[ROLEBIND-REPAIR] npcId=" + record.npcId
+                    + " liveRole=" + live
+                    + " interaction=" + record.interaction);
+        }
+        return repaired;
     }
 
     private static void scheduleInteractionRetries(Ref<EntityStore> ref, World world,
@@ -99,16 +131,22 @@ public final class NpcRestorer {
             Ref<EntityStore> liveRef = (ref != null && ref.isValid())
                     ? ref : NpcLiveEntityResolver.findLiveNpcByRecord(store, record);
             if (liveRef == null || !liveRef.isValid()) return;
-            if (record.skinSeed != 0L) {
-                VillagerAppearance.apply(liveRef, store, record.skinSeed, 0);
-                equipProfessionItem(liveRef, store, record.roleName);
-            } else if (record.interaction == NpcRegistry.InteractionType.ELF) {
-                ElfSage.applySageAppearance(liveRef, store);
-            }
+            applySkin(liveRef, store, record);
         });
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS, TimeUnit.MILLISECONDS);
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS + APPLY_RETRY_MS, TimeUnit.MILLISECONDS);
         TickScheduler.getExecutor().schedule(apply, APPLY_DELAY_MS + APPLY_LATE_RETRY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private static void applySkin(Ref<EntityStore> ref, Store<EntityStore> store,
+                                  NpcRegistry.NpcRecord record) {
+        if (ref == null || store == null || record == null) return;
+        if (record.skinSeed != 0L) {
+            VillagerAppearance.apply(ref, store, record.skinSeed, 0);
+            equipProfessionItem(ref, store, record.baseRoleName());
+        } else if (record.interaction == NpcRegistry.InteractionType.ELF) {
+            ElfSage.applySageAppearance(ref, store);
+        }
     }
 
     public static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
@@ -119,7 +157,7 @@ public final class NpcRestorer {
         }
         // Use live role name — may differ from record.roleName if a profession swap happened.
         String liveRole = npc.getRoleName();
-        String effectiveRole = liveRole != null ? liveRole : roleName;
+        String effectiveRole = StayedRoleNames.extractBaseRoleName(liveRole != null ? liveRole : roleName);
         String itemId = switch (effectiveRole) {
             case "Villager_Human_Farmer"     -> "Tool_Hoe_Crude";
             case "Villager_Human_Lumberjack" -> "Weapon_Axe_Crude";
@@ -142,6 +180,12 @@ public final class NpcRestorer {
             case VILLAGER -> putInteraction(ref, store, "StayedVillager");
             case FOLLOWER, NONE -> { /* no F-key interaction */ }
         }
+    }
+
+    private static boolean requiresInteraction(NpcRegistry.InteractionType type) {
+        return type == NpcRegistry.InteractionType.ELF
+                || type == NpcRegistry.InteractionType.RESCUE
+                || type == NpcRegistry.InteractionType.VILLAGER;
     }
 
     private static void putInteraction(Ref<EntityStore> ref, Store<EntityStore> store,

@@ -21,9 +21,11 @@ public class NpcManager {
     private static final Logger LOGGER = Logger.getLogger(NpcManager.class.getName());
 
     /**
-     * Spawns an NPC and fixes the PersistentModel scale=0 engine bug.
-     * Does NOT register in NpcRegistry — caller is responsible because only the
-     * caller knows the skin seed, interaction type, and other restore data.
+     * Low-level NPC spawn helper.
+     *
+     * Do not call this directly for registry-backed Stayed NPCs. Persistent NPCs
+     * must go through StayedNpcSpawner.spawnPersistent(...) so they spawn with an
+     * identity-bearing role name before DuplicateNpcPrevention sees AddReason.SPAWN.
      */
     public static Pair<Ref<EntityStore>, INonPlayerCharacter> spawnNpc(
             Store<EntityStore> store, Vector3d position, Vector3f rotation, String roleName) {

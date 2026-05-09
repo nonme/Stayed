@@ -24,6 +24,7 @@ import dev.hearthbound.npc.NpcPositionTracker;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
 import dev.hearthbound.npc.StayedNpcIdentityComponent;
+import dev.hearthbound.npc.StayedNpcSpawner;
 import dev.hearthbound.util.TickScheduler;
 import it.unimi.dsi.fastutil.Pair;
 
@@ -99,16 +100,6 @@ public class NpcChunkLoadHandler {
                 UUID entityUuid = uc.getUuid();
                 scanned++;
 
-                // Deferred removal takes precedence — we don't want to revive a
-                // marked-for-deletion entity by re-applying skin/interactions.
-                if (registry.isPendingRemoval(entityUuid)) {
-                    LOGGER.info("[CHUNKLOAD] chunk=" + chunkIndex + " entity=" + entityUuid
-                            + " action=PENDING_REMOVAL");
-                    schedulePendingRemoval(entityUuid, world);
-                    dirty = true;
-                    continue;
-                }
-
                 String npcId = readNpcIdFromHolder(entityHolder);
 
                 if (npcId == null) {
@@ -120,6 +111,24 @@ public class NpcChunkLoadHandler {
                         entityChunk.markNeedsSaving();
                         dirty = true;
                     }
+                }
+
+                NpcRegistry.NpcRecord pendingRecord = npcId != null
+                        ? registry.getRecordByNpcId(npcId) : null;
+                if (registry.isPendingRemoval(entityUuid)
+                        && pendingRecord != null
+                        && entityUuid.equals(pendingRecord.entityUuid)) {
+                    LOGGER.info("[CHUNKLOAD] chunk=" + chunkIndex + " entity=" + entityUuid
+                            + " npcId=" + npcId
+                            + " action=STALE_PENDING_REMOVAL_CLEAR");
+                    registry.clearPendingRemoval(entityUuid);
+                    dirty = true;
+                } else if (registry.isPendingRemoval(entityUuid)) {
+                    LOGGER.info("[CHUNKLOAD] chunk=" + chunkIndex + " entity=" + entityUuid
+                            + " action=PENDING_REMOVAL");
+                    schedulePendingRemoval(entityUuid, world);
+                    dirty = true;
+                    continue;
                 }
 
                 if (npcId == null) {
@@ -182,7 +191,7 @@ public class NpcChunkLoadHandler {
         }
 
         if (dirty) {
-            HearthboundDataStore.get().markDirty();
+            HearthboundDataStore.get().save();
         }
     }
 
@@ -309,7 +318,7 @@ public class NpcChunkLoadHandler {
                     UUID liveUuid = NpcManager.extractUuid(store, ref);
                     if (liveUuid != null && !liveUuid.equals(liveRecord.entityUuid)) {
                         NpcRegistry.get().bindEntityUuid(npcId, liveUuid);
-                        HearthboundDataStore.get().markDirty();
+                        HearthboundDataStore.get().save();
                     }
                     NpcRestorer.restore(ref, store, world, liveRecord);
                     if (taskRef[0] != null) taskRef[0].cancel(false);
@@ -371,7 +380,7 @@ public class NpcChunkLoadHandler {
                         LOGGER.info("[FRESHSPAWN-SKIP] npcId=" + npcId
                                 + " found via scan, rebound uuid " + oldUuid + " → " + loadedUuid);
                         if (oldUuid != null) rewriteVillageReferences(world, store, oldUuid, loadedUuid);
-                        HearthboundDataStore.get().markDirty();
+                        HearthboundDataStore.get().save();
                     }
                     NpcRestorer.restore(alreadyLoaded, store, world, live);
                     freshSpawnsInFlight.remove(npcId);
@@ -404,8 +413,9 @@ public class NpcChunkLoadHandler {
                 }
 
                 Pair<Ref<EntityStore>, INonPlayerCharacter> spawn;
+                UUID oldUuid = live.entityUuid;
                 try {
-                    spawn = NpcManager.spawnNpc(store, pos, new Vector3f(0, 0, 0), role);
+                    spawn = StayedNpcSpawner.spawnPersistent(store, pos, new Vector3f(0, 0, 0), live);
                 } catch (Exception e) {
                     LOGGER.warning("NpcChunkLoadHandler: respawn threw for npcId=" + npcId + ": " + e.getMessage());
                     if (++spawnAttempts[0] >= MAX_FRESH_SPAWN_ATTEMPTS) {
@@ -429,23 +439,19 @@ public class NpcChunkLoadHandler {
                 }
 
                 Ref<EntityStore> newRef = spawn.first();
-                store.putComponent(newRef, StayedNpcIdentityComponent.getComponentType(),
-                        new StayedNpcIdentityComponent(npcId));
-
-                UUID oldUuid = live.entityUuid;
                 UUID newUuid = NpcManager.extractUuid(store, newRef);
                 LOGGER.info("[FRESHSPAWN] npcId=" + npcId
                         + " oldEntityUuid=" + oldUuid
                         + " newEntityUuid=" + newUuid
-                        + " role=" + role);
+                        + " baseRole=" + live.baseRoleName()
+                        + " generatedRole=" + live.roleName);
                 if (newUuid != null) {
-                    NpcRegistry.get().bindEntityUuid(npcId, newUuid);
                     if (oldUuid != null && !oldUuid.equals(newUuid)) {
                         rewriteVillageReferences(world, store, oldUuid, newUuid);
                     }
                 }
                 attachInteractionData(store, newRef, live);
-                HearthboundDataStore.get().markDirty();
+                HearthboundDataStore.get().save();
                 LOGGER.info("NpcChunkLoadHandler: respawned " + role + " npcId=" + npcId
                         + " at " + (int) pos.x + "," + (int) pos.y + "," + (int) pos.z);
 
@@ -577,7 +583,7 @@ public class NpcChunkLoadHandler {
                 if (ref != null && ref.isValid()) {
                     world.getEntityStore().getStore().removeEntity(ref, RemoveReason.REMOVE);
                     NpcRegistry.get().clearPendingRemoval(entityUuid);
-                    HearthboundDataStore.get().markDirty();
+                    HearthboundDataStore.get().save();
                     pendingRemovalTasks.remove(entityUuid);
                     LOGGER.info("NpcChunkLoadHandler: removed deferred NPC entityUuid=" + entityUuid
                             + " after " + attempts[0] + " attempt(s)");
@@ -604,8 +610,7 @@ public class NpcChunkLoadHandler {
     private static boolean shouldDeferFreshSpawnForEdgeCandidate(World world,
                                                                  NpcRegistry.NpcRecord record) {
         if (world == null || record == null || !record.hasPosition) return false;
-        return shouldDeferEdgePosition(world, record.lastX, record.lastZ)
-                || (record.hasBasePosition && shouldDeferEdgePosition(world, record.baseX, record.baseZ));
+        return shouldDeferEdgePosition(world, record.lastX, record.lastZ);
     }
 
     private static boolean shouldDeferEdgePosition(World world, double x, double z) {
@@ -641,7 +646,8 @@ public class NpcChunkLoadHandler {
         if (world.getChunkIfLoaded(candidate) != null) return false;
         if (world.getChunkIfInMemory(candidate) != null) {
             world.loadChunkIfInMemory(candidate);
+            return true;
         }
-        return true;
+        return false;
     }
 }

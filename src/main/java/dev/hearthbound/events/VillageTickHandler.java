@@ -11,15 +11,15 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.VillagerScheduler;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
+import dev.hearthbound.npc.StayedRoleChangeApplier;
+import dev.hearthbound.npc.StayedRoleNames;
 import dev.hearthbound.quest.RescueQuestManager;
 import dev.hearthbound.ui.RescueDialogPage;
 import dev.hearthbound.ui.VillageHud;
@@ -162,22 +162,20 @@ public class VillageTickHandler {
             NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
             if (npcEntity == null) continue;
 
-            String currentRole = npcEntity.getRoleName();
+            String currentRole = StayedRoleNames.extractBaseRoleName(npcEntity.getRoleName());
 
             if (FOLLOWER_ROLE.equals(currentRole)) {
                 VillageData liveVillage = VillageManager.get().getVillageData(store, playerRef);
                 if (liveVillage == null) continue;
                 convertFollowerToVillager(store, playerRef, ref, liveVillage, world);
 
-            } else if (VICTIM_ROLE.equals(currentRole) && FOLLOWER_ROLE.equals(record.roleName)) {
+            } else if (VICTIM_ROLE.equals(currentRole) && FOLLOWER_ROLE.equals(record.baseRoleName())) {
                 // RoleChangeSystem hasn't applied yet (player flew away right after dialog).
                 // Registry already says Follower → re-issue the role change.
-                int followerRoleIndex = NPCPlugin.get().getIndex(FOLLOWER_ROLE);
-                if (followerRoleIndex >= 0) {
-                    RoleChangeSystem.requestRoleChange(ref, npcEntity.getRole(), followerRoleIndex, false, store);
-                    LOGGER.info("convertAllFollowers: re-applied Trapped->Follower role change for uuid="
-                            + record.entityUuid);
-                }
+                StayedRoleChangeApplier.applyOrSchedule(ref, store, world, record,
+                        false, "convert-followers-reapply");
+                LOGGER.info("convertAllFollowers: ensured Trapped->Follower role change for uuid="
+                        + record.entityUuid);
             }
         }
     }
@@ -203,14 +201,6 @@ public class VillageTickHandler {
             NPCEntity npcEntity = store.getComponent(followerRef, NPCEntity.getComponentType());
             if (npcEntity == null) return;
 
-            int villagerRoleIndex = NPCPlugin.get().getIndex(VILLAGER_ROLE);
-            if (villagerRoleIndex < 0) {
-                LOGGER.warning("convertFollowerToVillager: role '" + VILLAGER_ROLE + "' not found");
-                return;
-            }
-
-            // changeAppearance=false — keep the PlayerSkin assigned at rescue time
-            RoleChangeSystem.requestRoleChange(followerRef, npcEntity.getRole(), villagerRoleIndex, false, store);
             RescueQuestManager.unregisterNpc(followerRef);
 
             // Save village data immediately — before the deferred moveTo
@@ -237,8 +227,9 @@ public class VillageTickHandler {
                 if (oldRecord != null && oldRecord.hasPosition) {
                     newRecord.setPosition(oldRecord.lastX, oldRecord.lastY, oldRecord.lastZ);
                 }
-                NpcRegistry.get().updateRecord(newRecord);
-                HearthboundDataStore.get().markDirty();
+                // changeAppearance=false — keep the PlayerSkin assigned at rescue time.
+                StayedRoleChangeApplier.persistAndApply(followerRef, store, world, newRecord,
+                        false, "follower-to-villager");
             }
 
             LOGGER.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");

@@ -93,8 +93,12 @@ public final class WarehouseDepositor {
             ItemContainer inv = containerBlock.getItemContainer();
             if (inv == null) return false;
 
+            // succeeded() can be true even when nothing was actually inserted (stack returned as remainder).
+            // Pattern from FH_CompanionNPCs: only treat as deposited if remainder is empty.
             var result = inv.addItemStack(new ItemStack(itemId, 1));
-            return result.succeeded();
+            if (!result.succeeded()) return false;
+            ItemStack remainder = result.getRemainder();
+            return remainder == null || remainder.isEmpty();
         } catch (Exception e) {
             LOGGER.warning("WarehouseDepositor: error at " + x + "," + y + "," + z + ": " + e.getMessage());
             return false;

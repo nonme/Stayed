@@ -13,6 +13,7 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import dev.hearthbound.npc.ElfSage;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.StayedNpcIdentityComponent;
+import dev.hearthbound.npc.StayedRoleNames;
 import dev.hearthbound.test.engine.StepResult;
 import dev.hearthbound.test.engine.TestContext;
 import dev.hearthbound.test.engine.TestStep;
@@ -65,8 +66,8 @@ public final class AssertAelinStep implements TestStep {
         if (record.interaction != NpcRegistry.InteractionType.ELF) {
             return StepResult.fail("Aelin interaction " + record.interaction + " != ELF");
         }
-        if (expectedRole != null && !expectedRole.equals(record.roleName)) {
-            return StepResult.fail("Aelin registry role " + record.roleName + " != " + expectedRole);
+        if (expectedRole != null && !expectedRole.equals(record.baseRoleName())) {
+            return StepResult.fail("Aelin registry role " + record.baseRoleName() + " != " + expectedRole);
         }
 
         String rememberedNpcId = ctx.get(expectedNpcIdKey);
@@ -96,8 +97,10 @@ public final class AssertAelinStep implements TestStep {
 
         NPCEntity npcEntity = ctx.getStore().getComponent(ref, NPCEntity.getComponentType());
         if (npcEntity == null) return StepResult.fail("Aelin NPCEntity missing");
-        if (expectedRole != null && !expectedRole.equals(npcEntity.getRoleName())) {
-            return StepResult.fail("Aelin live role " + npcEntity.getRoleName() + " != " + expectedRole);
+        String liveBaseRole = StayedRoleNames.extractBaseRoleName(npcEntity.getRoleName());
+        if (expectedRole != null && !expectedRole.equals(liveBaseRole)) {
+            return StepResult.fail("Aelin live role " + liveBaseRole
+                    + " (" + npcEntity.getRoleName() + ") != " + expectedRole);
         }
 
         if (ctx.getStore().getComponent(ref, Interactable.getComponentType()) == null) {

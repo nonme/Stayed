@@ -129,7 +129,7 @@ public class PathwaysCommand extends AbstractCommandCollection {
 
     private static class ClearCommand extends AbstractPlayerCommand {
         ClearCommand() {
-            super("clear", "Remove all registered pathway blocks (restore grass)");
+            super("clear", "Remove all registered pathway blocks (restore original terrain)");
         }
 
         @Override
@@ -143,7 +143,7 @@ public class PathwaysCommand extends AbstractCommandCollection {
             int registered = village.getPathwayBlocks().size();
             int restored = PathwayBuilder.clearAll(world, village);
             VillageManager.get().save(store, playerRef, village);
-            ctx.sendMessage(Message.raw("Pathways cleared: " + restored + " blocks restored to grass ("
+            ctx.sendMessage(Message.raw("Pathways cleared: " + restored + " blocks restored to original terrain ("
                     + registered + " were registered)."));
         }
     }

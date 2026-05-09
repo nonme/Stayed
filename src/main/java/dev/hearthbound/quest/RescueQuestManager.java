@@ -32,6 +32,7 @@ import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
+import dev.hearthbound.npc.StayedNpcSpawner;
 import dev.hearthbound.npc.VillagerAppearance;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.npc.appearance.BodyArchetype;
@@ -141,7 +142,7 @@ public final class RescueQuestManager {
     public static boolean isQuestEnemyRecord(NpcRegistry.NpcRecord record) {
         return record != null
                 && record.interaction == NpcRegistry.InteractionType.NONE
-                && isQuestEnemyRole(record.roleName);
+                && isQuestEnemyRole(record.baseRoleName());
     }
 
     // Prefab surface Y: the prefab-local Y layer that should align with groundY.
@@ -594,8 +595,15 @@ public final class RescueQuestManager {
     // -------------------------------------------------------------------------
     private static void spawnVictim(Store<EntityStore> store, World world,
             Vector3d pos, Set<String> takenFirstNames, QuestVariant variant) {
+        long skinSeed = ThreadLocalRandom.current().nextLong();
+        long chunkIndex = NpcManager.chunkIndexFor(pos);
+        NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
+                UUID.randomUUID().toString(), null, VARIANT_VICTIM_ROLE,
+                NpcRegistry.InteractionType.RESCUE, skinSeed, chunkIndex);
+        record.setPosition(pos.getX(), pos.getY(), pos.getZ());
+
         Pair<Ref<EntityStore>, INonPlayerCharacter> result
-                = NpcManager.spawnNpc(store, pos, new Vector3f(0, 0, 0), VARIANT_VICTIM_ROLE);
+                = StayedNpcSpawner.spawnPersistent(store, pos, new Vector3f(0, 0, 0), record);
         if (result == null) {
             LOGGER.warning("Failed to spawn rescue victim at " + pos);
             return;
@@ -604,7 +612,6 @@ public final class RescueQuestManager {
         Ref<EntityStore> victimRef = result.first();
         activeNpcRefs.add(victimRef);
 
-        long skinSeed = ThreadLocalRandom.current().nextLong();
         BodyArchetype body = VillagerAppearance.predictBody(skinSeed);
         String[] name = VillagerNames.rollHumanName(skinSeed, body, takenFirstNames);
         VillagerData victimData = new VillagerData(VillagerData.RACE_HUMAN, name[0], name[1], skinSeed);
@@ -613,11 +620,6 @@ public final class RescueQuestManager {
 
         UUID victimUuid = NpcManager.extractUuid(store, victimRef);
         if (victimUuid != null) {
-            long chunkIndex = NpcManager.chunkIndexFor(pos);
-            NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
-                    victimUuid, VARIANT_VICTIM_ROLE, NpcRegistry.InteractionType.RESCUE, skinSeed, chunkIndex);
-            record.setPosition(pos.getX(), pos.getY(), pos.getZ());
-            NpcRegistry.get().registerWithIdentity(store, victimRef, record);
             HearthboundDataStore.get().save();
             NpcRestorer.restore(victimRef, store, world, record);
         }
@@ -645,7 +647,7 @@ public final class RescueQuestManager {
                     enemyUuid, role, NpcRegistry.InteractionType.NONE, 0L, chunkIndex);
             record.setPosition(pos.getX(), pos.getY(), pos.getZ());
             NpcRegistry.get().registerWithIdentity(store, enemyRef, record);
-            HearthboundDataStore.get().markDirty();
+            HearthboundDataStore.get().save();
         }
     }
 

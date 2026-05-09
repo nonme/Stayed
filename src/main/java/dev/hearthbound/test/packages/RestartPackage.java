@@ -3,6 +3,7 @@ package dev.hearthbound.test.packages;
 import dev.hearthbound.test.engine.TestCase;
 import dev.hearthbound.test.engine.TestPackage;
 import dev.hearthbound.test.steps.AssertNpcPositionsSyncedStep;
+import dev.hearthbound.test.steps.AssertIdentityRoleStep;
 import dev.hearthbound.test.steps.AuditStep;
 import dev.hearthbound.test.steps.CleanupTestNpcsStep;
 import dev.hearthbound.test.steps.LogStep;
@@ -41,9 +42,10 @@ public final class RestartPackage {
                 new SetupVillageStep(),
                 new SpawnVillagersStep(6),
                 new WaitStep(3_000),
-                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.roleName), 2, 0, 16.0, 16.0),
+                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.baseRoleName()), 2, 0, 16.0, 16.0),
                 new WaitStep(7_000),
-                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.baseRoleName())),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "pre-restart"),
                 new SaveRestartSnapshotStep());
     }
@@ -56,6 +58,7 @@ public final class RestartPackage {
                 new TeleportPlayerHomeStep(),
                 new WaitStep(22_000),
                 new VerifyRestartSnapshotStep(true, true),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-restart"))
                 .skipPreRunCleanup()
                 .withTeardown(

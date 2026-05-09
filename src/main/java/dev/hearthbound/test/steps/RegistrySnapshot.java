@@ -60,7 +60,7 @@ public final class RegistrySnapshot {
     public static RegistrySnapshot capture(VillageData village) {
         Map<String, NpcEntry> npcs = new HashMap<>();
         for (NpcRegistry.NpcRecord r : NpcRegistry.get().allRecords()) {
-            npcs.put(r.npcId, new NpcEntry(r.npcId, r.entityUuid, r.roleName, r.chunkIndex));
+            npcs.put(r.npcId, new NpcEntry(r.npcId, r.entityUuid, r.baseRoleName(), r.chunkIndex));
         }
         Map<String, BuildingEntry> buildings = new HashMap<>();
         if (village != null) {

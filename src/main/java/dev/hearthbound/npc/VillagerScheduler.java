@@ -1,6 +1,7 @@
 package dev.hearthbound.npc;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -35,7 +37,9 @@ import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleChangeSystem;
 
+import dev.hearthbound.building.BlockPlacer;
 import dev.hearthbound.building.BuildingLayout;
+import dev.hearthbound.building.PrefabLoader;
 import dev.hearthbound.building.WarehouseDepositor;
 import dev.hearthbound.util.TickScheduler;
 import dev.hearthbound.village.BuildingRecord;
@@ -92,6 +96,8 @@ public class VillagerScheduler {
     private final Map<UUID, Set<GateKey>> activeRouteGates = new HashMap<>();
     private final Map<GateKey, Gate> knownGates = new HashMap<>();
     private final Map<UUID, TravelProgress> travelProgress = new HashMap<>();
+    private final Map<UUID, GuardPatrolSession> guardPatrolSessions = new HashMap<>();
+    private final Map<UUID, ScheduledFuture<?>> guardPatrolTasks = new HashMap<>();
     // Per-villager marker entity ref (invisible Seek target)
     private final Map<UUID, Ref<EntityStore>> markerRefs = new HashMap<>();
     // Per-villager current activity label for UI
@@ -116,6 +122,7 @@ public class VillagerScheduler {
     public static final String ACTIVITY_EATING         = "Eating";
     public static final String ACTIVITY_GOING_HOME     = "Going home";
     public static final String ACTIVITY_RESTING        = "Resting";
+    public static final String ACTIVITY_PATROLLING     = "Patrolling";
 
     /**
      * Clears all per-villager schedule state. Called from /hb reset so the scheduler
@@ -139,6 +146,11 @@ public class VillagerScheduler {
         activeRouteGates.clear();
         knownGates.clear();
         travelProgress.clear();
+        guardPatrolSessions.clear();
+        for (ScheduledFuture<?> task : guardPatrolTasks.values()) {
+            if (task != null) task.cancel(false);
+        }
+        guardPatrolTasks.clear();
         markerRefs.clear();
         activityLabel.clear();
         fedThisMeal.clear();
@@ -150,6 +162,11 @@ public class VillagerScheduler {
     private record Gate(int x, int y, int z, int rotation, String openBlock, String closeBlock) {}
     private record GateKey(int x, int y, int z) {}
     private record TravelProgress(double x, double y, double z, double distanceSq, long lastProgressAt) {}
+    private record GuardPatrolSession(List<GuardPatrolRoute.RoadPoint> waypoints,
+                                      GuardPatrolRoute.LoopMode loopMode,
+                                      String signature,
+                                      int waypointIndex,
+                                      boolean forward) {}
 
     private record ScheduleTarget(double x, double y, double z, String arrivedRole, String activity,
                                    Integer gateX, Integer gateY, Integer gateZ,
@@ -269,6 +286,16 @@ public class VillagerScheduler {
         ScheduleTarget houseTarget = house != null ? homeTarget(house, village) : null;
         boolean isFarmerWorkingTarget = ROLE_FARMER.equals(target.arrivedRole())
                 && ACTIVITY_WORKING.equals(target.activity());
+        boolean isGuardWorkingTarget = ROLE_GUARD.equals(target.arrivedRole())
+                && ACTIVITY_WORKING.equals(target.activity());
+
+        if (shouldStartGuardPatrol(isGuardWorkingTarget, arrived)
+                && executeGuardPatrol(ref, store, uuid, village, world, target, houseTarget)) {
+            farmerWork.clear(uuid, world);
+            return;
+        }
+
+        clearGuardPatrol(uuid, world);
 
         if (targetChanged) {
             ScheduleTarget originTarget = prev != null ? prev : inferCurrentOrigin(store, ref, village,
@@ -280,6 +307,9 @@ public class VillagerScheduler {
             routeOrigin.put(uuid, originTarget);
             resetTravelProgress(uuid, store, ref, target);
             activityLabel.put(uuid, travelActivity(target.activity()));
+            if (!shouldGuardWeaponBeVisible(false)) {
+                hideGuardWeapon(world, uuid);
+            }
             // Farming state is invalidated whenever the farmer leaves the farm — going home,
             // going to eat, or being reassigned. Drop the runtime state so the next arrival
             // starts a fresh pick.
@@ -343,9 +373,16 @@ public class VillagerScheduler {
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 if (stuck) {
+                    String travelActivity = travelActivity(target.activity());
+                    if (houseTarget != null
+                            && VillagerTravelRecovery.shouldRecallHomeOnTravelStuck(travelActivity)
+                            && recallStuckTravelerHome(uuid, world, houseTarget, travelActivity)) {
+                        farmerWork.clear(uuid, world);
+                        return;
+                    }
                     removeMarker(uuid, world);
                     LOGGER.info("scheduleTravelStuck uuid=" + uuid
-                            + " activity=" + travelActivity(target.activity())
+                            + " activity=" + travelActivity
                             + " target=(" + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")"
                             + " action=reissueRoute");
                     startTraveling(ref, liveStore, target, world, uuid);
@@ -354,6 +391,31 @@ public class VillagerScheduler {
                 }
             });
         }
+    }
+
+    private boolean recallStuckTravelerHome(UUID uuid, World world,
+                                            ScheduleTarget houseTarget,
+                                            String travelActivity) {
+        boolean recalled = NpcTeleporter.recall(world, uuid, houseTarget.x(), houseTarget.y(), houseTarget.z());
+        if (!recalled) {
+            LOGGER.info("scheduleTravelStuck uuid=" + uuid
+                    + " activity=" + travelActivity
+                    + " home=(" + String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()) + ")"
+                    + " action=recallHomeFailed");
+            return false;
+        }
+
+        removeMarker(uuid, world);
+        closeRouteIfUnused(uuid, world);
+        routeOrigin.remove(uuid);
+        lastTarget.remove(uuid);
+        travelProgress.remove(uuid);
+        activityLabel.put(uuid, ACTIVITY_GOING_HOME);
+        LOGGER.info("scheduleTravelStuck uuid=" + uuid
+                + " activity=" + travelActivity
+                + " home=(" + String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()) + ")"
+                + " action=recallHome");
+        return true;
     }
 
     private void startTraveling(Ref<EntityStore> ref, Store<EntityStore> store,
@@ -402,6 +464,214 @@ public class VillagerScheduler {
                 npc.setLeashPoint(dest);
             }
         }
+    }
+
+    private boolean executeGuardPatrol(Ref<EntityStore> ref, Store<EntityStore> store, UUID uuid,
+                                       VillageData village, World world,
+                                       ScheduleTarget guardHouseTarget, ScheduleTarget houseTarget) {
+        GuardPatrolRoute.Route route = buildGuardPatrolRoute(village);
+        if (!route.isUsable()) {
+            clearGuardPatrol(uuid, world);
+            return false;
+        }
+
+        String signature = routeSignature(route);
+        GuardPatrolSession session = guardPatrolSessions.get(uuid);
+        if (session == null || !signature.equals(session.signature())) {
+            int nearest = nearestWaypointIndex(store, ref, route.waypoints());
+            session = new GuardPatrolSession(route.waypoints(), route.loopMode(), signature, nearest, true);
+            guardPatrolSessions.put(uuid, session);
+            lastTarget.remove(uuid);
+            routeOrigin.remove(uuid);
+            travelProgress.remove(uuid);
+            closeRouteIfUnused(uuid, world);
+        }
+
+        GuardPatrolRoute.RoadPoint waypoint = session.waypoints().get(session.waypointIndex());
+        ScheduleTarget target = patrolTarget(waypoint);
+        openRoute(uuid, guardHouseTarget, houseTarget, target, world);
+        if (isNearTarget(store, ref, target)) {
+            session = advanceGuardPatrol(session);
+            guardPatrolSessions.put(uuid, session);
+            waypoint = session.waypoints().get(session.waypointIndex());
+            target = patrolTarget(waypoint);
+            openRoute(uuid, guardHouseTarget, houseTarget, target, world);
+            resetTravelProgress(uuid, store, ref, target);
+        }
+
+        activityLabel.put(uuid, ACTIVITY_PATROLLING);
+        ensureGuardPatrolTask(uuid, ref, world);
+        tickGuardPatrolMotion(ref, world, uuid);
+        return true;
+    }
+
+    private void ensureGuardPatrolTask(UUID uuid, Ref<EntityStore> ref, World world) {
+        ScheduledFuture<?> existing = guardPatrolTasks.get(uuid);
+        if (existing != null && !existing.isCancelled() && !existing.isDone()) {
+            return;
+        }
+        ScheduledFuture<?> task = TickScheduler.runRepeating(world, 250L, 250L,
+                () -> tickGuardPatrolMotion(ref, world, uuid));
+        guardPatrolTasks.put(uuid, task);
+    }
+
+    private void tickGuardPatrolMotion(Ref<EntityStore> ref, World world, UUID uuid) {
+        GuardPatrolSession session = guardPatrolSessions.get(uuid);
+        if (session == null) return;
+        if (ref == null || !ref.isValid()) {
+            clearGuardPatrol(uuid, world);
+            return;
+        }
+
+        Store<EntityStore> store = world.getEntityStore().getStore();
+        GuardPatrolRoute.RoadPoint waypoint = session.waypoints().get(session.waypointIndex());
+        ScheduleTarget target = patrolTarget(waypoint);
+        if (isNearTarget(store, ref, target)) {
+            session = advanceGuardPatrol(session);
+            guardPatrolSessions.put(uuid, session);
+            waypoint = session.waypoints().get(session.waypointIndex());
+            target = patrolTarget(waypoint);
+            resetTravelProgress(uuid, store, ref, target);
+        }
+
+        boolean stuck = updateTravelProgress(uuid, store, ref, target);
+        if (stuck || !ROLE_TRAVELING.equals(getCurrentRole(store, ref))) {
+            if (stuck) {
+                removeMarker(uuid, world);
+                LOGGER.info("guardPatrolStuck uuid=" + uuid + " action=reissueRoute");
+            }
+            startTraveling(ref, store, target, world, uuid);
+        } else {
+            maintainTraveling(ref, store, target, world, uuid);
+        }
+        ensureGuardSword(world, uuid);
+    }
+
+    private GuardPatrolRoute.Route buildGuardPatrolRoute(VillageData village) {
+        List<GuardPatrolRoute.RoadPoint> roadPoints = new ArrayList<>();
+        for (int[] p : village.getPathwayBlocks()) {
+            if (p == null || p.length < 3) continue;
+            roadPoints.add(new GuardPatrolRoute.RoadPoint(p[0], p[1] + 1, p[2]));
+        }
+        return GuardPatrolRoute.build(roadPoints, guardBuildingFootprints(village));
+    }
+
+    private List<GuardPatrolRoute.BuildingFootprint> guardBuildingFootprints(VillageData village) {
+        List<GuardPatrolRoute.BuildingFootprint> footprints = new ArrayList<>();
+        for (BuildingRecord building : village.getBuildings()) {
+            if (!building.isCompleted()) continue;
+            GuardPatrolRoute.BuildingFootprint footprint = buildingFootprint(building);
+            if (footprint != null) footprints.add(footprint);
+        }
+        return footprints;
+    }
+
+    private GuardPatrolRoute.BuildingFootprint buildingFootprint(BuildingRecord building) {
+        String prefabName = BuildingType.getPrefabName(building.getType(), building.getVariant());
+        String anchorId = BuildingType.getAnchorBlockId(building.getType());
+        if (prefabName == null || anchorId == null) return null;
+
+        List<dev.hearthbound.building.BlockPlacer.BlockEntry> blocks = PrefabLoader.loadNativeLocal(
+                prefabName, anchorId, BuildingType.getAnchorPrefabY(building.getType(), building.getVariant()));
+        if (blocks.isEmpty()) return null;
+
+        BuildingLayout.Layout layout = BuildingLayout.get(building.getType(), building.getVariant());
+        int steps = layout.rotationSteps(building.getRotation());
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (dev.hearthbound.building.BlockPlacer.BlockEntry block : blocks) {
+            int[] rotated = rotateLocalOffset(block.x(), block.y(), block.z(), steps);
+            int x = building.getPosX() + rotated[0];
+            int z = building.getPosZ() + rotated[2];
+            minX = Math.min(minX, x);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxZ = Math.max(maxZ, z);
+        }
+        if (minX == Integer.MAX_VALUE) return null;
+        return new GuardPatrolRoute.BuildingFootprint(minX, minZ, maxX, maxZ);
+    }
+
+    private ScheduleTarget patrolTarget(GuardPatrolRoute.RoadPoint point) {
+        return new ScheduleTarget(point.x() + 0.5, point.y(), point.z() + 0.5,
+                ROLE_GUARD, ACTIVITY_PATROLLING);
+    }
+
+    private GuardPatrolSession advanceGuardPatrol(GuardPatrolSession session) {
+        int count = session.waypoints().size();
+        if (count <= 1) return session;
+        if (session.loopMode() == GuardPatrolRoute.LoopMode.LOOP) {
+            return new GuardPatrolSession(session.waypoints(), session.loopMode(), session.signature(),
+                    (session.waypointIndex() + 1) % count, true);
+        }
+
+        boolean forward = session.forward();
+        int next = forward ? session.waypointIndex() + 1 : session.waypointIndex() - 1;
+        if (next >= count) {
+            forward = false;
+            next = count - 2;
+        } else if (next < 0) {
+            forward = true;
+            next = 1;
+        }
+        return new GuardPatrolSession(session.waypoints(), session.loopMode(), session.signature(), next, forward);
+    }
+
+    private int nearestWaypointIndex(Store<EntityStore> store, Ref<EntityStore> ref,
+                                     List<GuardPatrolRoute.RoadPoint> waypoints) {
+        TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+        if (tc == null || waypoints.isEmpty()) return 0;
+        Vector3d pos = tc.getPosition();
+        int bestIndex = 0;
+        double bestDistance = Double.MAX_VALUE;
+        for (int i = 0; i < waypoints.size(); i++) {
+            GuardPatrolRoute.RoadPoint point = waypoints.get(i);
+            double dist = distanceSq(pos.x, pos.y, pos.z, point.x() + 0.5, point.y(), point.z() + 0.5);
+            if (dist < bestDistance) {
+                bestDistance = dist;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private String routeSignature(GuardPatrolRoute.Route route) {
+        StringBuilder builder = new StringBuilder(route.loopMode().name());
+        for (GuardPatrolRoute.RoadPoint point : route.waypoints()) {
+            builder.append('|').append(point.x()).append(',').append(point.y()).append(',').append(point.z());
+        }
+        return builder.toString();
+    }
+
+    private void clearGuardPatrol(UUID uuid, World world) {
+        if (guardPatrolSessions.remove(uuid) != null) {
+            travelProgress.remove(uuid);
+            removeMarker(uuid, world);
+            closeRouteIfUnused(uuid, world);
+            hideGuardWeapon(world, uuid);
+        }
+        ScheduledFuture<?> task = guardPatrolTasks.remove(uuid);
+        if (task != null) task.cancel(false);
+    }
+
+    private void ensureGuardSword(World world, UUID uuid) {
+        if (!"Weapon_Sword_Crude".equals(HotbarUtil.readSlot0(world, uuid))) {
+            HotbarUtil.setSlot0(world, uuid, "Weapon_Sword_Crude");
+        }
+    }
+
+    static boolean shouldStartGuardPatrol(boolean guardWorkingTarget, boolean arrivedAtGuardHouse) {
+        return guardWorkingTarget && arrivedAtGuardHouse;
+    }
+
+    static boolean shouldGuardWeaponBeVisible(boolean patrolling) {
+        return patrolling;
+    }
+
+    private void hideGuardWeapon(World world, UUID uuid) {
+        HotbarUtil.clearSlot0(world, uuid);
     }
 
     /**
@@ -853,32 +1123,28 @@ public class VillagerScheduler {
     private void switchRole(Ref<EntityStore> ref, Store<EntityStore> store, String roleName, World world) {
         NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
         if (npc == null || npc.getRole() == null) return;
-        if (roleName.equals(npc.getRole().getRoleName())) return;
-        int idx = NPCPlugin.get().getIndex(roleName);
-        if (idx == Integer.MIN_VALUE) {
-            LOGGER.warning("VillagerScheduler: role not registered: " + roleName);
-            return;
-        }
-        String oldRoleName = npc.getRole().getRoleName();
-        RoleChangeSystem.requestRoleChange(ref, npc.getRole(), idx, false, store);
-        // RoleChangeSystem clears the Interactions component asynchronously, so the
-        // F-key UI binding (InteractionId="StayedVillager") is lost on every role
-        // swap unless we re-apply it. Skin/profession item are re-applied on the
-        // same retry schedule.
+        if (roleName.equals(StayedRoleNames.extractBaseRoleName(npc.getRole().getRoleName()))) return;
         UUID uuid = NpcManager.extractUuid(store, ref);
-        if (uuid != null) {
-            NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
-            if (record != null) {
-                LOGGER.info("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "→" + roleName
-                        + " scheduling restoreAfterRoleChange interaction=" + record.interaction);
-                NpcRestorer.restoreAfterRoleChange(ref, world, record);
-            } else {
-                LOGGER.warning("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "→" + roleName
-                        + " NO REGISTRY RECORD — interactions will not be restored");
-            }
+        NpcRegistry.NpcRecord record = uuid != null ? NpcRegistry.get().getRecord(uuid) : null;
+        NpcRegistry.NpcRecord updated = null;
+        if (record != null) {
+            updated = new NpcRegistry.NpcRecord(
+                    record.npcId, uuid, roleName, record.interaction, record.skinSeed, record.chunkIndex);
+            if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
+            String oldRoleName = npc.getRole().getRoleName();
+            StayedRoleChangeApplier.persistAndApply(ref, store, world, updated,
+                    false, "villager-scheduler-switch");
+            LOGGER.info("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "->" + roleName
+                    + " ensured durable role change interaction=" + record.interaction);
         } else {
-            LOGGER.warning("[ROLEBIND] " + oldRoleName + "→" + roleName
-                    + " NO UUID — interactions will not be restored");
+            int idx = NPCPlugin.get().getIndex(roleName);
+            if (idx < 0) {
+                LOGGER.warning("VillagerScheduler: role not registered: " + roleName);
+                return;
+            }
+            RoleChangeSystem.requestRoleChange(ref, npc.getRole(), idx, false, store);
+            LOGGER.warning("[ROLEBIND] " + npc.getRole().getRoleName() + "->" + roleName
+                    + " NO REGISTRY RECORD - interactions will not be restored");
         }
         // After role change, re-equip profession item — RoleChangeSystem is async,
         // so delay to let the new role settle before touching inventory.
@@ -906,16 +1172,23 @@ public class VillagerScheduler {
     private void setSingleGateState(Gate gate, World world, boolean open) {
         int gx = gate.x(), gy = gate.y(), gz = gate.z();
         int gateRotation = gate.rotation();
-        // Use a single-door prefab + rotate() so the engine places state-variant with correct rotation.
+        // Use a single-door prefab + rotate() so the engine places the state-variant with correct rotation.
         // world.setBlock("*...CloseDoorIn") resets rotation to 0; chunk.setBlock + setBlock combo
         // also loses rotation. Only BlockSelection.placeNoReturn preserves both state and rotation.
         String stateBlock = open ? gate.openBlock() : gate.closeBlock();
-        boolean doorOut = stateBlock != null && stateBlock.contains("DoorOut");
+        if (stateBlock == null || stateBlock.isBlank()) return;
+        boolean doorOut = stateBlock.contains("DoorOut");
         String prefabName = open
                 ? (doorOut ? "door_open_out" : "door_open_in")
                 : (doorOut ? "door_closed_out" : "door_closed_in");
-        world.execute(() -> {
+        TickScheduler.runLater(world, 0L, () -> {
             try {
+                long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(gx, gz);
+                if (world.getChunkIfLoaded(chunkIndex) == null) {
+                    LOGGER.fine("setGateState skipped unloaded chunk stateBlock=" + stateBlock
+                            + " at (" + gx + "," + gy + "," + gz + ")");
+                    return;
+                }
                 com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection selection =
                         com.hypixel.hytale.server.core.prefab.PrefabStore.get()
                                 .getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
@@ -978,5 +1251,8 @@ public class VillagerScheduler {
         lastTarget.remove(uuid);
         activityLabel.remove(uuid);
         markerRefs.remove(uuid);
+        guardPatrolSessions.remove(uuid);
+        ScheduledFuture<?> task = guardPatrolTasks.remove(uuid);
+        if (task != null) task.cancel(false);
     }
 }

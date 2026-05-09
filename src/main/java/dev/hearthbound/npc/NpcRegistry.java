@@ -56,7 +56,9 @@ public final class NpcRegistry {
         public volatile String npcId;
         /** Engine UUID of the currently spawned entity. Mutates when the entity is respawned. */
         public volatile UUID entityUuid;
-        public final String roleName;
+        public volatile String roleName;
+        /** Shared template role name, e.g. Villager_Human. Old saves derive this from roleName. */
+        public volatile String baseRoleName;
         public final InteractionType interaction;
         /** Non-zero for villagers/rescue victims that need a skin applied. */
         public final long skinSeed;
@@ -93,10 +95,19 @@ public final class NpcRegistry {
                          long skinSeed, long chunkIndex) {
             this.npcId = npcId != null ? npcId : UUID.randomUUID().toString();
             this.entityUuid = entityUuid;
-            this.roleName = roleName;
+            this.baseRoleName = StayedRoleNames.extractBaseRoleName(roleName);
+            refreshGeneratedRoleName();
             this.interaction = interaction;
             this.skinSeed = skinSeed;
             this.chunkIndex = chunkIndex;
+        }
+
+        public String baseRoleName() {
+            return baseRoleName;
+        }
+
+        public void refreshGeneratedRoleName() {
+            this.roleName = StayedRoleNames.generatedRoleName(this.npcId, this.baseRoleName);
         }
 
         public void setPosition(double x, double y, double z) {
@@ -180,6 +191,7 @@ public final class NpcRegistry {
             // is preserved even when callers construct a fresh NpcRecord with the
             // legacy 5-arg constructor (which generates a new npcId).
             newRecord.npcId = old.npcId;
+            newRecord.refreshGeneratedRoleName();
             newRecord.copyBasePositionFrom(old);
             byNpcId.put(old.npcId, newRecord);
         } else {

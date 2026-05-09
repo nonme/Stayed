@@ -133,7 +133,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
 
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         if (village != null && village.isFounded()) {
-            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world, false);
             if (reconciled > 0) {
                 village = VillageManager.get().getVillageData(store, playerRef);
                 record = findHouseRecord(store);
@@ -326,6 +326,8 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
 
                 // Clear the ghost preview now that site is locked
                 BuildingSystem.get().clearGhostPreview(store, playerRef, world);
+
+                BuildingSystem.get().tryIntegrateExisting(store, playerRef, world, record, record.getRotation());
 
                 confirmed = true;
                 activeTab = "construction";

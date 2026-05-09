@@ -11,6 +11,7 @@ import dev.hearthbound.npc.HearthboundDataStore;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
+import dev.hearthbound.npc.StayedNpcSpawner;
 import dev.hearthbound.npc.StayedIntegrationTestNpcMarkerComponent;
 import dev.hearthbound.npc.VillagerAppearance;
 import dev.hearthbound.npc.VillagerNames;
@@ -80,7 +81,7 @@ public final class SpawnVillagersStep implements TestStep {
         if (spawned < count) {
             return StepResult.fail("spawned only " + spawned + "/" + count);
         }
-        return StepResult.pass(spawned + " villagers");
+        return StepResult.pass(spawned + " villagers", 3_000L);
     }
 
     private UUID spawnOne(TestContext ctx, Vector3d playerPos, VillageData village) {
@@ -105,8 +106,15 @@ public final class SpawnVillagersStep implements TestStep {
         String firstName = (nameParts != null && nameParts.length > 0) ? nameParts[0] : "Test";
         String lastName  = (nameParts != null && nameParts.length > 1) ? nameParts[1] : "Villager";
 
+        long chunkIndex = NpcManager.chunkIndexFor(spawnPos);
+        NpcRegistry.NpcRecord rec = new NpcRegistry.NpcRecord(
+                UUID.randomUUID().toString(), null, VILLAGER_ROLE,
+                NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
+        rec.setPosition(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
+        rec.testMarker = ctx.getTestName();
+
         Pair<Ref<EntityStore>, INonPlayerCharacter> result =
-                NpcManager.spawnNpc(ctx.getStore(), spawnPos, new Vector3f(0, 0, 0), VILLAGER_ROLE);
+                StayedNpcSpawner.spawnPersistent(ctx.getStore(), spawnPos, new Vector3f(0, 0, 0), rec);
         if (result == null || result.first() == null) {
             ctx.getLogger().warn("SpawnVillagers: spawnNpc returned null");
             return null;
@@ -135,17 +143,6 @@ public final class SpawnVillagersStep implements TestStep {
         summary.setVillagerUuid(npcUuid);
         village.addVillager(summary);
         VillageManager.get().save(ctx.getStore(), ctx.getPlayerRef(), village);
-
-        long chunkIndex = NpcManager.chunkIndexFor(spawnPos);
-        NpcRegistry.NpcRecord rec = new NpcRegistry.NpcRecord(
-                npcUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
-        rec.setPosition(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
-        // Mark the registry record (and therefore data.json) so /hb test
-        // cleanup can find leftover test NPCs after a server restart that
-        // interrupted teardown — the entity-side marker component lives only
-        // in loaded chunks, so we need this on the registry side too.
-        rec.testMarker = ctx.getTestName();
-        NpcRegistry.get().registerWithIdentity(ctx.getStore(), npcRef, rec);
 
         // Set leash + interaction on next world tick so role is fully settled
         double leashX = village.getFoundingStoneX() + 0.5;

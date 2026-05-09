@@ -16,6 +16,7 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import dev.hearthbound.npc.NpcManager;
 import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.npc.NpcRestorer;
+import dev.hearthbound.npc.StayedNpcSpawner;
 import dev.hearthbound.npc.VillagerAppearance;
 import dev.hearthbound.npc.VillagerNames;
 import dev.hearthbound.npc.HearthboundDataStore;
@@ -78,8 +79,14 @@ public class SpawnVillagerCommand extends AbstractPlayerCommand {
         String firstName = (nameParts != null && nameParts.length > 0) ? nameParts[0] : "Unknown";
         String lastName  = (nameParts != null && nameParts.length > 1) ? nameParts[1] : "";
 
+        long chunkIndex = NpcManager.chunkIndexFor(spawnPos);
+        NpcRegistry.NpcRecord rec = new NpcRegistry.NpcRecord(
+                UUID.randomUUID().toString(), null, VILLAGER_ROLE,
+                NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
+        rec.setPosition(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
+
         Pair<Ref<EntityStore>, INonPlayerCharacter> result =
-                NpcManager.spawnNpc(store, spawnPos, new Vector3f(0, 0, 0), VILLAGER_ROLE);
+                StayedNpcSpawner.spawnPersistent(store, spawnPos, new Vector3f(0, 0, 0), rec);
         if (result == null) {
             ctx.sendMessage(Message.raw("Failed to spawn villager NPC."));
             return;
@@ -103,11 +110,6 @@ public class SpawnVillagerCommand extends AbstractPlayerCommand {
         VillageManager.get().save(store, playerRef, village);
 
         if (npcUuid != null) {
-            long chunkIndex = NpcManager.chunkIndexFor(spawnPos);
-            NpcRegistry.NpcRecord rec = new NpcRegistry.NpcRecord(
-                    npcUuid, VILLAGER_ROLE, NpcRegistry.InteractionType.VILLAGER, skinSeed, chunkIndex);
-            rec.setPosition(spawnPos.getX(), spawnPos.getY(), spawnPos.getZ());
-            NpcRegistry.get().registerWithIdentity(store, npcRef, rec);
             HearthboundDataStore.get().save();
         }
 

@@ -38,7 +38,7 @@ final class RestartSnapshotStore {
                 Record out = new Record();
                 out.npcId = record.npcId;
                 out.entityUuid = record.entityUuid != null ? record.entityUuid.toString() : "";
-                out.role = record.roleName;
+                out.role = record.baseRoleName();
                 out.interaction = record.interaction.name();
                 out.chunkIndex = record.chunkIndex;
                 out.hasPosition = record.hasPosition;

@@ -10,6 +10,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
+import java.util.UUID;
 
 /**
  * Continuously syncs the world position of every live registered NPC into its
@@ -26,10 +27,12 @@ public final class NpcPositionTracker {
 
     private static final Logger LOGGER = Logger.getLogger(NpcPositionTracker.class.getName());
     private static final long SYNC_INTERVAL_MS = 15L;
+    private static final long BINDING_REPAIR_INTERVAL_MS = 500L;
 
     private static volatile World trackedWorld = null;
     private static ScheduledFuture<?> task = null;
     private static final AtomicBoolean tickInFlight = new AtomicBoolean(false);
+    private static long lastBindingRepairMs = 0L;
 
     private NpcPositionTracker() {}
 
@@ -85,10 +88,28 @@ public final class NpcPositionTracker {
      */
     public static boolean syncLoadedNow(World world, com.hypixel.hytale.component.Store<EntityStore> store) {
         boolean anyChanged = false;
+        long now = System.currentTimeMillis();
+        boolean repairBindings = now - lastBindingRepairMs >= BINDING_REPAIR_INTERVAL_MS;
+        if (repairBindings) lastBindingRepairMs = now;
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
             if (record.entityUuid == null) continue;
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
-            if (ref == null || !ref.isValid()) continue;
+            if (ref == null || !ref.isValid()) {
+                ref = NpcLiveEntityResolver.findLiveNpcByRecord(store, record);
+                UUID liveUuid = ref != null && ref.isValid()
+                        ? NpcManager.extractUuid(store, ref)
+                        : null;
+                if (liveUuid == null) continue;
+                if (!liveUuid.equals(record.entityUuid)) {
+                    NpcRegistry.get().bindEntityUuid(record.npcId, liveUuid);
+                    record = NpcRegistry.get().getRecordByNpcId(record.npcId);
+                    anyChanged = true;
+                    if (record == null) continue;
+                }
+            }
+            if (repairBindings) {
+                NpcRestorer.ensureRestoredNow(ref, store, record);
+            }
             TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
             if (tc == null || tc.getPosition() == null) continue;
             var pos = tc.getPosition();

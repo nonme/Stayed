@@ -40,28 +40,62 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
     public void onEntityAdded(@Nonnull Ref<EntityStore> ref, @Nonnull AddReason reason,
                               @Nonnull Store<EntityStore> store,
                               @Nonnull CommandBuffer<EntityStore> commandBuffer) {
-        String npcId = readNpcId(ref, store);
+        String roleName = readRoleName(ref, store);
+        String npcId = resolveNpcId(ref, store, roleName);
         java.util.UUID entityUuid = readEntityUuid(ref, store);
         NpcRegistry registry = NpcRegistry.get();
         LOGGER.info("[DUPGUARD] onEntityAdded reason=" + reason
                 + " ref=" + ref + " entityUuid=" + entityUuid
-                + " npcId=" + npcId);
-        if (registry.isPendingRemoval(entityUuid)) {
+                + " npcId=" + npcId
+                + " role=" + roleName
+                + " identitySource=" + identitySource(ref, store, roleName));
+        NpcRegistry.NpcRecord pendingRecord = npcId != null
+                ? registry.getRecordByNpcId(npcId) : null;
+        if (registry.isPendingRemoval(entityUuid)
+                && pendingRecord != null
+                && entityUuid != null
+                && entityUuid.equals(pendingRecord.entityUuid)) {
+            LOGGER.info("[DUPGUARD] clearing stale pending-removal for live registry NPC"
+                    + " entityUuid=" + entityUuid
+                    + " npcId=" + npcId
+                    + " reason=" + reason);
+            registry.clearPendingRemoval(entityUuid);
+            HearthboundDataStore.get().save();
+        } else if (registry.isPendingRemoval(entityUuid)) {
             LOGGER.info("[DUPGUARD] removing pending-removal NPC entityUuid=" + entityUuid
                     + " npcId=" + npcId + " reason=" + reason);
             commandBuffer.removeEntity(ref, RemoveReason.REMOVE);
             registry.clearPendingRemoval(entityUuid);
-            HearthboundDataStore.get().markDirty();
+            HearthboundDataStore.get().save();
             return;
         }
-        if (npcId == null) return;
+        World world = resolveWorld(store);
+        if (npcId == null) {
+            LOGGER.info("[DUPGUARD] no stayed identity role/component reason=" + reason
+                    + " entityUuid=" + entityUuid
+                    + " role=" + roleName);
+            if ("SPAWN".equals(String.valueOf(reason)) && world != null) {
+                scheduleIdentityRetry(world, ref, entityUuid, reason);
+            }
+            return;
+        }
 
         Ref<EntityStore> existing = activeNpcs.get(npcId);
         if (existing != null && existing.isValid() && !existing.equals(ref)) {
-            LOGGER.warning("[DUPGUARD] removing duplicate entity for npcId="
-                    + npcId + " (existing ref still valid: " + existing + ", new=" + ref + ")");
-            commandBuffer.removeEntity(ref, RemoveReason.REMOVE);
-            return;
+            NpcRegistry.NpcRecord record = registry.getRecordByNpcId(npcId);
+            java.util.UUID existingUuid = readEntityUuid(existing, store);
+            if (record != null && entityUuid != null && entityUuid.equals(record.entityUuid)
+                    && existingUuid != null && !existingUuid.equals(entityUuid)) {
+                LOGGER.warning("[DUPGUARD] removing stale duplicate entity for npcId="
+                        + npcId + " (existing=" + existingUuid + ", canonical new=" + entityUuid + ")");
+                removeEntity(world, existingUuid);
+                activeNpcs.put(npcId, ref);
+            } else {
+                LOGGER.warning("[DUPGUARD] removing duplicate entity for npcId="
+                        + npcId + " (existing ref still valid: " + existing + ", new=" + ref + ")");
+                commandBuffer.removeEntity(ref, RemoveReason.REMOVE);
+                return;
+            }
         }
         activeNpcs.put(npcId, ref);
 
@@ -69,10 +103,9 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
         if (record == null) return;
         if (entityUuid != null && !entityUuid.equals(record.entityUuid)) {
             registry.bindEntityUuid(npcId, entityUuid);
-            HearthboundDataStore.get().markDirty();
+            HearthboundDataStore.get().save();
         }
 
-        World world = resolveWorld(store);
         if (world == null) {
             LOGGER.warning("[DUPGUARD-RESTORE] no world for npcId=" + npcId
                     + " entityUuid=" + entityUuid + " reason=" + reason);
@@ -86,7 +119,8 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
     public void onEntityRemove(@Nonnull Ref<EntityStore> ref, @Nonnull RemoveReason reason,
                                @Nonnull Store<EntityStore> store,
                                @Nonnull CommandBuffer<EntityStore> commandBuffer) {
-        String npcId = readNpcId(ref, store);
+        String roleName = readRoleName(ref, store);
+        String npcId = resolveNpcId(ref, store, roleName);
         if (npcId == null) return;
 
         Ref<EntityStore> existing = activeNpcs.get(npcId);
@@ -101,13 +135,32 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
         return query;
     }
 
-    private static String readNpcId(Ref<EntityStore> ref, Store<EntityStore> store) {
+    private static String resolveNpcId(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
+        String fromComponent = readNpcIdComponent(ref, store);
+        if (fromComponent != null) return fromComponent;
+        return StayedRoleNames.extractNpcId(roleName);
+    }
+
+    private static String readNpcIdComponent(Ref<EntityStore> ref, Store<EntityStore> store) {
         if (ref == null || store == null) return null;
         StayedNpcIdentityComponent identity = store.getComponent(ref,
                 StayedNpcIdentityComponent.getComponentType());
         if (identity == null) return null;
         String npcId = identity.getNpcId();
         return (npcId == null || npcId.isBlank()) ? null : npcId;
+    }
+
+    private static String readRoleName(Ref<EntityStore> ref, Store<EntityStore> store) {
+        if (ref == null || store == null) return null;
+        NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
+        if (npc == null || npc.getRole() == null) return null;
+        return npc.getRole().getRoleName();
+    }
+
+    private static String identitySource(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
+        if (readNpcIdComponent(ref, store) != null) return "component";
+        if (StayedRoleNames.extractNpcId(roleName) != null) return "role";
+        return "none";
     }
 
     private static java.util.UUID readEntityUuid(Ref<EntityStore> ref, Store<EntityStore> store) {
@@ -120,6 +173,59 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
     private static World resolveWorld(Store<EntityStore> store) {
         if (store == null || store.getExternalData() == null) return null;
         return store.getExternalData().getWorld();
+    }
+
+    private void scheduleIdentityRetry(World world, Ref<EntityStore> initialRef,
+                                       java.util.UUID entityUuid, AddReason reason) {
+        TickScheduler.getExecutor().schedule(() -> world.execute(() -> {
+            Store<EntityStore> liveStore = world.getEntityStore().getStore();
+            Ref<EntityStore> liveRef = initialRef != null && initialRef.isValid()
+                    ? initialRef : (entityUuid != null ? world.getEntityRef(entityUuid) : null);
+            if (liveRef == null || !liveRef.isValid()) return;
+
+            String roleName = readRoleName(liveRef, liveStore);
+            String npcId = resolveNpcId(liveRef, liveStore, roleName);
+            if (npcId == null) return;
+
+            NpcRegistry registry = NpcRegistry.get();
+            NpcRegistry.NpcRecord record = registry.getRecordByNpcId(npcId);
+            java.util.UUID liveUuid = readEntityUuid(liveRef, liveStore);
+            Ref<EntityStore> existing = activeNpcs.get(npcId);
+            if (existing != null && existing.isValid() && !existing.equals(liveRef)) {
+                java.util.UUID existingUuid = readEntityUuid(existing, liveStore);
+                if (record != null && liveUuid != null && liveUuid.equals(record.entityUuid)
+                        && existingUuid != null && !existingUuid.equals(liveUuid)) {
+                    LOGGER.warning("[DUPGUARD-RETRY] removing stale duplicate entity for npcId="
+                            + npcId + " (existing=" + existingUuid + ", canonical new=" + liveUuid + ")");
+                    removeEntity(world, existingUuid);
+                    activeNpcs.put(npcId, liveRef);
+                } else {
+                    LOGGER.warning("[DUPGUARD-RETRY] removing duplicate entity for npcId="
+                            + npcId + " entityUuid=" + liveUuid + " reason=" + reason);
+                    removeEntity(world, liveUuid);
+                    return;
+                }
+            }
+
+            activeNpcs.put(npcId, liveRef);
+            if (record == null) return;
+            if (liveUuid != null && !liveUuid.equals(record.entityUuid)) {
+                registry.bindEntityUuid(npcId, liveUuid);
+                HearthboundDataStore.get().save();
+                record = registry.getRecordByNpcId(npcId);
+            }
+            NpcManager.fixPersistentModelScale(liveStore, liveRef);
+            NpcRestorer.restore(liveRef, liveStore, world, record);
+            LOGGER.info("[DUPGUARD-RETRY] npcId=" + npcId
+                    + " entityUuid=" + liveUuid
+                    + " reason=" + reason);
+        }), 50L, TimeUnit.MILLISECONDS);
+    }
+
+    private static void removeEntity(World world, java.util.UUID entityUuid) {
+        if (world == null || entityUuid == null) return;
+        com.hypixel.hytale.server.core.entity.Entity entity = world.getEntity(entityUuid);
+        if (entity != null) entity.remove();
     }
 
     private static void schedulePostAddRestore(World world, Ref<EntityStore> initialRef,
@@ -144,7 +250,7 @@ public final class DuplicateNpcPrevention extends RefSystem<EntityStore> {
             java.util.UUID liveUuid = NpcManager.extractUuid(liveStore, liveRef);
             if (liveUuid != null && !liveUuid.equals(record.entityUuid)) {
                 registry.bindEntityUuid(npcId, liveUuid);
-                HearthboundDataStore.get().markDirty();
+                HearthboundDataStore.get().save();
                 record = registry.getRecordByNpcId(npcId);
             }
 

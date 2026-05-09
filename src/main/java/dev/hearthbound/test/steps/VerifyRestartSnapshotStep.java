@@ -55,8 +55,8 @@ public final class VerifyRestartSnapshotStep implements TestStep {
                     continue;
                 }
                 checked++;
-                if (!expected.role.equals(live.roleName)) {
-                    errors.add(expected.npcId + " role " + live.roleName + " != " + expected.role);
+                if (!expected.role.equals(live.baseRoleName())) {
+                    errors.add(expected.npcId + " role " + live.baseRoleName() + " != " + expected.role);
                 }
                 if (!expected.interaction.equals(live.interaction.name())) {
                     errors.add(expected.npcId + " interaction " + live.interaction + " != " + expected.interaction);

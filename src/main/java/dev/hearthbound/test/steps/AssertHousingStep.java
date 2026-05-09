@@ -9,6 +9,7 @@ import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,25 +41,41 @@ public final class AssertHousingStep implements TestStep {
         int housed = 0;
         Set<UUID> assignedSeen = new HashSet<>();
         Set<UUID> duplicates = new HashSet<>();
+        @SuppressWarnings("unchecked")
+        List<UUID> spawned = (List<UUID>) ctx.get("spawnedNpcs");
+        Set<UUID> scopedVillagers = spawned != null
+                ? new HashSet<>(spawned)
+                : Set.of();
+        boolean scopedToCurrentTest = !scopedVillagers.isEmpty();
+
         for (BuildingRecord b : village.getBuildings()) {
             if (!isResidential(b.getType())) continue;
             if (!b.isCompleted()) continue;
+            if (scopedToCurrentTest && !ctx.getTestName().equals(b.getTestMarker())) continue;
             UUID id = b.getAssignedVillagerId();
             if (id == null) continue;
+            if (scopedToCurrentTest && !scopedVillagers.contains(id)) continue;
             housed++;
             if (!assignedSeen.add(id)) duplicates.add(id);
         }
 
         int homeless = 0;
-        for (var summary : village.getVillagers()) {
-            UUID id = summary.getVillagerUuid();
-            if (id == null) continue;
-            if (!assignedSeen.contains(id)) homeless++;
+        if (scopedToCurrentTest) {
+            for (UUID id : scopedVillagers) {
+                if (id != null && !assignedSeen.contains(id)) homeless++;
+            }
+        } else {
+            for (var summary : village.getVillagers()) {
+                UUID id = summary.getVillagerUuid();
+                if (id == null) continue;
+                if (!assignedSeen.contains(id)) homeless++;
+            }
         }
 
         ctx.getLogger().info("Housing: housed=" + housed
                 + " homeless=" + homeless
-                + " duplicates=" + duplicates.size());
+                + " duplicates=" + duplicates.size()
+                + (scopedToCurrentTest ? " scope=current-test" : " scope=village"));
 
         if (!duplicates.isEmpty()) {
             return StepResult.fail("split assignment: " + duplicates.size()

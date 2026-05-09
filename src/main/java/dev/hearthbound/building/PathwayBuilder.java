@@ -20,7 +20,7 @@ import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillagerSummary;
 
 /**
- * Builds pathway networks between buildings: replaces Soil_Grass* with Soil_Pathway
+ * Builds pathway networks between buildings: replaces natural soil surfaces with Soil_Pathway
  * along an A*-routed line per pair, and persists every converted cell so we can
  * undo or regenerate later.
  *
@@ -32,6 +32,9 @@ public final class PathwayBuilder {
     private static final Logger LOGGER = Logger.getLogger(PathwayBuilder.class.getName());
 
     private static final String PATHWAY_BLOCK = "Soil_Pathway";
+    private static final String PATHWAY_QUARTER_BLOCK = "Soil_Pathway_Quarter";
+    private static final String PATHWAY_HALF_BLOCK = "Soil_Pathway_Half";
+    private static final String PATHWAY_THREE_QUARTER_BLOCK = "Soil_Pathway_ThreeQuarter";
     /** When clearing, we restore to this — single canonical grass id, see chat thread. */
     private static final String GRASS_RESTORE_BLOCK = "Soil_Grass";
 
@@ -156,8 +159,9 @@ public final class PathwayBuilder {
         Set<Long> seenEdges = new HashSet<>();
         addCommuteEdges(village, nodes, edges, seenEdges);
         int afterCommute = edges.size();
-        addWarehouseHubEdges(nodes, edges, seenEdges);
-        int afterWarehouse = edges.size();
+        List<int[]> warehouseEdges = new ArrayList<>();
+        addWarehouseHubEdges(nodes, warehouseEdges, seenEdges);
+        int afterWarehouse = afterCommute + warehouseEdges.size();
 
         // Drop any edge whose endpoints are already linked by an existing Soil_Pathway
         // network in the world — otherwise we'd lay a parallel road 1-2 blocks beside
@@ -181,12 +185,41 @@ public final class PathwayBuilder {
         // refuse to fall back through obstructions. Better no parallel road
         // than one that tunnels under the player's fences and trees.
         int placed = routeEdges(world, village, nodes, filteredEdges, false);
+        int[] warehouseResult = routeWarehouseHubEdges(world, village, nodes, warehouseEdges);
+        placed += warehouseResult[0];
+        dropped += warehouseResult[1];
         LOGGER.info("PathwayBuilder.connectExtra: "
                 + afterCommute + " commute edges, "
                 + (afterWarehouse - afterCommute) + " warehouse-hub edges, "
                 + dropped + " skipped (already connected), "
                 + placed + " blocks placed");
         return placed;
+    }
+
+    private static int[] routeWarehouseHubEdges(World world, VillageData village,
+                                                List<Node> nodes, List<int[]> edges) {
+        int placed = 0;
+        int dropped = 0;
+        for (int[] e : edges) {
+            Node a = nodes.get(e[0]);
+            Node b = nodes.get(e[1]);
+            Node warehouse = BuildingType.WAREHOUSE.equals(a.building.getType()) ? a : b;
+            Node work = warehouse == a ? b : a;
+            int[] logistics = warehouseLogisticsNode(world, warehouse.building);
+            if (logistics == null) continue;
+            if (isReachableViaPathway(world, work.x, work.y, work.z, logistics[0], logistics[2])) {
+                dropped++;
+                LOGGER.info("connectExtra: skip warehouse logistics edge "
+                        + work.building.getType() + " → warehouse back passage"
+                        + " (already reachable via pathway)");
+                continue;
+            }
+            placed += routeBetween(world, village,
+                    work.x, work.y, work.z,
+                    logistics[0], logistics[1], logistics[2],
+                    false);
+        }
+        return new int[]{placed, dropped};
     }
 
     private static void logNodes(World world, List<Node> nodes) {
@@ -220,8 +253,8 @@ public final class PathwayBuilder {
     /**
      * Max gap (in blocks, Chebyshev) the reachability BFS will jump across when the
      * next pathway tile is separated by non-pathway terrain — boulders, dirt patches,
-     * cobble outcrops. A real road built across rocky terrain leaves the rock untouched
-     * (we only convert grass), so the Soil_Pathway tiles end up forming islands. Without
+     * cobble outcrops. A real road built across rocky terrain leaves the rock untouched,
+     * so the Soil_Pathway tiles end up forming islands. Without
      * a gap-jump the BFS treats those islands as disconnected and we end up laying a
      * parallel road right next to the existing one. Three blocks is enough to bridge
      * typical decor (1-3 cobble stones, narrow gravel strip) without letting the BFS
@@ -285,8 +318,8 @@ public final class PathwayBuilder {
             // 8-connected expansion plus a small "gap jump": when a 1-step neighbor is
             // not a pathway tile, we still scan a Chebyshev box of size PATHWAY_GAP_JUMP
             // around it and take the first pathway tile we find. This bridges short non-
-            // pathway interruptions (cobble/dirt/gravel decor, narrow rocky strips) that
-            // routeBetween left untouched because Soil_Pathway is only laid over grass.
+            // pathway interruptions (cobble/dirt decor, narrow rocky strips) that
+            // routeBetween left untouched because Soil_Pathway is only laid over soil.
             // The road is physically continuous in those spots — only the registry tiles
             // are interrupted — so jumping the gap recovers connectivity without letting
             // the BFS teleport across genuinely empty terrain.
@@ -419,18 +452,22 @@ public final class PathwayBuilder {
     }
 
     /**
-     * Restores grass for every registered pathway block. Only touches cells that
-     * currently hold a Soil_Pathway* block — anything the player changed manually
-     * is left alone (and dropped from the registry).
+     * Restores the original block for every registered pathway block. Only touches
+     * cells that currently hold a Soil_Pathway* block — anything the player changed
+     * manually is left alone (and dropped from the registry).
      */
     public static int clearAll(World world, VillageData village) {
         int restored = 0;
-        for (int[] p : village.getPathwayBlocks()) {
+        List<int[]> blocks = village.getPathwayBlocks();
+        int registered = blocks.size();
+        for (int i = 0; i < blocks.size(); i++) {
+            int[] p = blocks.get(i);
             try {
                 var bt = world.getBlockType(p[0], p[1], p[2]);
                 String id = bt != null ? bt.getId() : "Empty";
                 if (id.startsWith(PATHWAY_BLOCK)) {
-                    world.setBlock(p[0], p[1], p[2], GRASS_RESTORE_BLOCK);
+                    world.setBlock(p[0], p[1], p[2],
+                            restoreBlockForPathwayOriginal(village.getPathwayOriginal(i)));
                     restored++;
                 }
             } catch (Exception e) {
@@ -441,7 +478,7 @@ public final class PathwayBuilder {
         }
         village.clearPathwayBlocks();
         LOGGER.info("PathwayBuilder.clearAll: restored " + restored + " of "
-                + village.getPathwayBlocks().size() + " registered cells");
+                + registered + " registered cells");
         return restored;
     }
 
@@ -528,10 +565,21 @@ public final class PathwayBuilder {
         return new int[]{ b.getPosX(), y, b.getPosZ() };
     }
 
+    static int[] warehouseLogisticsSeed(BuildingRecord b) {
+        int[] local = BuildingLayout.rotateLocalOffset(-3, 0, -3, b.getRotation());
+        return new int[]{b.getPosX() + local[0], b.getPosY() + local[1], b.getPosZ() + local[2]};
+    }
+
+    private static int[] warehouseLogisticsNode(World world, BuildingRecord b) {
+        if (!BuildingType.WAREHOUSE.equals(b.getType())) return null;
+        int[] seed = warehouseLogisticsSeed(b);
+        return cardinalProbeEndpoint(world, b, seed[0], seed[2], "warehouse-back-passage");
+    }
+
     /**
      * Walks from {@code (seedX, seedZ)} along each of the 4 cardinal directions one
-     * block at a time, looking for grass or existing pathway. Returns the first hit
-     * across all four rays — i.e. the closest grass tile reachable straight from the
+     * block at a time, looking for replaceable soil or existing pathway. Returns the first hit
+     * across all four rays — i.e. the closest road-capable tile reachable straight from the
      * seed, with ties broken by the iteration order (+X, -X, +Z, -Z).
      *
      * <p>If no direction finds a hit within {@link #DOOR_BFS_RADIUS} the seed itself
@@ -573,7 +621,7 @@ public final class PathwayBuilder {
 
     /**
      * Manhattan-radius BFS from (cx, cz) looking for the closest tile whose surface is
-     * grass or existing pathway. Returns {x, y, z} or null if nothing found within
+     * replaceable soil or existing pathway. Returns {x, y, z} or null if nothing found within
      * {@link #DOOR_BFS_RADIUS}.
      */
     private static int[] bfsForGrassOrPathway(World world, int cx, int cz, int hintY) {
@@ -645,6 +693,7 @@ public final class PathwayBuilder {
             for (int dy = 1; dy <= 2; dy++) {
                 var bt = world.getBlockType(x, surfaceY + dy, z);
                 if (bt == null) continue; // null treated as empty (chunk edges, etc.)
+                if (isClearablePathOverlay(bt.getId())) continue;
                 if (bt.getMaterial() != BlockMaterial.Empty) return false;
             }
             return true;
@@ -890,18 +939,30 @@ public final class PathwayBuilder {
         int placed = 0;
         int grassSeen = 0, nonGrassSeen = 0;
         Map<String, Integer> nonGrassBreakdown = new HashMap<>();
-        for (long[] cell : path) {
+        for (int i = 0; i < path.size(); i++) {
+            long[] cell = path.get(i);
             int x = (int) cell[0];
             int z = (int) cell[1];
             int y = (int) cell[2];
-            if (placeIfGrass(world, x, y, z)) {
-                village.addPathwayBlock(x, y, z);
+            String originalBlockId = readBlockId(world, x, y, z);
+            if (!isReplaceablePathSurface(originalBlockId)) {
+                nonGrassSeen++;
+                nonGrassBreakdown.merge(originalBlockId, 1, Integer::sum);
+                continue;
+            }
+
+            String originalOverlayId = slopeOverlayBlockForPathCell(path, i) != null
+                    ? readBlockId(world, x, y + 1, z)
+                    : null;
+            String pathwayBlock = basePathwayBlockForPathCell(path, i);
+            if (placeIfGrass(world, x, y, z, pathwayBlock)) {
+                village.addPathwayBlock(x, y, z, originalBlockId);
+                placeSlopeOverlayIfNeeded(world, village, path, i, x, y, z, originalOverlayId);
                 placed++;
                 grassSeen++;
             } else {
                 nonGrassSeen++;
-                String id = readBlockId(world, x, y, z);
-                nonGrassBreakdown.merge(id, 1, Integer::sum);
+                nonGrassBreakdown.merge(originalBlockId, 1, Integer::sum);
             }
         }
         LOGGER.info("routeBetween OK: (" + x1 + "," + z1 + ") → (" + x2 + "," + z2
@@ -911,28 +972,167 @@ public final class PathwayBuilder {
         return placed;
     }
 
-    /** Replaces a grass-family block with Soil_Pathway. Returns true if a change was made. */
-    private static boolean placeIfGrass(World world, int x, int y, int z) {
+    /** Replaces a road-capable soil block with Soil_Pathway. Returns true if a change was made. */
+    private static boolean placeIfGrass(World world, int x, int y, int z, String pathwayBlock) {
         try {
             var bt = world.getBlockType(x, y, z);
             if (bt == null) return false;
             String id = bt.getId();
-            if (!isGrassBlock(id)) return false;
-            world.setBlock(x, y, z, PATHWAY_BLOCK);
+            if (!isReplaceablePathSurface(id)) return false;
+            clearPathOverlays(world, x, y, z);
+            world.setBlock(x, y, z, pathwayBlock);
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
-    /** Matches any Soil_Grass* variant (Dry, Wet, Cold, Sunny, Deep, Burnt, Full, …). */
-    private static boolean isGrassBlock(String id) {
-        return id != null && id.startsWith("Soil_Grass");
+    static String pathwayBlockForPathCell(long[][] path, int index) {
+        return pathwayBlockForPathCell(java.util.Arrays.asList(path), index);
     }
 
-    /** Either grass (we can convert) or existing pathway (we can join onto). */
+    static String basePathwayBlockForPathCell(long[][] path, int index) {
+        return basePathwayBlockForPathCell(java.util.Arrays.asList(path), index);
+    }
+
+    static String basePathwayBlockForPathCell(List<long[]> path, int index) {
+        String slopeOverlay = slopeOverlayBlockForPathCell(path, index);
+        if (slopeOverlay != null) return PATHWAY_BLOCK;
+        return pathwayBlockForPathCell(path, index);
+    }
+
+    static String slopeOverlayBlockForPathCell(long[][] path, int index) {
+        return slopeOverlayBlockForPathCell(java.util.Arrays.asList(path), index);
+    }
+
+    static String slopeOverlayBlockForPathCell(List<long[]> path, int index) {
+        int bestRank = 0;
+        String bestBlock = null;
+
+        for (int stepStart = 0; stepStart < path.size() - 1; stepStart++) {
+            long[] a = path.get(stepStart);
+            long[] b = path.get(stepStart + 1);
+            int ay = (int) a[2];
+            int by = (int) b[2];
+            if (Math.abs(ay - by) != 1) continue;
+
+            int highIndex = ay > by ? stepStart : stepStart + 1;
+            int lowIndex = ay > by ? stepStart + 1 : stepStart;
+            int lowOuterIndex = lowIndex + (lowIndex - highIndex);
+
+            if (index == lowIndex && bestRank < 2) {
+                bestRank = 2;
+                bestBlock = PATHWAY_HALF_BLOCK;
+            }
+            if (index == lowOuterIndex && bestRank < 1
+                    && lowOuterIndex >= 0 && lowOuterIndex < path.size()
+                    && path.get(lowOuterIndex)[2] == path.get(lowIndex)[2]) {
+                bestRank = 1;
+                bestBlock = PATHWAY_QUARTER_BLOCK;
+            }
+        }
+
+        return bestBlock;
+    }
+
+    static int slopeOverlayYForPathCell(long[][] path, int index) {
+        return slopeOverlayYForPathCell(java.util.Arrays.asList(path), index);
+    }
+
+    static int slopeOverlayYForPathCell(List<long[]> path, int index) {
+        return (int) path.get(index)[2] + 1;
+    }
+
+    static String restoreBlockForPathwayOriginal(String originalBlockId) {
+        return (originalBlockId == null || originalBlockId.isEmpty())
+                ? GRASS_RESTORE_BLOCK
+                : originalBlockId;
+    }
+
+    static String pathwayBlockForPathCell(List<long[]> path, int index) {
+        int bestRank = 0;
+        String bestBlock = PATHWAY_BLOCK;
+
+        for (int stepStart = 0; stepStart < path.size() - 1; stepStart++) {
+            long[] a = path.get(stepStart);
+            long[] b = path.get(stepStart + 1);
+            int ay = (int) a[2];
+            int by = (int) b[2];
+            if (Math.abs(ay - by) != 1) continue;
+
+            int highIndex = ay > by ? stepStart : stepStart + 1;
+            int lowIndex = ay > by ? stepStart + 1 : stepStart;
+            int lowOuterIndex = lowIndex + (lowIndex - highIndex);
+
+            if (index == highIndex && bestRank < 3) {
+                bestRank = 3;
+                bestBlock = PATHWAY_THREE_QUARTER_BLOCK;
+            }
+            if (index == lowIndex && bestRank < 2) {
+                bestRank = 2;
+                bestBlock = PATHWAY_HALF_BLOCK;
+            }
+            if (index == lowOuterIndex && bestRank < 1
+                    && lowOuterIndex >= 0 && lowOuterIndex < path.size()
+                    && path.get(lowOuterIndex)[2] == path.get(lowIndex)[2]) {
+                bestRank = 1;
+                bestBlock = PATHWAY_QUARTER_BLOCK;
+            }
+        }
+
+        return bestBlock;
+    }
+
+    private static void placeSlopeOverlayIfNeeded(World world, VillageData village,
+                                                   List<long[]> path, int index,
+                                                   int x, int y, int z,
+                                                   String originalOverlayId) {
+        String overlayBlock = slopeOverlayBlockForPathCell(path, index);
+        if (overlayBlock == null) return;
+
+        int overlayY = slopeOverlayYForPathCell(path, index);
+        try {
+            var bt = world.getBlockType(x, overlayY, z);
+            if (bt != null) {
+                String id = bt.getId();
+                if (id != null && !isClearablePathOverlay(id)
+                        && !id.startsWith("Empty") && !id.startsWith("Air")) {
+                    return;
+                }
+            }
+            world.setBlock(x, overlayY, z, overlayBlock);
+            village.addPathwayBlock(x, overlayY, z, originalOverlayId);
+        } catch (Exception e) {
+            // Overlay is visual only; keep the base road if the upper block can't be written.
+        }
+    }
+
+    private static void clearPathOverlays(World world, int x, int surfaceY, int z) {
+        for (int dy = 1; dy <= 2; dy++) {
+            try {
+                var bt = world.getBlockType(x, surfaceY + dy, z);
+                if (bt != null && isClearablePathOverlay(bt.getId())) {
+                    world.breakBlock(x, surfaceY + dy, z, 0);
+                }
+            } catch (Exception e) {
+                return;
+            }
+        }
+    }
+
+    /** Matches soil-family surface blocks that should become Soil_Pathway. */
+    static boolean isReplaceablePathSurface(String id) {
+        return id != null && (id.startsWith("Soil_Grass") || id.equals("Soil_Gravel"));
+    }
+
+    /** Matches ground overlays that should not block or remain on a new pathway. */
+    static boolean isClearablePathOverlay(String id) {
+        return id != null && (id.startsWith("Rubble_") || id.startsWith("Plant_"));
+    }
+
+    /** Either replaceable soil (we can convert) or existing pathway (we can join onto). */
     private static boolean isGrassOrPathway(String id) {
-        return id != null && (id.startsWith("Soil_Grass") || id.startsWith("Soil_Pathway"));
+        return isReplaceablePathSurface(id) || (id != null && id.startsWith("Soil_Pathway"));
     }
 
     // ── A* in XZ plane with per-cell Y resolution ──────────────────────────────

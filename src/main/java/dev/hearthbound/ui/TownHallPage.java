@@ -77,7 +77,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         founded = village != null && village.isFounded();
         if (founded) {
-            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
+            int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world, false);
             if (reconciled > 0) {
                 village = VillageManager.get().getVillageData(store, playerRef);
             }
@@ -488,7 +488,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 }
                 VillageData v = VillageManager.get().getVillageData(store, playerRef);
                 if (v != null) {
-                    int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, v, world);
+                    int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, v, world, false);
                     if (reconciled > 0) {
                         v = VillageManager.get().getVillageData(store, playerRef);
                     }
@@ -529,6 +529,18 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 BuildingSystem.get().confirmFounding(
                         store, playerRef, world, villageName,
                         stoneX, stoneY, stoneZ, rotation);
+
+                // Try to integrate a pre-built or pasted Town Hall before the elf starts
+                // construction. confirmFounding has just added the Town Hall record to the
+                // village — fetch it and run the scanner against it.
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv != null) {
+                    BuildingRecord townHall = dv.findBuilding(BuildingType.TOWN_HALL);
+                    if (townHall != null) {
+                        BuildingSystem.get().tryIntegrateExisting(
+                                store, playerRef, world, townHall, rotation);
+                    }
+                }
 
                 founded = true;
 

@@ -3,6 +3,7 @@ package dev.hearthbound.test.packages;
 import dev.hearthbound.test.engine.TestCase;
 import dev.hearthbound.test.engine.TestPackage;
 import dev.hearthbound.test.steps.AuditStep;
+import dev.hearthbound.test.steps.AssertIdentityRoleStep;
 import dev.hearthbound.test.steps.AssertNpcPositionsSyncedStep;
 import dev.hearthbound.test.steps.ChangeRoleStep;
 import dev.hearthbound.test.steps.CleanupTestNpcsStep;
@@ -48,15 +49,17 @@ public final class ChunksPackage {
                 new LogStep("chunk_cross_chunk — move villagers to another chunk center and verify registry follows"),
                 new SetupVillageStep(),
                 new SpawnVillagersStep(10),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-spawn"),
-                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.roleName), 2, 0, 16.0, 16.0),
+                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.baseRoleName()), 2, 0, 16.0, 16.0),
                 new WaitStep(7_000),
-                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.baseRoleName())),
                 new TeleportPlayerFarStep(),
                 new WaitStep(60_000),
                 new TeleportPlayerHomeStep(),
-                new WaitStep(10_000),
-                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new WaitStep(22_000),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.baseRoleName())),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-reload"))
                 .withTeardown(
                         new CleanupTestNpcsStep(),
@@ -68,21 +71,23 @@ public final class ChunksPackage {
                 new LogStep("chunk_border — 20 villagers, nudge to chunk edge, unload+reload"),
                 new SetupVillageStep(),
                 new SpawnVillagersStep(20),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-spawn"),
                 new SnapshotStep("before"),
                 // Put every villager near the east edge of the neighbouring chunk.
                 // The move step also updates their leash point so AI does not
                 // immediately drag them back to the founding stone before the
                 // position tracker can observe the new chunk.
-                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.roleName), 1, 0, 30.0, 16.0),
+                new MoveNpcsToChunkStep(r -> "Villager_Human".equals(r.baseRoleName()), 1, 0, 30.0, 16.0),
                 new WaitStep(12_000),
-                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.roleName)),
+                new AssertNpcPositionsSyncedStep(r -> "Villager_Human".equals(r.baseRoleName())),
                 new TeleportPlayerFarStep(),
                 new WaitStep(60_000),
                 new TeleportPlayerHomeStep(),
-                new WaitStep(10_000),
+                new WaitStep(22_000),
                 new SnapshotStep("after"),
                 new DiffStep("before", "after"),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-reload"))
                 .withTeardown(
                         new CleanupTestNpcsStep(),
@@ -94,6 +99,7 @@ public final class ChunksPackage {
         steps.add(new LogStep("chunk_cycle — 5 unload/reload cycles on 20 villagers"));
         steps.add(new SetupVillageStep());
         steps.add(new SpawnVillagersStep(20));
+        steps.add(new AssertIdentityRoleStep());
         steps.add(new AuditStep(true, "post-spawn"));
         for (int i = 1; i <= 5; i++) {
             steps.add(new LogStep("cycle " + i + "/5"));
@@ -101,6 +107,7 @@ public final class ChunksPackage {
             steps.add(new WaitStep(60_000));
             steps.add(new TeleportPlayerHomeStep());
             steps.add(new WaitStep(30_000));
+            steps.add(new AssertIdentityRoleStep());
             steps.add(new AuditStep(true, "cycle-" + i));
         }
         return new TestCase("chunk_cycle", steps).withTeardown(
@@ -113,16 +120,18 @@ public final class ChunksPackage {
                 new LogStep("chunk_far_role_change — role change while villager chunk is unloaded"),
                 new SetupVillageStep(),
                 new SpawnVillagersStep(5),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-spawn"),
                 new TeleportPlayerFarStep(),
                 new WaitStep(60_000),
                 // Role change attempt while villagers' chunks are unloaded.
                 // Expectation: live entities are gone, ChangeRoleStep skips them
                 // gracefully (no exceptions, no orphaned records).
-                new ChangeRoleStep(r -> "Villager_Human".equals(r.roleName), "Villager_Human_Farmer"),
+                new ChangeRoleStep(r -> "Villager_Human".equals(r.baseRoleName()), "Villager_Human_Farmer"),
                 new AuditStep(true, "post-role-change-far"),
                 new TeleportPlayerHomeStep(),
-                new WaitStep(10_000),
+                new WaitStep(22_000),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-return"))
                 .withTeardown(
                         new CleanupTestNpcsStep(),
@@ -134,6 +143,7 @@ public final class ChunksPackage {
                 new LogStep("chunk_concurrent — 20 villagers, push in 4 directions, then reload"),
                 new SetupVillageStep(),
                 new SpawnVillagersStep(20),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-spawn"),
                 // Distribute villagers across 4 chunks. We can't strictly partition
                 // the 20 (filter would need indexed iteration), so we just nudge
@@ -144,7 +154,8 @@ public final class ChunksPackage {
                 new TeleportPlayerFarStep(),
                 new WaitStep(60_000),
                 new TeleportPlayerHomeStep(),
-                new WaitStep(10_000),
+                new WaitStep(22_000),
+                new AssertIdentityRoleStep(),
                 new AuditStep(true, "post-reload"))
                 .withTeardown(
                         new CleanupTestNpcsStep(),

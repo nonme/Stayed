@@ -1,0 +1,1145 @@
+package com.electro.hycitizens.models;
+
+import com.electro.hycitizens.roles.RoleGenerator;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.math.vector.Vector3d;
+import com.hypixel.hytale.math.vector.Vector3f;
+import com.hypixel.hytale.protocol.Direction;
+import com.hypixel.hytale.protocol.PlayerSkin;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+
+import static com.hypixel.hytale.logger.HytaleLogger.getLogger;
+
+public class CitizenData {
+    private static final float MIN_MODEL_SCALE = 0.01f;
+    private static final float MAX_MODEL_SCALE = 100.0f;
+    public static final String MAP_MARKER_TYPE_PIN = "PIN";
+    public static final String MAP_MARKER_TYPE_DOT = "DOT";
+    public static final String MAP_MARKER_TYPE_STAR = "STAR";
+    public static final String MAP_MARKER_TYPE_DIAMOND = "DIAMOND";
+    public static final String MAP_MARKER_TYPE_SQUARE = "SQUARE";
+    public static final String MAP_MARKER_TYPE_QUESTION = "QUESTION";
+    public static final String MAP_MARKER_TYPE_EXCLAMATION = "EXCLAMATION";
+    public static final String MAP_MARKER_TYPE_MONEY_SYMBOL = "MONEY_SYMBOL";
+    public static final String MAP_MARKER_TYPE_SHOP = "SHOP";
+    public static final String MAP_MARKER_TYPE_TRADER = "TRADER";
+    public static final String MAP_MARKER_TYPE_CHEST = "CHEST";
+    public static final String MAP_MARKER_TYPE_SWORD = "SWORD";
+    public static final String MAP_MARKER_TYPE_SHIELD = "SHIELD";
+    public static final String MAP_MARKER_TYPE_HEART = "HEART";
+    public static final String MAP_MARKER_TYPE_HOME = "HOME";
+    public static final String MAP_MARKER_TYPE_NPC_TYPE = "NPC_TYPE";
+
+    private final String id;
+    private String name;
+    private String modelId;
+    private Vector3d position;
+    private Vector3f rotation;
+    private Vector3d currentPosition;
+    private float scale;
+    private String requiredPermission;
+    private String noPermissionMessage;
+    private UUID worldUUID;
+    private List<CommandAction> commandActions;
+    private UUID spawnedUUID;
+    private List<UUID> hologramLineUuids = new ArrayList<>();
+    private Ref<EntityStore> npcRef;
+    public final Map<UUID, Direction> lastLookDirections = new ConcurrentHashMap<>();
+    private transient Map<UUID, ScheduledFuture<?>> pendingLookResetTasks = new ConcurrentHashMap<>();
+    public final Map<UUID, Direction> lastNametagLookDirections = new ConcurrentHashMap<>();
+    private transient Map<UUID, ScheduledFuture<?>> pendingNametagLookResetTasks = new ConcurrentHashMap<>();
+    private boolean rotateTowardsPlayer;
+    private float lookAtDistance = 25.0f;
+    private boolean hideNametag = false;
+    private boolean hideNpc = false;
+    private float nametagOffset;
+    private boolean modelNametagEnabled = false;
+    private String nametagModelId = "";
+    private float nametagModelScale = 1.0f;
+    private boolean rotateNametagTowardsPlayer = true;
+    private boolean fKeyInteractionEnabled;
+    private boolean forceFKeyInteractionText;
+    private boolean mapMarkerEnabled = false;
+    private String mapMarkerType = MAP_MARKER_TYPE_PIN;
+    private String mapMarkerName = "";
+
+    // Item-related fields
+    private String npcHelmet;
+    private String npcChest;
+    private String npcLeggings;
+    private String npcGloves;
+    private String npcHand;
+    private String npcOffHand;
+
+    // Skin-related fields
+    private boolean isPlayerModel;
+    private boolean useLiveSkin;
+    private String skinUsername;
+    private PlayerSkin cachedSkin;
+    private long lastSkinUpdate;
+    private transient long createdAt;
+
+    // Behavior fields
+    private List<AnimationBehavior> animationBehaviors = new ArrayList<>();
+    private MovementBehavior movementBehavior = new MovementBehavior();
+    private ScheduleConfig scheduleConfig = new ScheduleConfig();
+    private MessagesConfig messagesConfig = new MessagesConfig();
+    private DeathConfig deathConfig = new DeathConfig();
+    private String commandSelectionMode = "ALL";
+    private transient Map<UUID, Integer> sequentialMessageIndex = new ConcurrentHashMap<>();
+    private transient Map<UUID, Integer> sequentialCommandIndex = new ConcurrentHashMap<>();
+    private transient Map<UUID, Integer> sequentialDeathMessageIndex = new ConcurrentHashMap<>();
+    private transient Map<UUID, Integer> sequentialDeathCommandIndex = new ConcurrentHashMap<>();
+    private transient Map<UUID, Boolean> playersInProximity = new ConcurrentHashMap<>();
+    private transient Map<String, Long> lastTimedAnimationPlay = new ConcurrentHashMap<>();
+    private transient Map<String, java.util.concurrent.ScheduledFuture<?>> animationStopTasks = new ConcurrentHashMap<>();
+    private boolean firstInteractionEnabled = false;
+    private List<CommandAction> firstInteractionCommandActions = new ArrayList<>();
+    private MessagesConfig firstInteractionMessagesConfig = new MessagesConfig();
+    private String firstInteractionCommandSelectionMode = "ALL";
+    private String postFirstInteractionBehavior = "NORMAL";
+    private boolean runNormalOnFirstInteraction = false;
+    private Set<UUID> playersWhoCompletedFirstInteraction = ConcurrentHashMap.newKeySet();
+    private transient Map<UUID, Integer> sequentialFirstInteractionMessageIndex = new ConcurrentHashMap<>();
+    private transient Map<UUID, Integer> sequentialFirstInteractionCommandIndex = new ConcurrentHashMap<>();
+
+    // Attitude and damage fields
+    private String attitude = "PASSIVE";
+    private boolean takesDamage = false;
+    private boolean overrideHealth = false;
+    private float healthAmount = 100;
+    private boolean overrideDamage = false;
+    private float damageAmount = 10;
+    private boolean healthRegenEnabled = false;
+    private float healthRegenAmount = 1.0f;
+    private float healthRegenIntervalSeconds = 5.0f;
+    private float healthRegenDelayAfterDamageSeconds = 5.0f;
+    private transient long lastDamageTakenAt = 0L;
+    private transient long lastHealthRegenAt = 0L;
+
+    // Respawn fields
+    private boolean respawnOnDeath = true;
+    private float respawnDelaySeconds = 5.0f;
+    private transient boolean awaitingRespawn = false;
+    private long respawnReadyAtMillis = 0L;
+    private transient long lastDeathTime = 0;
+
+    // Group field
+    private String group = "";
+    private transient ScheduleRuntimeState currentScheduleRuntimeState = ScheduleRuntimeState.INACTIVE;
+    private transient String currentScheduleEntryId = "";
+    private transient String currentScheduleRoleName = "";
+    private transient String currentScheduleStatusText = "Inactive";
+
+    // Citizen follow fields
+    private boolean followCitizenEnabled = false;
+    private String followCitizenId = "";
+    private float followDistance = 2.0f;
+
+    // New config fields for runtime role generation
+    private CombatConfig combatConfig = new CombatConfig();
+    private DetectionConfig detectionConfig = new DetectionConfig();
+    private PathConfig pathConfig = new PathConfig();
+    private float maxHealth = 100;
+    private float leashDistance = 45;
+    private String defaultNpcAttitude = "Ignore";
+    private boolean applySeparation = true;
+
+    // Extended Template_Citizen parameters
+    private String dropList = "Empty";
+    private float runThreshold = 0.3f;
+    private String wakingIdleBehaviorComponent = "Component_Instruction_Waking_Idle";
+    private String dayFlavorAnimation = "";
+    private float dayFlavorAnimationLengthMin = 3.0f;
+    private float dayFlavorAnimationLengthMax = 5.0f;
+    private String attitudeGroup = "Empty";
+    private String nameTranslationKey = "Citizen";
+    private boolean breathesInWater = false;
+
+    // Leash extended parameters
+    private float leashMinPlayerDistance = 4.0f;
+    private float leashTimerMin = 3.0f;
+    private float leashTimerMax = 5.0f;
+    private float hardLeashDistance = 200.0f;
+
+    // Hotbar/OffHand slot management
+    private int defaultHotbarSlot = 0;
+    private int randomIdleHotbarSlot = -1;
+    private int chanceToEquipFromIdleHotbarSlot = 5;
+    private int defaultOffHandSlot = -1;
+    private int nighttimeOffhandSlot = -1;
+
+    // KnockbackScale
+    private float knockbackScale = 0.5f;
+
+    // Role weapon/offhand arrays
+    private List<String> weapons = new ArrayList<>(List.of("Weapon_Sword_Iron"));
+    private List<String> offHandItems = new ArrayList<>(List.of("Furniture_Crude_Torch"));
+
+    // Group arrays for combat/flocking
+    private List<String> combatMessageTargetGroups = new ArrayList<>();
+    private List<String> flockArray = new ArrayList<>();
+    private List<String> disableDamageGroups = new ArrayList<>(List.of("Self"));
+
+    public CitizenData(@Nonnull String id, @Nonnull String name, @Nonnull String modelId, @Nonnull UUID worldUUID,
+                       @Nonnull Vector3d position, @Nonnull Vector3f rotation, float scale, @Nullable UUID npcUUID,
+                       @Nullable List<UUID> hologramLineUuids, @Nonnull String requiredPermission, @Nonnull String noPermissionMessage,
+                       @Nonnull List<CommandAction> commandActions, boolean isPlayerModel, boolean useLiveSkin,
+                       @Nullable String skinUsername, @Nullable PlayerSkin cachedSkin, long lastSkinUpdate,
+                       boolean rotateTowardsPlayer) {
+        this.id = id;
+        this.name = name;
+        this.modelId = modelId;
+        this.worldUUID = worldUUID;
+        this.position = position;
+        this.rotation = rotation;
+        this.currentPosition = position;
+        this.scale = sanitizeModelScale(scale);
+        this.requiredPermission = requiredPermission;
+        this.noPermissionMessage = noPermissionMessage;
+        this.commandActions = new ArrayList<>(commandActions);
+        this.spawnedUUID = npcUUID;
+        this.hologramLineUuids = hologramLineUuids != null ? new ArrayList<>(hologramLineUuids) : new ArrayList<>();
+        this.isPlayerModel = isPlayerModel;
+        this.skinUsername = skinUsername != null ? skinUsername : "";
+        this.useLiveSkin = useLiveSkin && !isGeneratedSkinUsername(this.skinUsername);
+        this.cachedSkin = cachedSkin;
+        this.lastSkinUpdate = lastSkinUpdate;
+        this.createdAt = 0;
+        this.npcRef = null;
+        this.rotateTowardsPlayer = rotateTowardsPlayer;
+
+        this.npcHelmet = null;
+        this.npcChest = null;
+        this.npcLeggings = null;
+        this.npcGloves = null;
+        this.npcHand = null;
+        this.npcOffHand = null;
+
+        this.nametagOffset = 0;
+        this.hideNametag = false;
+        this.modelNametagEnabled = false;
+        this.nametagModelId = "";
+        this.nametagModelScale = 1.0f;
+        this.rotateNametagTowardsPlayer = true;
+
+        this.fKeyInteractionEnabled = false;
+    }
+
+    @Nonnull
+    public String getId() {
+        return id;
+    }
+
+    @Nonnull
+    public String getName() {
+        return name;
+    }
+
+    public void setName(@Nonnull String name) {
+        this.name = name;
+    }
+
+    @Nonnull
+    public String getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(@Nonnull String modelId) {
+        this.modelId = modelId;
+    }
+
+    @Nonnull
+    public UUID getWorldUUID() {
+        return worldUUID;
+    }
+
+    public void setWorldUUID(@Nonnull UUID worldUUID) {
+        this.worldUUID = worldUUID;
+    }
+
+    @Nonnull
+    public Vector3d getPosition() {
+        return position;
+    }
+
+    public void setPosition(@Nonnull Vector3d position) {
+        this.position = position;
+    }
+
+    @Nonnull
+    public Vector3f getRotation() {
+        return rotation;
+    }
+
+    public void setRotation(@Nonnull Vector3f rotation) {
+        this.rotation = rotation;
+    }
+
+    public void setCurrentPosition (@Nonnull Vector3d currentPosition) {
+        this.currentPosition = currentPosition;
+    }
+
+    @Nonnull
+    public Vector3d getCurrentPosition() {
+        return currentPosition;
+    }
+
+    public float getScale() {
+        return scale;
+    }
+
+    public void setScale(float scale) {
+        this.scale = sanitizeModelScale(scale);
+    }
+
+    @Nonnull
+    public String getRequiredPermission() {
+        return requiredPermission;
+    }
+
+    public void setRequiredPermission(@Nonnull String requiredPermission) {
+        this.requiredPermission = requiredPermission;
+    }
+
+    @Nonnull
+    public String getNoPermissionMessage() {
+        return noPermissionMessage;
+    }
+
+    public void setNoPermissionMessage(@Nonnull String noPermissionMessage) {
+        this.noPermissionMessage = noPermissionMessage;
+    }
+
+    @Nonnull
+    public List<CommandAction> getCommandActions() {
+        return new ArrayList<>(commandActions);
+    }
+
+    public void setCommandActions(@Nonnull List<CommandAction> commandActions) {
+        this.commandActions = new ArrayList<>(commandActions);
+    }
+
+    public void setSpawnedUUID(UUID spawnedUUID) {
+        this.spawnedUUID = spawnedUUID;
+    }
+
+    public UUID getSpawnedUUID() {
+        return spawnedUUID;
+    }
+
+    @Nonnull
+    public List<UUID> getHologramLineUuids() {
+        if (hologramLineUuids == null) {
+            hologramLineUuids = new ArrayList<>();
+        }
+        return hologramLineUuids;
+    }
+
+    public void setHologramLineUuids(@Nullable List<UUID> hologramLineUuids) {
+        this.hologramLineUuids = hologramLineUuids != null ? new ArrayList<>(hologramLineUuids) : new ArrayList<>();
+    }
+
+    public boolean requiresPermission() {
+        return !requiredPermission.isEmpty();
+    }
+
+    public boolean hasCommands() {
+        return !commandActions.isEmpty();
+    }
+
+    public boolean getRotateTowardsPlayer() {
+        return rotateTowardsPlayer;
+    }
+
+    public void setRotateTowardsPlayer(boolean rotateTowardsPlayer) {
+        this.rotateTowardsPlayer = rotateTowardsPlayer;
+    }
+
+    public float getLookAtDistance() {
+        return lookAtDistance;
+    }
+
+    public void setLookAtDistance(float lookAtDistance) {
+        this.lookAtDistance = lookAtDistance;
+    }
+
+    public boolean isPlayerModel() {
+        return isPlayerModel;
+    }
+
+    public void setPlayerModel(boolean playerModel) {
+        this.isPlayerModel = playerModel;
+    }
+
+    public boolean isUseLiveSkin() {
+        return useLiveSkin;
+    }
+
+    public void setUseLiveSkin(boolean useLiveSkin) {
+        this.useLiveSkin = useLiveSkin && !isGeneratedSkinUsername(this.skinUsername);
+    }
+
+    @Nonnull
+    public String getSkinUsername() {
+        return skinUsername;
+    }
+
+    public void setSkinUsername(@Nullable String skinUsername) {
+        this.skinUsername = skinUsername != null ? skinUsername : "";
+        if (isGeneratedSkinUsername(this.skinUsername)) {
+            this.useLiveSkin = false;
+        }
+    }
+
+    public Ref<EntityStore> getNpcRef() {
+        return npcRef;
+    }
+
+    public void setNpcRef(Ref<EntityStore> npcRef) {
+        this.npcRef = npcRef;
+    }
+
+    public String getNpcHelmet() {
+        return npcHelmet;
+    }
+
+    public void setNpcHelmet(String item) {
+        this.npcHelmet = item;
+    }
+
+    public String getNpcChest() {
+        return npcChest;
+    }
+
+    public void setNpcChest(String item) {
+        this.npcChest = item;
+    }
+
+    public String getNpcLeggings() {
+        return npcLeggings;
+    }
+
+    public void setNpcLeggings(String item) {
+        this.npcLeggings = item;
+    }
+
+    public String getNpcGloves() {
+        return npcGloves;
+    }
+
+    public void setNpcGloves(String item) {
+        this.npcGloves = item;
+    }
+
+    public String getNpcHand() {
+        return npcHand;
+    }
+
+    public void setNpcHand(String item) {
+        this.npcHand = item;
+    }
+
+    public String getNpcOffHand() {
+        return npcOffHand;
+    }
+
+    public void setNpcOffHand(String item) {
+        this.npcOffHand = item;
+    }
+
+    public void setHideNametag(boolean hideNametag) {
+        this.hideNametag = hideNametag;
+    }
+
+    public boolean isHideNametag() {
+        return hideNametag;
+    }
+
+    public void setHideNpc(boolean hideNpc) {
+        this.hideNpc = hideNpc;
+    }
+
+    public boolean isHideNpc() {
+        return hideNpc;
+    }
+
+    public void setNametagOffset(float offset) {
+        this.nametagOffset = offset;
+    }
+
+    public float getNametagOffset() {
+        return nametagOffset;
+    }
+
+    public boolean isModelNametagEnabled() {
+        return modelNametagEnabled;
+    }
+
+    public void setModelNametagEnabled(boolean modelNametagEnabled) {
+        this.modelNametagEnabled = modelNametagEnabled;
+    }
+
+    @Nonnull
+    public String getNametagModelId() {
+        return nametagModelId;
+    }
+
+    public void setNametagModelId(@Nullable String nametagModelId) {
+        this.nametagModelId = nametagModelId != null ? nametagModelId : "";
+    }
+
+    public float getNametagModelScale() {
+        return nametagModelScale;
+    }
+
+    public void setNametagModelScale(float nametagModelScale) {
+        this.nametagModelScale = sanitizeModelScale(nametagModelScale);
+    }
+
+    public boolean isRotateNametagTowardsPlayer() {
+        return rotateNametagTowardsPlayer;
+    }
+
+    public void setRotateNametagTowardsPlayer(boolean rotateNametagTowardsPlayer) {
+        this.rotateNametagTowardsPlayer = rotateNametagTowardsPlayer;
+    }
+
+    private static float sanitizeModelScale(float scale) {
+        if (!Float.isFinite(scale) || scale <= 0.0f) {
+            return MIN_MODEL_SCALE;
+        }
+        return Math.max(MIN_MODEL_SCALE, Math.min(MAX_MODEL_SCALE, scale));
+    }
+
+    public static boolean isGeneratedSkinUsername(@Nullable String skinUsername) {
+        if (skinUsername == null) {
+            return false;
+        }
+        return skinUsername.startsWith("random_") || skinUsername.startsWith("custom_");
+    }
+
+    @Nullable
+    public PlayerSkin getCachedSkin() {
+        return cachedSkin;
+    }
+
+    public void setCachedSkin(@Nullable PlayerSkin cachedSkin) {
+        this.cachedSkin = cachedSkin;
+    }
+
+    public long getLastSkinUpdate() {
+        return lastSkinUpdate;
+    }
+
+    public void setLastSkinUpdate(long lastSkinUpdate) {
+        this.lastSkinUpdate = lastSkinUpdate;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(long createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Deprecated
+    public void setFKeyInteractionEnabled(boolean enabled) {
+        this.fKeyInteractionEnabled = enabled;
+    }
+
+    @Deprecated
+    public boolean getFKeyInteractionEnabled() {
+        return fKeyInteractionEnabled;
+    }
+
+    public void setForceFKeyInteractionText(boolean enabled) {
+        this.forceFKeyInteractionText = enabled;
+    }
+
+    public boolean getForceFKeyInteractionText() {
+        return forceFKeyInteractionText;
+    }
+
+    public void setMapMarkerEnabled(boolean enabled) {
+        this.mapMarkerEnabled = enabled;
+    }
+
+    public boolean isMapMarkerEnabled() {
+        return mapMarkerEnabled;
+    }
+
+    public void setMapMarkerType(@Nullable String type) {
+        this.mapMarkerType = normalizeMapMarkerType(type);
+    }
+
+    @Nonnull
+    public String getMapMarkerType() {
+        return normalizeMapMarkerType(mapMarkerType);
+    }
+
+    public void setMapMarkerName(@Nullable String name) {
+        this.mapMarkerName = name != null ? name.trim() : "";
+    }
+
+    @Nonnull
+    public String getMapMarkerName() {
+        return mapMarkerName != null ? mapMarkerName : "";
+    }
+
+    @Nonnull
+    public static String normalizeMapMarkerType(@Nullable String type) {
+        if (type == null || type.isBlank()) {
+            return MAP_MARKER_TYPE_PIN;
+        }
+
+        String normalized = type.trim().toUpperCase(java.util.Locale.ROOT).replace('-', '_').replace(' ', '_');
+        if (normalized.equals("MONEY_BAG")) {
+            return MAP_MARKER_TYPE_MONEY_SYMBOL;
+        }
+
+        if (normalized.equals(MAP_MARKER_TYPE_DOT)
+                || normalized.equals(MAP_MARKER_TYPE_STAR)
+                || normalized.equals(MAP_MARKER_TYPE_DIAMOND)
+                || normalized.equals(MAP_MARKER_TYPE_SQUARE)
+                || normalized.equals(MAP_MARKER_TYPE_QUESTION)
+                || normalized.equals(MAP_MARKER_TYPE_EXCLAMATION)
+                || normalized.equals(MAP_MARKER_TYPE_MONEY_SYMBOL)
+                || normalized.equals(MAP_MARKER_TYPE_SHOP)
+                || normalized.equals(MAP_MARKER_TYPE_TRADER)
+                || normalized.equals(MAP_MARKER_TYPE_CHEST)
+                || normalized.equals(MAP_MARKER_TYPE_SWORD)
+                || normalized.equals(MAP_MARKER_TYPE_SHIELD)
+                || normalized.equals(MAP_MARKER_TYPE_HEART)
+                || normalized.equals(MAP_MARKER_TYPE_HOME)
+                || normalized.equals(MAP_MARKER_TYPE_NPC_TYPE)) {
+            return normalized;
+        }
+        return MAP_MARKER_TYPE_PIN;
+    }
+
+    @Nonnull
+    public List<AnimationBehavior> getAnimationBehaviors() {
+        return new ArrayList<>(animationBehaviors);
+    }
+
+    public void setAnimationBehaviors(@Nonnull List<AnimationBehavior> animationBehaviors) {
+        this.animationBehaviors = new ArrayList<>(animationBehaviors);
+    }
+
+    @Nonnull
+    public MovementBehavior getMovementBehavior() {
+        return movementBehavior;
+    }
+
+    public void setMovementBehavior(@Nonnull MovementBehavior movementBehavior) {
+        this.movementBehavior = movementBehavior;
+    }
+
+    @Nonnull
+    public ScheduleConfig getScheduleConfig() {
+        return scheduleConfig;
+    }
+
+    public void setScheduleConfig(@Nonnull ScheduleConfig scheduleConfig) {
+        this.scheduleConfig = scheduleConfig;
+    }
+
+    @Nonnull
+    public MessagesConfig getMessagesConfig() {
+        return messagesConfig;
+    }
+
+    public void setMessagesConfig(@Nonnull MessagesConfig messagesConfig) {
+        this.messagesConfig = messagesConfig;
+    }
+
+    @Nonnull
+    public DeathConfig getDeathConfig() { return deathConfig; }
+    public void setDeathConfig(@Nonnull DeathConfig deathConfig) { this.deathConfig = deathConfig; }
+
+    @Nonnull
+    public String getCommandSelectionMode() {
+        return commandSelectionMode;
+    }
+
+    public void setCommandSelectionMode(@Nonnull String commandSelectionMode) {
+        this.commandSelectionMode = commandSelectionMode;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialMessageIndex() {
+        return sequentialMessageIndex;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialCommandIndex() {
+        return sequentialCommandIndex;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialDeathMessageIndex() {
+        return sequentialDeathMessageIndex;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialDeathCommandIndex() {
+        return sequentialDeathCommandIndex;
+    }
+
+    @Nonnull
+    public Map<UUID, Boolean> getPlayersInProximity() {
+        return playersInProximity;
+    }
+
+    @Nonnull
+    public Map<UUID, ScheduledFuture<?>> getPendingLookResetTasks() {
+        if (pendingLookResetTasks == null) {
+            pendingLookResetTasks = new ConcurrentHashMap<>();
+        }
+        return pendingLookResetTasks;
+    }
+
+    @Nonnull
+    public Map<UUID, ScheduledFuture<?>> getPendingNametagLookResetTasks() {
+        if (pendingNametagLookResetTasks == null) {
+            pendingNametagLookResetTasks = new ConcurrentHashMap<>();
+        }
+        return pendingNametagLookResetTasks;
+    }
+
+    @Nonnull
+    public Map<String, Long> getLastTimedAnimationPlay() {
+        return lastTimedAnimationPlay;
+    }
+
+    @Nonnull
+    public Map<String, java.util.concurrent.ScheduledFuture<?>> getAnimationStopTasks() {
+        return animationStopTasks;
+    }
+
+    public boolean isFirstInteractionEnabled() {
+        return firstInteractionEnabled;
+    }
+
+    public void setFirstInteractionEnabled(boolean firstInteractionEnabled) {
+        this.firstInteractionEnabled = firstInteractionEnabled;
+    }
+
+    @Nonnull
+    public List<CommandAction> getFirstInteractionCommandActions() {
+        return new ArrayList<>(firstInteractionCommandActions);
+    }
+
+    public void setFirstInteractionCommandActions(@Nonnull List<CommandAction> firstInteractionCommandActions) {
+        this.firstInteractionCommandActions = new ArrayList<>(firstInteractionCommandActions);
+    }
+
+    @Nonnull
+    public MessagesConfig getFirstInteractionMessagesConfig() {
+        return firstInteractionMessagesConfig;
+    }
+
+    public void setFirstInteractionMessagesConfig(@Nonnull MessagesConfig firstInteractionMessagesConfig) {
+        this.firstInteractionMessagesConfig = firstInteractionMessagesConfig;
+    }
+
+    @Nonnull
+    public String getFirstInteractionCommandSelectionMode() {
+        return firstInteractionCommandSelectionMode;
+    }
+
+    public void setFirstInteractionCommandSelectionMode(@Nonnull String firstInteractionCommandSelectionMode) {
+        this.firstInteractionCommandSelectionMode = firstInteractionCommandSelectionMode;
+    }
+
+    @Nonnull
+    public String getPostFirstInteractionBehavior() {
+        return postFirstInteractionBehavior;
+    }
+
+    public void setPostFirstInteractionBehavior(@Nonnull String postFirstInteractionBehavior) {
+        this.postFirstInteractionBehavior = postFirstInteractionBehavior;
+    }
+
+    public boolean isRunNormalOnFirstInteraction() {
+        return runNormalOnFirstInteraction;
+    }
+
+    public void setRunNormalOnFirstInteraction(boolean runNormalOnFirstInteraction) {
+        this.runNormalOnFirstInteraction = runNormalOnFirstInteraction;
+    }
+
+    @Nonnull
+    public Set<UUID> getPlayersWhoCompletedFirstInteraction() {
+        return playersWhoCompletedFirstInteraction;
+    }
+
+    public void setPlayersWhoCompletedFirstInteraction(@Nonnull Set<UUID> playersWhoCompletedFirstInteraction) {
+        Set<UUID> copy = ConcurrentHashMap.newKeySet();
+        copy.addAll(playersWhoCompletedFirstInteraction);
+        this.playersWhoCompletedFirstInteraction = copy;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialFirstInteractionMessageIndex() {
+        return sequentialFirstInteractionMessageIndex;
+    }
+
+    @Nonnull
+    public Map<UUID, Integer> getSequentialFirstInteractionCommandIndex() {
+        return sequentialFirstInteractionCommandIndex;
+    }
+
+    @Nonnull
+    public String getAttitude() {
+        return attitude;
+    }
+
+    public void setAttitude(@Nonnull String attitude) {
+        this.attitude = attitude;
+    }
+
+    public boolean isTakesDamage() {
+        return takesDamage;
+    }
+
+    public void setTakesDamage(boolean takesDamage) {
+        this.takesDamage = takesDamage;
+    }
+
+    public boolean isOverrideHealth() { return overrideHealth; }
+    public void setOverrideHealth(boolean overrideHealth) { this.overrideHealth = overrideHealth; }
+
+    public float getHealthAmount() { return healthAmount; }
+    public void setHealthAmount(float healthAmount) { this.healthAmount = healthAmount; }
+
+    public boolean isOverrideDamage() { return overrideDamage; }
+    public void setOverrideDamage(boolean overrideDamage) { this.overrideDamage = overrideDamage; }
+
+    public float getDamageAmount() { return damageAmount; }
+    public void setDamageAmount(float damageAmount) { this.damageAmount = damageAmount; }
+
+    public boolean isHealthRegenEnabled() { return healthRegenEnabled; }
+    public void setHealthRegenEnabled(boolean healthRegenEnabled) { this.healthRegenEnabled = healthRegenEnabled; }
+
+    public float getHealthRegenAmount() { return healthRegenAmount; }
+    public void setHealthRegenAmount(float healthRegenAmount) { this.healthRegenAmount = healthRegenAmount; }
+
+    public float getHealthRegenIntervalSeconds() { return healthRegenIntervalSeconds; }
+    public void setHealthRegenIntervalSeconds(float healthRegenIntervalSeconds) { this.healthRegenIntervalSeconds = healthRegenIntervalSeconds; }
+
+    public float getHealthRegenDelayAfterDamageSeconds() { return healthRegenDelayAfterDamageSeconds; }
+    public void setHealthRegenDelayAfterDamageSeconds(float healthRegenDelayAfterDamageSeconds) { this.healthRegenDelayAfterDamageSeconds = healthRegenDelayAfterDamageSeconds; }
+
+    public long getLastDamageTakenAt() { return lastDamageTakenAt; }
+    public void setLastDamageTakenAt(long lastDamageTakenAt) { this.lastDamageTakenAt = lastDamageTakenAt; }
+
+    public long getLastHealthRegenAt() { return lastHealthRegenAt; }
+    public void setLastHealthRegenAt(long lastHealthRegenAt) { this.lastHealthRegenAt = lastHealthRegenAt; }
+
+    public boolean isRespawnOnDeath() {
+        return respawnOnDeath;
+    }
+
+    public void setRespawnOnDeath(boolean respawnOnDeath) {
+        this.respawnOnDeath = respawnOnDeath;
+    }
+
+    public float getRespawnDelaySeconds() {
+        return respawnDelaySeconds;
+    }
+
+    public void setRespawnDelaySeconds(float respawnDelaySeconds) {
+        this.respawnDelaySeconds = respawnDelaySeconds;
+    }
+
+    public boolean isAwaitingRespawn() {
+        if (awaitingRespawn && respawnReadyAtMillis > 0L && System.currentTimeMillis() >= respawnReadyAtMillis) {
+            awaitingRespawn = false;
+            respawnReadyAtMillis = 0L;
+        }
+        return awaitingRespawn;
+    }
+
+    public void setAwaitingRespawn(boolean awaitingRespawn) {
+        this.awaitingRespawn = awaitingRespawn;
+        if (!awaitingRespawn) {
+            this.respawnReadyAtMillis = 0L;
+        }
+    }
+
+    public void markAwaitingRespawnUntil(long respawnReadyAtMillis) {
+        this.awaitingRespawn = true;
+        this.respawnReadyAtMillis = Math.max(System.currentTimeMillis(), respawnReadyAtMillis);
+    }
+
+    public long getRespawnReadyAtMillis() {
+        return respawnReadyAtMillis;
+    }
+
+    public void setRespawnReadyAtMillis(long respawnReadyAtMillis) {
+        this.respawnReadyAtMillis = Math.max(0L, respawnReadyAtMillis);
+        this.awaitingRespawn = this.respawnReadyAtMillis > System.currentTimeMillis();
+        if (!this.awaitingRespawn) {
+            this.respawnReadyAtMillis = 0L;
+        }
+    }
+
+    public long getRemainingRespawnMillis() {
+        if (respawnReadyAtMillis <= 0L) {
+            return 0L;
+        }
+        return Math.max(0L, respawnReadyAtMillis - System.currentTimeMillis());
+    }
+
+    public long getLastDeathTime() {
+        return lastDeathTime;
+    }
+
+    public void setLastDeathTime(long lastDeathTime) {
+        this.lastDeathTime = lastDeathTime;
+    }
+
+    @Nonnull
+    public String getGroup() {
+        return group;
+    }
+
+    public void setGroup(@Nullable String group) {
+        this.group = normalizeGroupPath(group);
+    }
+
+    @Nonnull
+    private static String normalizeGroupPath(@Nullable String group) {
+        if (group == null) {
+            return "";
+        }
+
+        String normalized = group.trim().replace('\\', '/');
+        normalized = normalized.replaceAll("/+", "/");
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized.trim();
+    }
+
+    public boolean isFollowCitizenEnabled() {
+        return followCitizenEnabled;
+    }
+
+    public void setFollowCitizenEnabled(boolean followCitizenEnabled) {
+        this.followCitizenEnabled = followCitizenEnabled;
+    }
+
+    @Nonnull
+    public String getFollowCitizenId() {
+        return followCitizenId;
+    }
+
+    public void setFollowCitizenId(@Nullable String followCitizenId) {
+        this.followCitizenId = followCitizenId != null ? followCitizenId : "";
+    }
+
+    public float getFollowDistance() {
+        return followDistance;
+    }
+
+    public void setFollowDistance(float followDistance) {
+        this.followDistance = Math.max(0.1f, followDistance);
+    }
+
+    @Nonnull
+    public ScheduleRuntimeState getCurrentScheduleRuntimeState() {
+        return currentScheduleRuntimeState;
+    }
+
+    public void setCurrentScheduleRuntimeState(@Nonnull ScheduleRuntimeState currentScheduleRuntimeState) {
+        this.currentScheduleRuntimeState = currentScheduleRuntimeState;
+    }
+
+    @Nonnull
+    public String getCurrentScheduleEntryId() {
+        return currentScheduleEntryId;
+    }
+
+    public void setCurrentScheduleEntryId(@Nullable String currentScheduleEntryId) {
+        this.currentScheduleEntryId = currentScheduleEntryId != null ? currentScheduleEntryId : "";
+    }
+
+    @Nonnull
+    public String getCurrentScheduleRoleName() {
+        return currentScheduleRoleName;
+    }
+
+    public void setCurrentScheduleRoleName(@Nullable String currentScheduleRoleName) {
+        this.currentScheduleRoleName = currentScheduleRoleName != null ? currentScheduleRoleName : "";
+    }
+
+    @Nonnull
+    public String getCurrentScheduleStatusText() {
+        return currentScheduleStatusText;
+    }
+
+    public void setCurrentScheduleStatusText(@Nullable String currentScheduleStatusText) {
+        this.currentScheduleStatusText = currentScheduleStatusText != null ? currentScheduleStatusText : "";
+    }
+
+    @Nonnull
+    public CombatConfig getCombatConfig() {
+        return combatConfig;
+    }
+
+    public void setCombatConfig(@Nonnull CombatConfig combatConfig) {
+        this.combatConfig = combatConfig;
+    }
+
+    @Nonnull
+    public DetectionConfig getDetectionConfig() {
+        return detectionConfig;
+    }
+
+    public void setDetectionConfig(@Nonnull DetectionConfig detectionConfig) {
+        this.detectionConfig = detectionConfig;
+    }
+
+    @Nonnull
+    public PathConfig getPathConfig() {
+        return pathConfig;
+    }
+
+    public void setPathConfig(@Nonnull PathConfig pathConfig) {
+        this.pathConfig = pathConfig;
+    }
+
+    public float getMaxHealth() {
+        return maxHealth;
+    }
+
+    public void setMaxHealth(float maxHealth) {
+        this.maxHealth = maxHealth;
+    }
+
+    public float getLeashDistance() {
+        return leashDistance;
+    }
+
+    public void setLeashDistance(float leashDistance) {
+        this.leashDistance = leashDistance;
+    }
+
+    @Nonnull
+    public String getDefaultNpcAttitude() {
+        return defaultNpcAttitude;
+    }
+
+    public void setDefaultNpcAttitude(@Nonnull String defaultNpcAttitude) {
+        this.defaultNpcAttitude = defaultNpcAttitude;
+    }
+
+    public boolean isApplySeparation() {
+        return applySeparation;
+    }
+
+    public void setApplySeparation(boolean applySeparation) {
+        this.applySeparation = applySeparation;
+    }
+
+    // Extended Template_Citizen parameter getters/setters
+
+    @Nonnull
+    public String getDropList() { return dropList; }
+    public void setDropList(@Nonnull String dropList) { this.dropList = dropList; }
+
+    public float getRunThreshold() { return runThreshold; }
+    public void setRunThreshold(float runThreshold) { this.runThreshold = runThreshold; }
+
+    @Nonnull
+    public String getWakingIdleBehaviorComponent() { return wakingIdleBehaviorComponent; }
+    public void setWakingIdleBehaviorComponent(@Nonnull String v) { this.wakingIdleBehaviorComponent = v; }
+
+    @Nonnull
+    public String getDayFlavorAnimation() { return dayFlavorAnimation; }
+    public void setDayFlavorAnimation(@Nonnull String v) { this.dayFlavorAnimation = v; }
+
+    public float getDayFlavorAnimationLengthMin() { return dayFlavorAnimationLengthMin; }
+    public void setDayFlavorAnimationLengthMin(float v) { this.dayFlavorAnimationLengthMin = v; }
+
+    public float getDayFlavorAnimationLengthMax() { return dayFlavorAnimationLengthMax; }
+    public void setDayFlavorAnimationLengthMax(float v) { this.dayFlavorAnimationLengthMax = v; }
+
+    @Nonnull
+    public String getAttitudeGroup() { return attitudeGroup; }
+    public void setAttitudeGroup(@Nonnull String v) { this.attitudeGroup = v; }
+
+    @Nonnull
+    public String getNameTranslationKey() { return nameTranslationKey; }
+    public void setNameTranslationKey(@Nonnull String v) { this.nameTranslationKey = v; }
+
+    public boolean isBreathesInWater() { return breathesInWater; }
+    public void setBreathesInWater(boolean v) { this.breathesInWater = v; }
+
+    public float getLeashMinPlayerDistance() { return leashMinPlayerDistance; }
+    public void setLeashMinPlayerDistance(float v) { this.leashMinPlayerDistance = v; }
+
+    public float getLeashTimerMin() { return leashTimerMin; }
+    public void setLeashTimerMin(float v) { this.leashTimerMin = v; }
+
+    public float getLeashTimerMax() { return leashTimerMax; }
+    public void setLeashTimerMax(float v) { this.leashTimerMax = v; }
+
+    public float getHardLeashDistance() { return hardLeashDistance; }
+    public void setHardLeashDistance(float v) { this.hardLeashDistance = v; }
+
+    public int getDefaultHotbarSlot() { return defaultHotbarSlot; }
+    public void setDefaultHotbarSlot(int v) { this.defaultHotbarSlot = v; }
+
+    public int getRandomIdleHotbarSlot() { return randomIdleHotbarSlot; }
+    public void setRandomIdleHotbarSlot(int v) { this.randomIdleHotbarSlot = v; }
+
+    public int getChanceToEquipFromIdleHotbarSlot() { return chanceToEquipFromIdleHotbarSlot; }
+    public void setChanceToEquipFromIdleHotbarSlot(int v) { this.chanceToEquipFromIdleHotbarSlot = v; }
+
+    public int getDefaultOffHandSlot() { return defaultOffHandSlot; }
+    public void setDefaultOffHandSlot(int v) { this.defaultOffHandSlot = v; }
+
+    public int getNighttimeOffhandSlot() { return nighttimeOffhandSlot; }
+    public void setNighttimeOffhandSlot(int v) { this.nighttimeOffhandSlot = v; }
+
+    public float getKnockbackScale() { return knockbackScale; }
+    public void setKnockbackScale(float knockbackScale) { this.knockbackScale = knockbackScale; }
+
+    @Nonnull
+    public List<String> getWeapons() { return weapons; }
+    public void setWeapons(@Nonnull List<String> v) { this.weapons = new ArrayList<>(v); }
+
+    @Nonnull
+    public List<String> getOffHandItems() { return offHandItems; }
+    public void setOffHandItems(@Nonnull List<String> v) { this.offHandItems = new ArrayList<>(v); }
+
+    @Nonnull
+    public List<String> getCombatMessageTargetGroups() { return combatMessageTargetGroups; }
+    public void setCombatMessageTargetGroups(@Nonnull List<String> v) { this.combatMessageTargetGroups = new ArrayList<>(v); }
+
+    @Nonnull
+    public List<String> getFlockArray() { return flockArray; }
+    public void setFlockArray(@Nonnull List<String> v) { this.flockArray = new ArrayList<>(v); }
+
+    @Nonnull
+    public List<String> getDisableDamageGroups() { return disableDamageGroups; }
+    public void setDisableDamageGroups(@Nonnull List<String> v) { this.disableDamageGroups = new ArrayList<>(v); }
+}

@@ -4,8 +4,6 @@ import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 
-import java.util.logging.Logger;
-
 /**
  * Shared terrain-editing utilities used by both RescueQuestManager (quest prefab sites)
  * and ElfSage (wanderer tent site).
@@ -16,8 +14,8 @@ import java.util.logging.Logger;
  */
 public final class TerrainBlender {
 
-    private static final Logger LOGGER = Logger.getLogger(TerrainBlender.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.terrain");
     private TerrainBlender() {}
 
     // -------------------------------------------------------------------------

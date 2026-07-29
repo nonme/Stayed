@@ -22,8 +22,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.logging.Logger;
-
 /**
  * Centralised cleanup logic for the integration test framework.
  *
@@ -45,8 +43,8 @@ import java.util.logging.Logger;
  */
 public final class TestCleanup {
 
-    private static final Logger LOGGER = Logger.getLogger(TestCleanup.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("test");
     private TestCleanup() {}
 
     public static final class Result {
@@ -120,7 +118,7 @@ public final class TestCleanup {
                 store.removeEntity(ref, RemoveReason.REMOVE);
                 result.entitiesRemoved++;
             } catch (Exception e) {
-                LOGGER.warning("TestCleanup: removeEntity failed: " + e.getMessage());
+                LOG.warn("TestCleanup: removeEntity failed: " + e.getMessage());
             }
         }
 
@@ -144,7 +142,7 @@ public final class TestCleanup {
             if (entityUuid != null) {
                 if (!entityUuidsRemoved.contains(entityUuid)
                         && world.getEntity(entityUuid) == null) {
-                    NpcRegistry.get().markForRemoval(entityUuid, rec.chunkIndex);
+                    NpcRegistry.get().markForRemoval(rec.worldUuid, rec.worldName, entityUuid, rec.chunkIndex);
                     result.markedForDeferredRemoval++;
                 }
                 NpcRegistry.get().unregister(entityUuid);

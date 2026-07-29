@@ -6,8 +6,6 @@ import dev.hearthbound.village.BuildingRecord;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
-
 /**
  * Reads the world inside a farm's bbox and classifies every cell into actionable
  * categories for the farmer NPC: harvest, weed, replant, water.
@@ -24,8 +22,8 @@ import java.util.logging.Logger;
  */
 public final class FarmScanner {
 
-    private static final Logger LOGGER = Logger.getLogger(FarmScanner.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.scan");
     public enum Action { HARVEST, WEED, TILL, REPLANT, WATER }
 
     public record Target(int x, int y, int z, Action action, String cropType) {

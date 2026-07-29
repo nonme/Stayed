@@ -11,7 +11,6 @@ import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import dev.hearthbound.village.BuildingRecord;
 
-import java.util.logging.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,8 +22,8 @@ import java.util.Random;
  */
 public final class WarehouseDepositor {
 
-    private static final Logger LOGGER = Logger.getLogger(WarehouseDepositor.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.resource");
     // Food items villagers can plausibly eat raw. Wheat/rice and bulky cooking crops are
     // intentionally excluded until we add prepared food recipes.
     public static final String[] FOOD_ITEMS = {
@@ -39,15 +38,35 @@ public final class WarehouseDepositor {
         "Plant_Crop_Chilli_Item",
     };
 
-    // Same offsets as StorageChestReader (relative to Counter anchor, prefab-local before rotation)
-    private static final int[][] CHEST_OFFSETS = {
-        { -1,  0, -6 },
-        {  1,  0, -7 },
-        {  4,  0, -7 },
-        {  5,  0, -5 },
-    };
+    private static final int[][] CHEST_OFFSETS = StorageChestReader.CHEST_OFFSETS;
 
     private WarehouseDepositor() {}
+
+    /**
+     * Deposits into the durable warehouse storage stored in VillageData.
+     * This is the authoritative path for village simulation and works when
+     * warehouse chunks and physical chest containers are not loaded.
+     */
+    public static boolean depositAbstract(BuildingRecord warehouse, String itemId) {
+        if (warehouse == null || itemId == null || itemId.isBlank()) return false;
+        warehouse.addResource(itemId, 1);
+        return true;
+    }
+
+    /**
+     * Withdraws one edible item from durable warehouse storage.
+     * Physical chest withdrawal remains available for live visual interactions,
+     * but villager needs should use this path when simulating village state.
+     */
+    public static String withdrawRandomFoodAbstract(BuildingRecord warehouse, Random random) {
+        if (warehouse == null) return null;
+        List<String> foods = new ArrayList<>(List.of(FOOD_ITEMS));
+        Collections.shuffle(foods, random != null ? random : new Random());
+        for (String foodId : foods) {
+            if (warehouse.removeResource(foodId, 1) == 1) return foodId;
+        }
+        return null;
+    }
 
     /**
      * Tries to add one unit of {@code itemId} to any warehouse chest that has capacity.
@@ -77,7 +96,7 @@ public final class WarehouseDepositor {
             if (tryDepositAt(world, wx, wy, wz, itemId)) return true;
         }
 
-        LOGGER.fine("WarehouseDepositor: no room for " + itemId + " in warehouse at "
+        LOG.debug("WarehouseDepositor: no room for " + itemId + " in warehouse at "
                 + anchorX + "," + anchorY + "," + anchorZ);
         return false;
     }
@@ -100,7 +119,7 @@ public final class WarehouseDepositor {
             ItemStack remainder = result.getRemainder();
             return remainder == null || remainder.isEmpty();
         } catch (Exception e) {
-            LOGGER.warning("WarehouseDepositor: error at " + x + "," + y + "," + z + ": " + e.getMessage());
+            LOG.warn("WarehouseDepositor: error at " + x + "," + y + "," + z + ": " + e.getMessage());
             return false;
         }
     }
@@ -157,7 +176,7 @@ public final class WarehouseDepositor {
             var result = inv.removeItemStack(new ItemStack(itemId, 1), true, true);
             return result.succeeded();
         } catch (Exception e) {
-            LOGGER.warning("WarehouseDepositor.withdraw: error at " + x + "," + y + "," + z + ": " + e.getMessage());
+            LOG.warn("WarehouseDepositor.withdraw: error at " + x + "," + y + "," + z + ": " + e.getMessage());
             return false;
         }
     }

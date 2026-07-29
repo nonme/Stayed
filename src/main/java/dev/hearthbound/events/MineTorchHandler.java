@@ -37,7 +37,7 @@ public class MineTorchHandler extends EntityEventSystem<EntityStore, UseBlockEve
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.MINE_SIGN_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.MINE_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;

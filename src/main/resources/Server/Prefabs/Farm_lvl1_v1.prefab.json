@@ -1575,7 +1575,7 @@
       "x": -1,
       "y": 2,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "filler": 31,
       "rotation": 2
     },
@@ -1583,7 +1583,7 @@
       "x": -1,
       "y": 3,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "filler": 1055,
       "rotation": 2
     },
@@ -1849,14 +1849,14 @@
       "x": 0,
       "y": 2,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "rotation": 2
     },
     {
       "x": 0,
       "y": 3,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "filler": 1024,
       "rotation": 2
     },
@@ -2265,7 +2265,7 @@
       "x": 1,
       "y": 2,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "filler": 1,
       "rotation": 2
     },
@@ -2273,7 +2273,7 @@
       "x": 1,
       "y": 3,
       "z": 4,
-      "name": "Stayed_Scarecrow",
+      "name": "Stayed_Farm",
       "filler": 1025,
       "rotation": 2
     },

@@ -22,9 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Generates and applies a deterministic PlayerSkin for a human villager.
  *
@@ -48,8 +45,8 @@ import java.util.logging.Logger;
  */
 public final class VillagerAppearance {
 
-    private static final Logger LOGGER = Logger.getLogger(VillagerAppearance.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.skin");
     /** Below this villager index the archetype is forced to Peasant. */
     private static final int NORMALIZATION_THRESHOLD = 5;
 
@@ -63,7 +60,7 @@ public final class VillagerAppearance {
         try {
             CosmeticsModule cosmetics = CosmeticsModule.get();
             if (cosmetics == null) {
-                LOGGER.warning("CosmeticsModule not available, skipping villager skin");
+                LOG.warn("CosmeticsModule not available, skipping villager skin");
                 return;
             }
 
@@ -72,17 +69,17 @@ public final class VillagerAppearance {
 
             PlayerSkin skin = createHumanSkin(seed, villagerIndex);
             if (skin == null) {
-                LOGGER.warning("[skin] createHumanSkin returned null — entity=" + entityId);
+                LOG.warn("[skin] createHumanSkin returned null — entity=" + entityId);
                 return;
             }
 
             Model model = safeCreateModel(cosmetics, skin);
             if (model == null) {
-                LOGGER.warning("[skin] createModel failed, attempting repair — entity=" + entityId);
+                LOG.warn("[skin] createModel failed, attempting repair — entity=" + entityId);
                 model = tryRepairSkin(cosmetics, skin, seed, villagerIndex);
             }
             if (model == null) {
-                LOGGER.warning("[skin] fallback also failed — entity=" + entityId + " leaving default appearance");
+                LOG.warn("[skin] fallback also failed — entity=" + entityId + " leaving default appearance");
                 return;
             }
 
@@ -90,20 +87,20 @@ public final class VillagerAppearance {
 
             PlayerSkinComponent check = store.getComponent(npcRef, PlayerSkinComponent.getComponentType());
             if (check == null) {
-                LOGGER.warning("[skin] PlayerSkinComponent missing after putComponent — entity=" + entityId);
+                LOG.warn("[skin] PlayerSkinComponent missing after putComponent — entity=" + entityId);
             }
 
             store.putComponent(npcRef, ModelComponent.getComponentType(), new ModelComponent(model));
             fixPersistentModelScale(npcRef, store, model);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to apply villager appearance", e);
+            LOG.warn("Failed to apply villager appearance", e);
         }
     }
 
     public static PlayerSkin createHumanSkin(long seed, int villagerIndex) {
         CosmeticsModule cosmetics = CosmeticsModule.get();
         if (cosmetics == null) {
-            LOGGER.warning("CosmeticsModule not available — returning null skin");
+            LOG.warn("CosmeticsModule not available — returning null skin");
             return null;
         }
         CosmeticRegistry reg = cosmetics.getRegistry();
@@ -388,7 +385,7 @@ public final class VillagerAppearance {
                         model.getAnimationSetMap() == null));
             }
         } catch (Exception pmEx) {
-            LOGGER.warning("Could not fix PersistentModel for villager: " + pmEx.getMessage());
+            LOG.warn("Could not fix PersistentModel for villager: " + pmEx.getMessage());
         }
     }
 
@@ -396,7 +393,7 @@ public final class VillagerAppearance {
         try {
             return cosmetics.createModel(skin, 1.0f);
         } catch (Exception e) {
-            LOGGER.warning("createModel threw: " + e.getMessage());
+            LOG.warn("createModel threw: " + e.getMessage());
             return null;
         }
     }
@@ -448,7 +445,7 @@ public final class VillagerAppearance {
             field.apply(probe);
             Model model = safeCreateModel(cosmetics, probe);
             if (model != null) {
-                LOGGER.warning("Villager skin repaired by replacing '" + field.name + "' (seed="
+                LOG.warn("Villager skin repaired by replacing '" + field.name + "' (seed="
                         + seed + ", idx=" + villagerIndex + "); original=" + snapshot);
                 // Mutate the caller's skin so the PlayerSkinComponent stored on the NPC
                 // reflects the repair.
@@ -457,7 +454,7 @@ public final class VillagerAppearance {
             }
         }
 
-        LOGGER.warning("No single-field repair worked (seed=" + seed + ", idx=" + villagerIndex
+        LOG.warn("No single-field repair worked (seed=" + seed + ", idx=" + villagerIndex
                 + "); skin=" + snapshot + " — using donor skin");
         copySkin(donor, skin);
         return safeCreateModel(cosmetics, skin);

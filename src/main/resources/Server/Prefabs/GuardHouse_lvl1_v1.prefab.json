@@ -15448,14 +15448,14 @@
       "x": 5,
       "y": 1,
       "z": -1,
-      "name": "Stayed_Target_Dummy",
+      "name": "Stayed_Guard_House",
       "rotation": 1
     },
     {
       "x": 5,
       "y": 2,
       "z": -1,
-      "name": "Stayed_Target_Dummy",
+      "name": "Stayed_Guard_House",
       "filler": 1024,
       "rotation": 1
     },

@@ -29,13 +29,6 @@
     },
     "BlockParticleSetId": "Stone",
     "BlockSoundSetId": "Stone",
-    "Support": {
-      "Down": [
-        {
-          "FaceType": "Full"
-        }
-      ]
-    },
     "InteractionHint": "server.interactionHints.manage_forge",
     "Interactions": {
       "Use": "Open_Container"

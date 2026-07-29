@@ -9078,7 +9078,7 @@
       "x": -2,
       "y": 2,
       "z": 9,
-      "name": "Stayed_Lumbermill",
+      "name": "Stayed_Woodcutters_Hut",
       "rotation": 2
     },
     {
@@ -10377,7 +10377,7 @@
       "x": -1,
       "y": 2,
       "z": 9,
-      "name": "Stayed_Lumbermill",
+      "name": "Stayed_Woodcutters_Hut",
       "filler": 1,
       "rotation": 2
     },

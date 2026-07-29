@@ -6,17 +6,14 @@ import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.universe.world.World;
 
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Small helpers for swapping items in an NPC's hotbar slot 0 (the visible held item).
  * Pulled out of BuilderBehavior so the same logic can drive the farmer.
  */
 public final class HotbarUtil {
 
-    private static final Logger LOGGER = Logger.getLogger(HotbarUtil.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.hotbar");
     private HotbarUtil() {}
 
     /**
@@ -36,7 +33,7 @@ public final class HotbarUtil {
             }
             hotbar.addItemStackToSlot((short) 0, new ItemStack(itemId, 1));
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "HotbarUtil.setSlot0 failed for " + itemId, e);
+            LOG.debug("HotbarUtil.setSlot0 failed for " + itemId, e);
         }
     }
 
@@ -48,7 +45,7 @@ public final class HotbarUtil {
             if (inv == null) return;
             inv.getHotbar().setItemStackForSlot((short) 0, null);
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "HotbarUtil.clearSlot0 failed", e);
+            LOG.debug("HotbarUtil.clearSlot0 failed", e);
         }
     }
 
@@ -66,7 +63,7 @@ public final class HotbarUtil {
             if (stack == null || stack.isEmpty()) return null;
             return stack.getItemId();
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "HotbarUtil.readSlot0 failed", e);
+            LOG.debug("HotbarUtil.readSlot0 failed", e);
             return null;
         }
     }

@@ -1,0 +1,43 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Stayed_Tavern.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Bench_Cooking.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Benches/Cooking.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Weight": 1,
+        "Texture": "Blocks/Benches/Cooking_Texture.png"
+      }
+    ],
+    "HitboxType": "Bench_Cooking",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Stayed_Tavern"
+      }
+    },
+    "BlockParticleSetId": "Wood",
+    "BlockSoundSetId": "Wood",
+    "InteractionHint": "server.interactionHints.manage_tavern",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Stayed"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

@@ -21,9 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Built at server start from two LoadedAssetsEvents (Item + ItemDropList).
  * Mirrors JET's logic exactly:
@@ -38,7 +35,8 @@ public class CraftabilityIndex {
 
     public enum ObtainSource { CRAFTABLE, HAS_SOURCE, NONE }
 
-    private static final Logger LOGGER = Logger.getLogger(CraftabilityIndex.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.craftability");
     private static final Path DUMP_FILE = Paths.get("mods", "HearthboundData", "craftability.json");
 
     // Reflected once — Item.recipeToGenerate has no public getter.
@@ -50,7 +48,7 @@ public class CraftabilityIndex {
             f = Item.class.getDeclaredField("recipeToGenerate");
             f.setAccessible(true);
         } catch (NoSuchFieldException e) {
-            LOGGER.warning("CraftabilityIndex: could not reflect Item.recipeToGenerate — CRAFTABLE classification disabled");
+            LOG.warn("CraftabilityIndex: could not reflect Item.recipeToGenerate — CRAFTABLE classification disabled");
         }
         recipeField = f;
     }
@@ -63,7 +61,7 @@ public class CraftabilityIndex {
     public static void onItemsLoaded(LoadedAssetsEvent<String, Item, DefaultAssetMap<String, Item>> event) {
         Map<String, Item> items = event.getAssetMap().getAssetMap();
         if (items.isEmpty()) {
-            LOGGER.warning("CraftabilityIndex: Item LoadedAssetsEvent had no items");
+            LOG.warn("CraftabilityIndex: Item LoadedAssetsEvent had no items");
             return;
         }
         rebuildIndex(items);
@@ -85,7 +83,7 @@ public class CraftabilityIndex {
         }
 
         itemsWithDropSource = Collections.unmodifiableSet(withSource);
-        LOGGER.log(Level.INFO, "CraftabilityIndex: indexed {0} items with drop sources", withSource.size());
+        LOG.info("indexed " + withSource.size() + " items with drop sources");
 
         // Re-classify if items were already loaded
         if (!index.isEmpty()) {
@@ -109,8 +107,10 @@ public class CraftabilityIndex {
         }
 
         index = Collections.unmodifiableMap(result);
-        LOGGER.log(Level.INFO, "CraftabilityIndex built: {0} craftable, {1} has_source, {2} none",
-                new Object[]{craftable, hasSource, none});
+        LOG.with("craftable", craftable)
+           .with("hasSource", hasSource)
+           .with("none", none)
+           .info("CraftabilityIndex built");
     }
 
     private static ObtainSource classify(String itemId, Item item) {
@@ -195,9 +195,9 @@ public class CraftabilityIndex {
             }
 
             Files.move(tmp, DUMP_FILE, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            LOGGER.info("CraftabilityIndex saved to " + DUMP_FILE);
+            LOG.info("CraftabilityIndex saved to " + DUMP_FILE);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "CraftabilityIndex: failed to save dump", e);
+            LOG.warn("CraftabilityIndex: failed to save dump", e);
         }
     }
 }

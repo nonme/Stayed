@@ -40,7 +40,10 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("FoundingStoneX", Codec.INTEGER), VillageData::setFoundingStoneX, VillageData::getFoundingStoneX).add()
             .append(new KeyedCodec<>("FoundingStoneY", Codec.INTEGER), VillageData::setFoundingStoneY, VillageData::getFoundingStoneY).add()
             .append(new KeyedCodec<>("FoundingStoneZ", Codec.INTEGER), VillageData::setFoundingStoneZ, VillageData::getFoundingStoneZ).add()
+            .append(new KeyedCodec<>("WorldUuid", Codec.UUID_STRING), VillageData::setWorldUuid, VillageData::getWorldUuid).add()
+            .append(new KeyedCodec<>("WorldName", Codec.STRING), VillageData::setWorldName, VillageData::getWorldName).add()
             .append(new KeyedCodec<>("FoundedAtTick", Codec.LONG), VillageData::setFoundedAtTick, VillageData::getFoundedAtTick).add()
+            .append(new KeyedCodec<>("LastSimTimeEpochMs", Codec.LONG), VillageData::setLastSimTimeEpochMs, VillageData::getLastSimTimeEpochMs).add()
             .append(new KeyedCodec<>("ElfId", Codec.UUID_STRING), VillageData::setElfId, VillageData::getElfId).add()
             .append(new KeyedCodec<>("ElfName", Codec.STRING), VillageData::setElfName, VillageData::getElfName).add()
             .append(new KeyedCodec<>("Buildings", BUILDINGS_ARRAY_CODEC), VillageData::setBuildingsArray, VillageData::getBuildingsArray).add()
@@ -69,6 +72,7 @@ public class VillageData implements Component<EntityStore> {
             .append(new KeyedCodec<>("PathwayY", INT_ARRAY_CODEC), VillageData::setPathwayYArray, VillageData::getPathwayYArray).add()
             .append(new KeyedCodec<>("PathwayZ", INT_ARRAY_CODEC), VillageData::setPathwayZArray, VillageData::getPathwayZArray).add()
             .append(new KeyedCodec<>("PathwayOriginal", STRING_ARRAY_CODEC), VillageData::setPathwayOriginalArray, VillageData::getPathwayOriginalArray).add()
+            .append(new KeyedCodec<>("SchemaVersion", Codec.INTEGER), VillageData::setSchemaVersion, VillageData::getSchemaVersion).add()
             .build();
 
     private static ComponentType<EntityStore, VillageData> componentType;
@@ -90,7 +94,10 @@ public class VillageData implements Component<EntityStore> {
     private String villageName = "";
     private int stage = STAGE_NONE;
     private int foundingStoneX, foundingStoneY, foundingStoneZ;
+    private UUID worldUuid;
+    private String worldName = "";
     private long foundedAtTick = 0;
+    private long lastSimTimeEpochMs = 0L;
     private UUID elfId;
     private String elfName;
     private List<BuildingRecord> buildings = new ArrayList<>();
@@ -144,7 +151,34 @@ public class VillageData implements Component<EntityStore> {
      */
     private List<String> pathwayOriginals = new ArrayList<>();
 
+    /**
+     * Incremented when a migration rewrites in-memory data on load.
+     * Old saves missing this field deserialize to 0 and are migrated on first access.
+     * Current schema: 1 (sawmill → woodcutters_hut rename).
+     */
+    private int schemaVersion = 0;
+
     public VillageData() {}
+
+    public int getSchemaVersion() { return schemaVersion; }
+    public void setSchemaVersion(int v) { this.schemaVersion = v; }
+
+    /**
+     * Runs all in-memory migrations in order. Call once after loading from BSON
+     * (e.g. in VillageManager.getOrCreate). Idempotent — safe to call multiple times.
+     */
+    public void runMigrations() {
+        if (schemaVersion < 1) {
+            // v0.8.x stored the Woodcutter's Hut building as type "sawmill".
+            // Rename to the canonical WOODCUTTERS_HUT id.
+            for (BuildingRecord b : buildings) {
+                if (BuildingType.SAWMILL_LEGACY.equals(b.getType())) {
+                    b.setType(BuildingType.WOODCUTTERS_HUT);
+                }
+            }
+            schemaVersion = 1;
+        }
+    }
 
     // --- Village name ---
     public String getVillageName() { return villageName; }
@@ -169,9 +203,29 @@ public class VillageData implements Component<EntityStore> {
         this.foundingStoneZ = z;
     }
 
+    public UUID getWorldUuid() { return worldUuid; }
+    public void setWorldUuid(UUID worldUuid) { this.worldUuid = worldUuid; }
+    public String getWorldName() { return worldName; }
+    public void setWorldName(String worldName) { this.worldName = worldName != null ? worldName : ""; }
+
+    public void setWorld(UUID worldUuid, String worldName) {
+        this.worldUuid = worldUuid;
+        setWorldName(worldName);
+    }
+
+    public boolean belongsToWorld(UUID currentWorldUuid) {
+        return worldUuid == null || currentWorldUuid == null || worldUuid.equals(currentWorldUuid);
+    }
+
     // --- Founded tick ---
     public long getFoundedAtTick() { return foundedAtTick; }
     public void setFoundedAtTick(long tick) { this.foundedAtTick = tick; }
+
+    // --- Last abstract simulation time ---
+    public long getLastSimTimeEpochMs() { return lastSimTimeEpochMs; }
+    public void setLastSimTimeEpochMs(long lastSimTimeEpochMs) {
+        this.lastSimTimeEpochMs = Math.max(0L, lastSimTimeEpochMs);
+    }
 
     // --- Elf ---
     public UUID getElfId() { return elfId; }
@@ -441,7 +495,10 @@ public class VillageData implements Component<EntityStore> {
         copy.foundingStoneX = this.foundingStoneX;
         copy.foundingStoneY = this.foundingStoneY;
         copy.foundingStoneZ = this.foundingStoneZ;
+        copy.worldUuid = this.worldUuid;
+        copy.worldName = this.worldName;
         copy.foundedAtTick = this.foundedAtTick;
+        copy.lastSimTimeEpochMs = this.lastSimTimeEpochMs;
         copy.elfId = this.elfId;
         copy.buildings = new ArrayList<>(this.buildings);
         copy.villagers = new ArrayList<>(this.villagers);
@@ -469,6 +526,7 @@ public class VillageData implements Component<EntityStore> {
         copy.pathwayBlocks = new ArrayList<>();
         for (int[] p : this.pathwayBlocks) copy.pathwayBlocks.add(p.clone());
         copy.pathwayOriginals = new ArrayList<>(this.pathwayOriginals);
+        copy.schemaVersion = this.schemaVersion;
         return copy;
     }
 }

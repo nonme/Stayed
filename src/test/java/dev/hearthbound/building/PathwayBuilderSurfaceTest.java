@@ -11,7 +11,6 @@ public final class PathwayBuilderSurfaceTest {
         descendingStepUsesSlopedPathwayVariants();
         ascendingStepUsesSlopedPathwayVariants();
         descendingLowSideSlopeVariantsArePlacedAboveBasePathway();
-        warehouseLogisticsEndpointUsesBackPassageOffset();
         clearRestoresRecordedOriginalBlock();
         villageDataCopyKeepsPathwayOriginals();
     }
@@ -80,17 +79,6 @@ public final class PathwayBuilderSurfaceTest {
                 "quarter overlay should be placed one block above the low surface");
         assertEquals("Soil_Pathway", PathwayBuilder.basePathwayBlockForPathCell(path, 1),
                 "low side base block should remain a full pathway");
-    }
-
-    private static void warehouseLogisticsEndpointUsesBackPassageOffset() {
-        BuildingRecord warehouse = new BuildingRecord(BuildingType.WAREHOUSE, 100, 64, -20);
-        warehouse.setRotation(0);
-
-        int[] seed = PathwayBuilder.warehouseLogisticsSeed(warehouse);
-
-        assertEquals(97, seed[0], "warehouse logistics seed should target opposite-wall passage x");
-        assertEquals(64, seed[1], "warehouse logistics seed should keep anchor y");
-        assertEquals(-23, seed[2], "warehouse logistics seed should target opposite-wall passage z");
     }
 
     private static void clearRestoresRecordedOriginalBlock() {

@@ -8,10 +8,9 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
-
 public final class StayedRoleGenerator {
-    private static final Logger LOGGER = Logger.getLogger(StayedRoleGenerator.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.role.gen");
     private static final StayedRoleGenerator INSTANCE =
             new StayedRoleGenerator(StayedRoleAssetPackManager.rolesPath());
 
@@ -74,7 +73,7 @@ public final class StayedRoleGenerator {
             if (content.equals(previous)) return;
             Files.writeString(file, content, StandardCharsets.UTF_8);
             lastGeneratedContent.put(generatedRoleName, content);
-            LOGGER.info("[STAYED-ROLEGEN] wrote " + generatedRoleName);
+            LOG.info("[STAYED-ROLEGEN] wrote " + generatedRoleName);
         } catch (IOException e) {
             throw new IllegalStateException("Failed writing generated role " + generatedRoleName, e);
         }
@@ -96,14 +95,14 @@ public final class StayedRoleGenerator {
                     try {
                         Files.deleteIfExists(path);
                         lastGeneratedContent.remove(roleName);
-                        LOGGER.info("[STAYED-ROLEGEN] deleted stale " + roleName);
+                        LOG.info("[STAYED-ROLEGEN] deleted stale " + roleName);
                     } catch (IOException e) {
-                        LOGGER.warning("Failed deleting stale generated role " + roleName + ": " + e.getMessage());
+                        LOG.warn("Failed deleting stale generated role " + roleName + ": " + e.getMessage());
                     }
                 });
             }
         } catch (IOException e) {
-            LOGGER.warning("Failed scanning generated role directory: " + e.getMessage());
+            LOG.warn("Failed scanning generated role directory: " + e.getMessage());
         }
     }
 }

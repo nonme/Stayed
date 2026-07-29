@@ -7,8 +7,6 @@ import dev.hearthbound.util.TickScheduler;
 
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.Set;
 
 /**
@@ -21,8 +19,8 @@ import java.util.Set;
  */
 public class SiteClearer {
 
-    private static final Logger LOGGER = Logger.getLogger(SiteClearer.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.terrain");
     // Time from Mine animation start to block removal — timed to the swing impact.
     private static final long BREAK_IMPACT_MS = 100;
     // Pause after removing a block so the player sees the empty cell.
@@ -90,7 +88,7 @@ public class SiteClearer {
     }
 
     public void start() {
-        LOGGER.info("SiteClearer started (" + plan.size() + " blocks to scan)");
+        LOG.info("SiteClearer started (" + plan.size() + " blocks to scan)");
         scheduleNextTick(0);
     }
 
@@ -165,11 +163,11 @@ public class SiteClearer {
             }
 
             // All cells processed.
-            LOGGER.info("SiteClearer finished");
+            LOG.info("SiteClearer finished");
             if (onComplete != null) onComplete.run();
 
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "SiteClearer tick failed at index " + currentIndex, e);
+            LOG.warn("SiteClearer tick failed at index " + currentIndex, e);
             scheduleNextTick(100);
         }
     }

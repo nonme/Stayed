@@ -1,0 +1,43 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Stayed_Woodcutters_Hut.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Bench_Lumbermill.png",
+  "Categories": ["Blocks.Deco"],
+  "MaxStack": 1,
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Model",
+    "Opacity": "Transparent",
+    "CustomModel": "Blocks/Benches/Lumbermill.blockymodel",
+    "CustomModelTexture": [
+      {
+        "Weight": 1,
+        "Texture": "Blocks/Benches/Lumbermill_Texture.png"
+      }
+    ],
+    "HitboxType": "Bench_Lumbermill",
+    "VariantRotation": "NESW",
+    "Flags": {
+      "IsUsable": true
+    },
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Woods",
+        "ItemId": "Stayed_Woodcutters_Hut"
+      }
+    },
+    "BlockParticleSetId": "Wood",
+    "BlockSoundSetId": "Wood",
+    "InteractionHint": "server.interactionHints.manage_woodcutters",
+    "Interactions": {
+      "Use": "Open_Container"
+    }
+  },
+  "PlayerAnimationsId": "Block",
+  "Tags": {
+    "Type": ["Furniture"],
+    "Family": ["Stayed"]
+  },
+  "ItemSoundSetId": "ISS_Blocks_Wood"
+}

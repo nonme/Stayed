@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.logging.Logger;
 
 /**
  * Singleton runner for integration test packages and individual cases.
@@ -29,7 +28,8 @@ import java.util.logging.Logger;
  */
 public final class StayedIntegrationTestRunner {
 
-    private static final Logger LOGGER = Logger.getLogger(StayedIntegrationTestRunner.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("test");
     private static final long INTER_STEP_DELAY_MS = 100L;
 
     private static final StayedIntegrationTestRunner INSTANCE = new StayedIntegrationTestRunner();
@@ -81,7 +81,7 @@ public final class StayedIntegrationTestRunner {
     public void requestAbort() {
         if (currentStatus.get() != null) {
             abortRequested = true;
-            LOGGER.info("StayedIntegrationTestRunner: abort requested");
+            LOG.info("StayedIntegrationTestRunner: abort requested");
         }
     }
 
@@ -137,7 +137,7 @@ public final class StayedIntegrationTestRunner {
             TestCleanup.Result pre = TestCleanup.fullCleanup(world, store, playerRef);
             if (pre.entitiesRemoved > 0 || pre.registryUnregistered > 0
                     || pre.villageBuildingsRemoved > 0 || pre.villageSummariesRemoved > 0) {
-                LOGGER.info("StayedIntegrationTestRunner: pre-run cleanup removed stale test state: " + pre);
+                LOG.info("StayedIntegrationTestRunner: pre-run cleanup removed stale test state: " + pre);
             }
         }
 

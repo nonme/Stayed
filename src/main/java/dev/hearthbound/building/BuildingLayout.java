@@ -5,8 +5,6 @@ import dev.hearthbound.village.BuildingType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
-
 /**
  * Computes interior target and door/gate positions for each building type
  * by analysing the prefab at startup. Results are cached — computed once per type.
@@ -16,8 +14,8 @@ import java.util.logging.Logger;
  */
 public final class BuildingLayout {
 
-    private static final Logger LOGGER = Logger.getLogger(BuildingLayout.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.layout");
     /**
      * Immutable layout descriptor for one building type.
      *
@@ -98,7 +96,7 @@ public final class BuildingLayout {
                 PrefabLoader.loadNativeLocal(prefabName, anchorId, anchorPrefabY);
 
         if (blocks.isEmpty()) {
-            LOGGER.warning("BuildingLayout: no blocks loaded for type=" + type);
+            LOG.warn("BuildingLayout: no blocks loaded for type=" + type);
             return fallback();
         }
 
@@ -161,7 +159,7 @@ public final class BuildingLayout {
                 openBlock, closeBlock,
                 doors);
 
-        LOGGER.info(String.format("BuildingLayout computed for %s: center=(%d,%d)%s",
+        LOG.info(String.format("BuildingLayout computed for %s: center=(%d,%d)%s",
                 type, centerLX, centerLZ,
                 layout.hasDoor()
                         ? " door=(" + layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ() + ")"

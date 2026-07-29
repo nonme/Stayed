@@ -23,9 +23,6 @@ import dev.hearthbound.village.VillagerSummary;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * House management UI — opened when the player presses F on the Brazier anchor block.
  *
@@ -35,8 +32,8 @@ import java.util.logging.Logger;
  */
 public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(VillagerHousePage.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.villagerhouse");
     private final Ref<EntityStore> playerRef;
     private final PlayerRef networkPlayerRef;
     private final UUID ownerUuid;
@@ -82,6 +79,10 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 EventData.of(DialogEventData.ACTION_KEY, "deposit"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#StartBuildButton",
                 EventData.of(DialogEventData.ACTION_KEY, "start_build"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#DepositRepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "deposit_repair"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#RepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "repair"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#RecallButton",
@@ -182,6 +183,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         // hide the resource list and build controls (mirrors TownHallPage.populateTownHallCompleted).
         if (record != null && record.isCompleted()) {
             populateHouseCompleted(b);
+            renderRepairSection(b, record);
             return;
         }
 
@@ -203,6 +205,8 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
     private void populateHouseCompleted(UICommandBuilder b) {
         b.set("#ConstructionStatus.Text",
                 "The house stands complete. Upgrades coming in a future update.");
+        b.set("#ResourceListWrapper.Visible", false);
+        b.set("#ResourceHeader.Visible", false);
         b.set("#ResourceListContainer.Visible", false);
         b.set("#StartBuildButton.Visible", false);
         b.set("#DepositButton.Visible", false);
@@ -274,6 +278,37 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
             b.set("#StartBuildButton.Visible", false);
             b.set("#DepositButton.Visible", true);
             b.set("#DepositHint.Text", "Click Deposit to transfer matching resources from your inventory.");
+        }
+    }
+
+    private void renderRepairSection(UICommandBuilder b, BuildingRecord record) {
+        if (record == null || !record.isCompleted()) {
+            b.set("#RepairSection.Visible", false);
+            return;
+        }
+        b.set("#RepairSection.Visible", true);
+        Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+        b.clear("#RepairResourceContainer");
+        if (cost.isEmpty()) {
+            b.set("#RepairStatus.Text", "Building is intact — no repairs needed.");
+            b.set("#RepairResourceContainer.Visible", false);
+            b.set("#DepositRepairButton.Visible", false);
+            b.set("#RepairButton.Visible", false);
+            b.set("#RepairHint.Text", "");
+        } else {
+            b.set("#RepairStatus.Text", cost.size() + " block(s) need repair:");
+            b.set("#RepairResourceContainer.Visible", true);
+            String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+            Map<String, Integer> have = readStorage(record);
+            boolean hasDeficit = cost.entrySet().stream()
+                    .anyMatch(e -> have.getOrDefault(e.getKey(), 0) < e.getValue());
+            dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                    b, "#RepairResourceContainer", cost, have, language);
+            b.set("#DepositRepairButton.Visible", hasDeficit);
+            b.set("#RepairButton.Visible", !hasDeficit);
+            b.set("#RepairHint.Text", !hasDeficit
+                    ? "All materials ready — press Repair to restore the building."
+                    : "Deposit missing materials to repair.");
         }
     }
 
@@ -415,6 +450,51 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 populateConstructionTab(b, record);
                 sendUpdate(b, false);
             }
+
+            case "deposit_repair" -> {
+                if (!confirmed) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                BuildingRecord record = findHouseRecord(store);
+                if (record == null || !record.isCompleted()) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                Player player = store.getComponent(ref, Player.getComponentType());
+                if (player == null) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+                com.hypixel.hytale.protocol.GameMode gm = player.getGameMode();
+                boolean isCreative = gm != null && "Creative".equals(gm.name());
+                int deposited = isCreative
+                        ? depositCreative(record, cost)
+                        : depositFromInventory(player, record, cost);
+
+                VillageManager.get().save(store, playerRef, dv);
+
+                UICommandBuilder b = new UICommandBuilder();
+                b.set("#RepairHint.Text", isCreative
+                        ? (deposited > 0 ? "Creative: " + deposited + " items conjured." : "Nothing needed.")
+                        : (deposited > 0 ? "Deposited " + deposited + " items." : "No matching resources in inventory."));
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
+
+            case "repair" -> {
+                if (!confirmed) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                BuildingRecord record = findHouseRecord(store);
+                if (record == null || !record.isCompleted()) { UICommandBuilder b = new UICommandBuilder(); sendUpdate(b, false); return; }
+
+                BuildingSystem.get().startRepair(store, playerRef, world, record);
+
+                UICommandBuilder b = new UICommandBuilder();
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
         }
     }
 
@@ -491,7 +571,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
         // which direction is "into the room".
         double[] stand = BuildingType.getInteriorStandPoint(
                 house.getPosX(), house.getPosY(), house.getPosZ(), house.getRotation());
-        LOGGER.info("recallVillager: brazier=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
+        LOG.info("recallVillager: brazier=(" + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ()
                 + ") rotation=" + house.getRotation() + " → stand=(" + stand[0] + "," + stand[1] + "," + stand[2] + ")");
         VillageData village = VillageManager.get().getVillageData(world.getEntityStore().getStore(), playerRef);
         dev.hearthbound.npc.NpcRegistry.NpcRecord record =
@@ -517,7 +597,7 @@ public class VillagerHousePage extends InteractiveCustomUIPage<DialogEventData> 
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error depositing resources", e);
+            LOG.warn("Error depositing resources", e);
         }
         return totalDeposited;
     }

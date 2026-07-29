@@ -2,8 +2,6 @@ package dev.hearthbound.ui;
 
 import java.util.Set;
 import java.util.UUID;
-import java.util.logging.Logger;
-
 import com.hypixel.hytale.builtin.adventure.objectives.Objective;
 import com.hypixel.hytale.builtin.adventure.objectives.ObjectivePlugin;
 import com.hypixel.hytale.component.Ref;
@@ -45,8 +43,8 @@ import dev.hearthbound.village.VillagerData;
  */
 public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(RescueDialogPage.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.rescuedialog");
     static final String OBJECTIVE_ID = "Objective_RescueTrap_Rescue";
     public static final String OBJECTIVE_RETURN_ID = "Objective_RescueTrap_Return";
 
@@ -282,12 +280,12 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
             UUID rescueUuid = NpcManager.extractUuid(store, npcRef);
             if (rescueUuid == null) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: rescue NPC has no UUID");
+                LOG.warn("spawnFollowerAndAdvanceObjective: rescue NPC has no UUID");
                 return;
             }
             NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(rescueUuid);
             if (record == null) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: no registry record for rescue NPC " + rescueUuid);
+                LOG.warn("spawnFollowerAndAdvanceObjective: no registry record for rescue NPC " + rescueUuid);
                 return;
             }
 
@@ -297,7 +295,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             var npcEntity = store.getComponent(npcRef,
                     com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType());
             if (npcEntity == null) {
-                LOGGER.warning("spawnFollowerAndAdvanceObjective: NPCEntity null on rescue NPC");
+                LOG.warn("spawnFollowerAndAdvanceObjective: NPCEntity null on rescue NPC");
                 return;
             }
             NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
@@ -311,17 +309,17 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     false, "rescue-victim-to-follower");
 
             RescueQuestManager.registerFollower(npcRef);
-            LOGGER.info("Rescue NPC role-changed to follower (UUID: " + rescueUuid + ")");
+            LOG.info("Rescue NPC role-changed to follower (UUID: " + rescueUuid + ")");
 
         } catch (Exception e) {
-            LOGGER.warning("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());
+            LOG.warn("spawnFollowerAndAdvanceObjective failed: " + e.getMessage());
         }
     }
 
     private void spawnReturnMarker(Ref<EntityStore> playerRef, Store<EntityStore> store) {
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         if (village == null || !village.isFounded()) {
-            LOGGER.warning("spawnReturnMarker: no founded village, skipping marker");
+            LOG.warn("spawnReturnMarker: no founded village, skipping marker");
             return;
         }
         var pos = new com.hypixel.hytale.math.vector.Vector3d(
@@ -329,7 +327,7 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 village.getFoundingStoneY() + 1.0,
                 village.getFoundingStoneZ() + 0.5);
         RescueQuestManager.spawnReturnMarker(store, pos, playerRef);
-        LOGGER.info("Spawned Village_Return_Marker at founding stone " + pos);
+        LOG.info("Spawned Village_Return_Marker at founding stone " + pos);
     }
 
     private void advanceRescueObjective(Ref<EntityStore> playerRef, Store<EntityStore> store) {
@@ -349,12 +347,12 @@ public class RescueDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 if (objective == null) continue;
                 if (!OBJECTIVE_ID.equals(objective.getObjectiveId())) continue;
                 objective.complete(store);
-                LOGGER.info("Advanced rescue objective: " + OBJECTIVE_ID);
+                LOG.info("Advanced rescue objective: " + OBJECTIVE_ID);
                 return;
             }
-            LOGGER.warning("advanceRescueObjective: objective not found among active objectives");
+            LOG.warn("advanceRescueObjective: objective not found among active objectives");
         } catch (Exception e) {
-            LOGGER.warning("advanceRescueObjective failed: " + e.getMessage());
+            LOG.warn("advanceRescueObjective failed: " + e.getMessage());
         }
     }
 }

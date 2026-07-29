@@ -15,8 +15,6 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.building.BuildingSystem;
 import dev.hearthbound.village.BuildingType;
 
-import java.util.logging.Logger;
-
 /**
  * Handles BreakBlockEvent on the Founding Stone.
  *
@@ -29,8 +27,8 @@ import java.util.logging.Logger;
  */
 public class BlockBreakHandler extends EntityEventSystem<EntityStore, BreakBlockEvent> {
 
-    private static final Logger LOGGER = Logger.getLogger(BlockBreakHandler.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("event.block");
     public BlockBreakHandler() {
         super(BreakBlockEvent.class);
     }

@@ -1,22 +1,22 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Stayed_Mine_Sign.name"
+    "Name": "server.items.Stayed_Warehouse.name"
   },
-  "Icon": "Icons/ItemsGenerated/Furniture_Lumberjack_Sign.png",
+  "Icon": "Icons/ItemsGenerated/Furniture_Village_Counter.png",
   "Categories": ["Blocks.Deco"],
   "MaxStack": 1,
   "BlockType": {
     "Material": "Solid",
     "DrawType": "Model",
     "Opacity": "Transparent",
-    "CustomModel": "Blocks/Decorative_Sets/Lumberjack/Sign.blockymodel",
+    "CustomModel": "Blocks/Decorative_Sets/Village/Counter.blockymodel",
     "CustomModelTexture": [
       {
         "Weight": 1,
-        "Texture": "Blocks/Decorative_Sets/Lumberjack/Sign_Texture.png"
+        "Texture": "Blocks/Decorative_Sets/Village/Counter_Texture.png"
       }
     ],
-    "HitboxType": "Sign_Tall",
+    "HitboxType": "Desk",
     "VariantRotation": "NESW",
     "Flags": {
       "IsUsable": true
@@ -24,19 +24,17 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Stayed_Mine_Sign"
+        "ItemId": "Stayed_Warehouse"
       }
     },
     "BlockParticleSetId": "Wood",
     "BlockSoundSetId": "Wood",
-    "Support": {
-      "Down": [
-        {
-          "FaceType": "Full"
-        }
+    "Supporting": {
+      "Up": [
+        {}
       ]
     },
-    "InteractionHint": "server.interactionHints.manage_mine",
+    "InteractionHint": "server.interactionHints.manage_warehouse",
     "Interactions": {
       "Use": "Open_Container"
     }

@@ -13,7 +13,9 @@ public final class ResourceProducer {
     // Chance per village tick (every 5s) that a building produces anything.
     // FARM is not on the table any more — it's driven by FarmerWorkBehavior reading the
     // actual planted crops on the plot, so the village only gets what the farmer harvests.
-    public static final double SAWMILL_PRODUCE_CHANCE  = 0.25;
+    public static final double WOODCUTTERS_PRODUCE_CHANCE = 0.25;
+    /** @deprecated use WOODCUTTERS_PRODUCE_CHANCE */
+    public static final double SAWMILL_PRODUCE_CHANCE  = WOODCUTTERS_PRODUCE_CHANCE;
     public static final double MINE_PRODUCE_CHANCE     = 0.25;
 
     private record Drop(String itemId, double weight) {}
@@ -38,7 +40,8 @@ public final class ResourceProducer {
      */
     public static String roll(String buildingType, RandomGenerator rng) {
         return switch (buildingType) {
-            case BuildingType.SAWMILL  -> rollTable(SAWMILL_TABLE, SAWMILL_PRODUCE_CHANCE, rng);
+            case BuildingType.WOODCUTTERS_HUT, BuildingType.SAWMILL_LEGACY ->
+                    rollTable(SAWMILL_TABLE, WOODCUTTERS_PRODUCE_CHANCE, rng);
             case BuildingType.MINE     -> rollTable(MINE_TABLE,    MINE_PRODUCE_CHANCE,    rng);
             // FARM intentionally absent — see FarmerWorkBehavior.
             default -> null;

@@ -34,6 +34,13 @@
   Pressed: (Background: #143218, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #a8d8ac, FontSize: 13, RenderBold: true))
 );
 
+
+@RepairBtnStyle = TextButtonStyle(
+  Default: (Background: #4a2e10, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4a870, FontSize: 13, RenderBold: true)),
+  Hovered: (Background: #604020, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #f0c890, FontSize: 13, RenderBold: true)),
+  Pressed: (Background: #321e08, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4a870, FontSize: 13, RenderBold: true))
+);
+
 @CloseBtnStyle = TextButtonStyle(
   Default: (Background: #3a1a1a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11)),
   Hovered: (Background: #501e1e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #f0b0b0, FontSize: 11)),
@@ -313,7 +320,7 @@ Group {
       }
 
       // Scrollable resource list
-      Group {
+      Group #ResourceListWrapper {
         Anchor: (Top: 6, Height: 180);
         Background: #080c10;
         OutlineColor: #1a2530(0.8);
@@ -354,6 +361,66 @@ Group {
         Visible: false;
         Anchor: (Top: 8);
         Style: (HorizontalAlignment: Center, TextColor: #78c880, FontSize: 12, RenderBold: true);
+      }
+
+      // ── Repair section (visible only when building is completed) ──
+      Group #RepairSection {
+        Visible: false;
+        Anchor: (Left: 0, Right: 0);
+        LayoutMode: Top;
+
+        Group {
+          Anchor: (Top: 16, Height: 1);
+          Background: #2a1e10;
+        }
+
+        Label #RepairHeader {
+          Anchor: (Top: 10);
+          Style: (HorizontalAlignment: Start, TextColor: #8a6030, FontSize: 11, RenderBold: true);
+          Text: "REPAIR";
+        }
+
+        Label #RepairStatus {
+          Anchor: (Top: 4);
+          Style: (HorizontalAlignment: Start, TextColor: #6a8898, FontSize: 11);
+        }
+
+        Group {
+          Anchor: (Top: 6, Height: 100);
+          Background: #080c10;
+          OutlineColor: #1a2530(0.8);
+          OutlineSize: 1;
+
+          Group #RepairResourceContainer {
+            Anchor: (Full: 0);
+            LayoutMode: TopScrolling;
+            Padding: (Vertical: 6, Horizontal: 6);
+          }
+        }
+
+        Group {
+          LayoutMode: Center;
+          Anchor: (Top: 10, Left: 0, Right: 0, Height: 38);
+
+          TextButton #DepositRepairButton {
+            Anchor: (Width: 175, Height: 34);
+            Visible: false;
+            Style: @DepositBtnStyle;
+            Text: "Deposit Resources";
+          }
+
+          TextButton #RepairButton {
+            Anchor: (Left: 10, Width: 175, Height: 34);
+            Visible: false;
+            Style: @RepairBtnStyle;
+            Text: "Repair Building";
+          }
+        }
+
+        Label #RepairHint {
+          Anchor: (Top: 6);
+          Style: (HorizontalAlignment: Center, TextColor: #2e4050, FontSize: 10);
+        }
       }
     }
   }

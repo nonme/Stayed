@@ -2,9 +2,6 @@ package dev.hearthbound.ui;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -39,8 +36,8 @@ import dev.hearthbound.village.VillageManager;
  */
 public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(TownHallPage.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.townhall");
     // Suggested names: real GoT minor settlements + originals in the same vein
     private static final String[] VILLAGE_NAMES = {
             "Maidenpool", "Saltpans", "Wickenden", "Pinkmaiden",
@@ -116,6 +113,10 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 EventData.of(DialogEventData.ACTION_KEY, "deposit"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#StartBuildButton",
                 EventData.of(DialogEventData.ACTION_KEY, "start_build"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#DepositRepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "deposit_repair"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#RepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "repair"), false);
 
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
@@ -300,6 +301,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         // have their own anchors and UIs.
         if (townHallBuilt) {
             populateTownHallCompleted(builder);
+            renderRepairSection(builder, townHall);
             return;
         }
 
@@ -330,6 +332,8 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         builder.set("#ConstructionTitle.Text", BuildingType.getDisplayName(BuildingType.TOWN_HALL));
         builder.set("#ConstructionStatus.Text",
                 "The Town Hall stands complete. Upgrades coming in a future update.");
+        builder.set("#ResourceListWrapper.Visible", false);
+        builder.set("#ResourceHeader.Visible", false);
         builder.set("#ResourceListContainer.Visible", false);
         builder.set("#StartBuildButton.Visible", false);
         builder.set("#DepositButton.Visible", false);
@@ -417,6 +421,37 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
         }
     }
 
+    private void renderRepairSection(UICommandBuilder builder, BuildingRecord record) {
+        if (record == null || !record.isCompleted()) {
+            builder.set("#RepairSection.Visible", false);
+            return;
+        }
+        builder.set("#RepairSection.Visible", true);
+        Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+        builder.clear("#RepairResourceContainer");
+        if (cost.isEmpty()) {
+            builder.set("#RepairStatus.Text", "Building is intact — no repairs needed.");
+            builder.set("#RepairResourceContainer.Visible", false);
+            builder.set("#DepositRepairButton.Visible", false);
+            builder.set("#RepairButton.Visible", false);
+            builder.set("#RepairHint.Text", "");
+        } else {
+            builder.set("#RepairStatus.Text", cost.size() + " block(s) need repair:");
+            builder.set("#RepairResourceContainer.Visible", true);
+            String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+            Map<String, Integer> have = readBuildingStorage(record);
+            boolean hasDeficit = cost.entrySet().stream()
+                    .anyMatch(e -> have.getOrDefault(e.getKey(), 0) < e.getValue());
+            dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                    builder, "#RepairResourceContainer", cost, have, language);
+            builder.set("#DepositRepairButton.Visible", hasDeficit);
+            builder.set("#RepairButton.Visible", !hasDeficit);
+            builder.set("#RepairHint.Text", !hasDeficit
+                    ? "All materials ready — press Repair to restore the building."
+                    : "Deposit missing materials to repair.");
+        }
+    }
+
     // ========== Event handling ==========
 
     @Override
@@ -483,7 +518,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 try {
                     npcUuid = java.util.UUID.fromString(uuidStr);
                 } catch (IllegalArgumentException e) {
-                    LOGGER.warning("recall: invalid uuid '" + uuidStr + "'");
+                    LOG.warn("recall: invalid uuid '" + uuidStr + "'");
                     return;
                 }
                 VillageData v = VillageManager.get().getVillageData(store, playerRef);
@@ -495,7 +530,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 }
                 double[] stand = dev.hearthbound.building.BuildingLayout.townHallStandPoint(v);
                 if (stand == null) {
-                    LOGGER.warning("recall: town hall layout missing — village not founded?");
+                    LOG.warn("recall: town hall layout missing — village not founded?");
                     return;
                 }
                 dev.hearthbound.npc.NpcRegistry.NpcRecord record =
@@ -506,7 +541,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 boolean ok = record != null
                         ? dev.hearthbound.npc.NpcTeleporter.recall(world, record, stand[0], stand[1], stand[2])
                         : dev.hearthbound.npc.NpcTeleporter.recall(world, npcUuid, stand[0], stand[1], stand[2]);
-                LOGGER.info("recall: " + npcUuid + " → town hall stand=("
+                LOG.info("recall: " + npcUuid + " → town hall stand=("
                         + stand[0] + "," + stand[1] + "," + stand[2] + ") ok=" + ok);
             }
 
@@ -602,6 +637,49 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 populateConstructionTab(builder, village);
                 sendUpdate(builder, false);
             }
+
+            case "deposit_repair" -> {
+                if (!founded) return;
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) return;
+
+                BuildingRecord target = resolveTargetBuilding(dv);
+                if (target == null || !target.isCompleted()) return;
+
+                Player player = store.getComponent(ref, Player.getComponentType());
+                if (player == null) return;
+
+                Map<String, Integer> cost = BuildingSystem.getRepairCost(target, world);
+                com.hypixel.hytale.protocol.GameMode gm = player.getGameMode();
+                boolean isCreative = gm != null && "Creative".equals(gm.name());
+                int deposited = isCreative
+                        ? depositCreative(target, cost)
+                        : depositFromInventory(player, target, cost);
+
+                VillageManager.get().save(store, playerRef, dv);
+
+                UICommandBuilder builder = new UICommandBuilder();
+                builder.set("#RepairHint.Text", isCreative
+                        ? (deposited > 0 ? "Creative: " + deposited + " items conjured." : "Nothing needed.")
+                        : (deposited > 0 ? "Deposited " + deposited + " items." : "No matching resources in inventory."));
+                populateConstructionTab(builder, dv);
+                sendUpdate(builder, false);
+            }
+
+            case "repair" -> {
+                if (!founded) return;
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) return;
+
+                BuildingRecord target = resolveTargetBuilding(dv);
+                if (target == null || !target.isCompleted()) return;
+
+                BuildingSystem.get().startRepair(store, playerRef, world, target);
+
+                UICommandBuilder builder = new UICommandBuilder();
+                populateConstructionTab(builder, dv);
+                sendUpdate(builder, false);
+            }
         }
     }
 
@@ -645,7 +723,7 @@ public class TownHallPage extends InteractiveCustomUIPage<DialogEventData> {
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error depositing resources", e);
+            LOG.warn("Error depositing resources", e);
         }
         return totalDeposited;
     }

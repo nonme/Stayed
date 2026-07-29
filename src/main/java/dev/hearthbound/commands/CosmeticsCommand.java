@@ -19,12 +19,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
-
 public class CosmeticsCommand extends AbstractPlayerCommand {
 
-    private static final Logger LOGGER = Logger.getLogger(CosmeticsCommand.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.cosmetics");
     public CosmeticsCommand() {
         super("cosmetics", "Dump all cosmetic IDs to file cosmetics_dump.txt");
     }
@@ -91,11 +89,11 @@ public class CosmeticsCommand extends AbstractPlayerCommand {
             }
 
             ctx.sendMessage(Message.raw("Dumped all cosmetics to: " + outPath.toAbsolutePath()));
-            LOGGER.info("Cosmetics dump saved to: " + outPath.toAbsolutePath());
+            LOG.info("Cosmetics dump saved to: " + outPath.toAbsolutePath());
 
         } catch (Exception e) {
             ctx.sendMessage(Message.raw("Error: " + e.getMessage()));
-            LOGGER.warning("Cosmetics command error: " + e.getMessage());
+            LOG.warn("Cosmetics command error: " + e.getMessage());
         }
     }
 

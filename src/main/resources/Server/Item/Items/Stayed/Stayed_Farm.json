@@ -1,6 +1,6 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Stayed_Scarecrow.name"
+    "Name": "server.items.Stayed_Farm.name"
   },
   "Icon": "Icons/ItemsGenerated/Deco_Scarecrow.png",
   "Categories": ["Blocks.Deco"],
@@ -25,7 +25,7 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Stayed_Scarecrow"
+        "ItemId": "Stayed_Farm"
       }
     },
     "Interactions": {

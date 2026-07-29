@@ -1,0 +1,26 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Stayed_Founders_Almanac.name"
+  },
+  "MaxStack": 1,
+  "Utility": {
+    "Usable": true
+  },
+  "Model": "Items/Weapons/Spellbook/Grimoire.blockymodel",
+  "Texture": "Items/Weapons/Spellbook/Grimoire_Brown_Texture.png",
+  "Icon": "Icons/ItemsGenerated/Weapon_Spellbook_Grimoire_Brown.png",
+  "IconProperties": {
+    "Scale": 0.745,
+    "Translation": [-7.8, -7.8],
+    "Rotation": [45, 90, 0]
+  },
+  "UsePlayerAnimations": false,
+  "Interactions": {
+    "Secondary": "Stayed_OpenAlmanac"
+  },
+  "Tags": {
+    "Type": ["Tool"],
+    "Family": ["Stayed"]
+  },
+  "ItemSoundSetId": "ISS_Weapons_Books"
+}

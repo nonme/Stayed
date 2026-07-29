@@ -7384,7 +7384,7 @@
       "x": 2,
       "y": 4,
       "z": 5,
-      "name": "Bench_Builders",
+      "name": "Stayed_Sawmill",
       "components": {
         "Components": {
           "BenchBlock": {
@@ -7405,7 +7405,7 @@
       "x": 2,
       "y": 5,
       "z": 5,
-      "name": "Bench_Builders",
+      "name": "Stayed_Sawmill",
       "filler": 1024,
       "rotation": 2
     },
@@ -8348,7 +8348,7 @@
       "x": 3,
       "y": 4,
       "z": 5,
-      "name": "Bench_Builders",
+      "name": "Stayed_Sawmill",
       "filler": 1,
       "rotation": 2
     },
@@ -8356,7 +8356,7 @@
       "x": 3,
       "y": 5,
       "z": 5,
-      "name": "Bench_Builders",
+      "name": "Stayed_Sawmill",
       "filler": 1025,
       "rotation": 2
     },

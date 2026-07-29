@@ -9,8 +9,6 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.util.TickScheduler;
 
 import java.util.UUID;
-import java.util.logging.Logger;
-
 /**
  * Teleports a managed NPC to a fixed world position without disturbing its
  * behavior tree, role, leash, Frozen state, or any other runtime invariant.
@@ -45,7 +43,8 @@ import java.util.logging.Logger;
  */
 public final class NpcTeleporter {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcTeleporter.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.teleport");
     private static final long FORCE_LOAD_DELAY_MS = 1500L;
 
     private NpcTeleporter() {}
@@ -66,7 +65,7 @@ public final class NpcTeleporter {
 
         NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(knownEntityUuid);
         if (record == null) {
-            LOGGER.warning("NpcTeleporter.recall: no NpcRecord for uuid=" + knownEntityUuid
+            LOG.warn("NpcTeleporter.recall: no NpcRecord for uuid=" + knownEntityUuid
                     + " — orphaned village reference, cleanup will free it on the next tick");
             return false;
         }
@@ -82,7 +81,7 @@ public final class NpcTeleporter {
                                  double x, double y, double z) {
         if (record == null) return false;
         if (record.broken) {
-            LOGGER.warning("NpcTeleporter.recall: record " + record.npcId + " is broken — skipping");
+            LOG.warn("NpcTeleporter.recall: record " + record.npcId + " is broken — skipping");
             return false;
         }
 
@@ -102,7 +101,7 @@ public final class NpcTeleporter {
                     Store<EntityStore> liveStore = world.getEntityStore().getStore();
                     Ref<EntityStore> reloaded = NpcLiveEntityResolver.findLiveNpcByRecord(liveStore, record);
                     if (reloaded == null || !reloaded.isValid()) {
-                        LOGGER.warning("NpcTeleporter.recall: no live entity after force-load npcId="
+                        LOG.warn("NpcTeleporter.recall: no live entity after force-load npcId="
                                 + record.npcId + " — requesting guarded recovery at recall target");
                         NpcMissingEntityRecovery.request(world, record,
                                 new NpcMissingEntityRecovery.Target(x, y, z), "recall");
@@ -124,13 +123,13 @@ public final class NpcTeleporter {
         UUID liveUuid = uuidComponent != null ? uuidComponent.getUuid() : null;
         Entity entity = liveUuid != null ? world.getEntity(liveUuid) : null;
         if (entity == null) {
-            LOGGER.warning("NpcTeleporter.doMove: live ref has no resolvable Entity (npcId="
+            LOG.warn("NpcTeleporter.doMove: live ref has no resolvable Entity (npcId="
                     + record.npcId + ", liveUuid=" + liveUuid + ")");
             return;
         }
         removeStaleFrozen(store, ref, record, liveUuid);
         entity.moveTo(ref, x, y, z, store);
-        LOGGER.fine("NpcTeleporter.recall: " + record.npcId + " (uuid=" + liveUuid
+        LOG.debug("NpcTeleporter.recall: " + record.npcId + " (uuid=" + liveUuid
                 + ") → (" + x + "," + y + "," + z + ")");
 
         // Persist the new position immediately. NpcPositionTracker normally
@@ -149,10 +148,10 @@ public final class NpcTeleporter {
         try {
             if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
             store.tryRemoveComponent(ref, Frozen.getComponentType());
-            LOGGER.info("NpcTeleporter.recall: removed stale Frozen from npcId="
+            LOG.info("NpcTeleporter.recall: removed stale Frozen from npcId="
                     + record.npcId + " uuid=" + liveUuid);
         } catch (Exception e) {
-            LOGGER.fine("NpcTeleporter.recall: unfreeze failed for npcId="
+            LOG.debug("NpcTeleporter.recall: unfreeze failed for npcId="
                     + record.npcId + ": " + e.getMessage());
         }
     }

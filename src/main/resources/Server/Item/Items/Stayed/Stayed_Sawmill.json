@@ -1,22 +1,22 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Stayed_Counter.name"
+    "Name": "server.items.Stayed_Sawmill.name"
   },
-  "Icon": "Icons/ItemsGenerated/Furniture_Village_Counter.png",
+  "Icon": "Icons/ItemsGenerated/Bench_Architects.png",
   "Categories": ["Blocks.Deco"],
   "MaxStack": 1,
   "BlockType": {
     "Material": "Solid",
     "DrawType": "Model",
     "Opacity": "Transparent",
-    "CustomModel": "Blocks/Decorative_Sets/Village/Counter.blockymodel",
+    "CustomModel": "Blocks/Benches/Builder.blockymodel",
     "CustomModelTexture": [
       {
         "Weight": 1,
-        "Texture": "Blocks/Decorative_Sets/Village/Counter_Texture.png"
+        "Texture": "Blocks/Benches/Builder_Texture.png"
       }
     ],
-    "HitboxType": "Desk",
+    "HitboxType": "Bench_Architect",
     "VariantRotation": "NESW",
     "Flags": {
       "IsUsable": true
@@ -24,24 +24,12 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Stayed_Counter"
+        "ItemId": "Stayed_Sawmill"
       }
     },
-    "BlockParticleSetId": "Wood",
-    "BlockSoundSetId": "Wood",
-    "Support": {
-      "Down": [
-        {
-          "FaceType": "Full"
-        }
-      ]
-    },
-    "Supporting": {
-      "Up": [
-        {}
-      ]
-    },
-    "InteractionHint": "server.interactionHints.manage_warehouse",
+    "BlockParticleSetId": "Stone",
+    "BlockSoundSetId": "Stone",
+    "InteractionHint": "server.interactionHints.manage_sawmill",
     "Interactions": {
       "Use": "Open_Container"
     }

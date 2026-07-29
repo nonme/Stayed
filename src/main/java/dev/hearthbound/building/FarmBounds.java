@@ -6,8 +6,6 @@ import dev.hearthbound.village.BuildingType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
-
 /**
  * Computes the world-space bounding box that covers the planting area of a farm building.
  *
@@ -22,8 +20,8 @@ import java.util.logging.Logger;
  */
 public final class FarmBounds {
 
-    private static final Logger LOGGER = Logger.getLogger(FarmBounds.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.layout");
     public record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         public boolean contains(int x, int y, int z) {
             return x >= minX && x <= maxX
@@ -100,7 +98,7 @@ public final class FarmBounds {
         List<BlockPlacer.BlockEntry> blocks =
                 PrefabLoader.loadNativeLocal(prefabName, anchorId, anchorPrefabY);
         if (blocks.isEmpty()) {
-            LOGGER.warning("FarmBounds: no prefab blocks for type=" + type + " variant=" + variant);
+            LOG.warn("FarmBounds: no prefab blocks for type=" + type + " variant=" + variant);
             return null;
         }
 
@@ -130,14 +128,14 @@ public final class FarmBounds {
         }
 
         if (!any) {
-            LOGGER.warning("FarmBounds: no Soil_Dirt_Tilled / Plant_Crop_* blocks in prefab " + prefabName);
+            LOG.warn("FarmBounds: no Soil_Dirt_Tilled / Plant_Crop_* blocks in prefab " + prefabName);
             return null;
         }
 
         // Extend Y up by 2 to cover tall crops (corn, wheat StageFinal — root + filler stack).
         maxLY += 2;
 
-        LOGGER.info("FarmBounds local for " + type + ": x[" + minLX + ".." + maxLX + "]"
+        LOG.info("FarmBounds local for " + type + ": x[" + minLX + ".." + maxLX + "]"
                 + " y[" + minLY + ".." + maxLY + "] z[" + minLZ + ".." + maxLZ + "]");
         return new LocalBounds(minLX, minLY, minLZ, maxLX, maxLY, maxLZ);
     }

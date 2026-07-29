@@ -11,16 +11,14 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
-import java.util.logging.Logger;
-
 /**
  * Central manager for village lifecycle.
  * Handles village creation, state transitions, and NPC coordination.
  */
 public class VillageManager {
 
-    private static final Logger LOGGER = Logger.getLogger(VillageManager.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("village");
     private static VillageManager instance;
 
     public static VillageManager get() {
@@ -37,7 +35,9 @@ public class VillageManager {
      * Get village data for a player. Returns null if no village exists.
      */
     public VillageData getVillageData(Store<EntityStore> store, Ref<EntityStore> playerRef) {
-        return store.getComponent(playerRef, VillageData.getComponentType());
+        VillageData data = store.getComponent(playerRef, VillageData.getComponentType());
+        if (data != null) data.runMigrations();
+        return data;
     }
 
     /**
@@ -58,11 +58,12 @@ public class VillageManager {
     public void foundVillage(Store<EntityStore> store, Ref<EntityStore> playerRef, World world,
                              int x, int y, int z) {
         VillageData data = getOrCreateVillageData(store, playerRef);
+        data.setWorld(NpcRegistry.worldUuidOf(world), NpcRegistry.worldNameOf(world));
         data.setStage(VillageData.STAGE_FOUNDED);
         data.setFoundingStonePos(x, y, z);
         data.setFoundedAtTick(world.getTick());
         store.putComponent(playerRef, VillageData.getComponentType(), data);
-        LOGGER.info("Village founded at " + x + ", " + y + ", " + z);
+        LOG.info("Village founded at " + x + ", " + y + ", " + z);
     }
 
     /**
@@ -106,7 +107,7 @@ public class VillageManager {
             if (elf != null && elf.entityUuid != null) {
                 data.setElfId(elf.entityUuid);
                 changed++;
-                LOGGER.info("reconcileNpcReferences: elf " + elfId + " -> " + elf.entityUuid);
+                LOG.info("reconcileNpcReferences: elf " + elfId + " -> " + elf.entityUuid);
             }
         }
 
@@ -130,7 +131,7 @@ public class VillageManager {
             if (touched > 0) {
                 claimed.add(match);
                 changed += touched;
-                LOGGER.info("reconcileNpcReferences: villager " + summary.getFullName()
+                LOG.info("reconcileNpcReferences: villager " + summary.getFullName()
                         + " " + oldUuid + " -> " + match.entityUuid
                         + " npcId=" + match.npcId + " refs=" + touched);
             }
@@ -150,7 +151,7 @@ public class VillageManager {
         VillageData data = getOrCreateVillageData(store, playerRef);
         data.addBuilding(building);
         save(store, playerRef, data);
-        LOGGER.info("Building added: " + building.getType() + " at " +
+        LOG.info("Building added: " + building.getType() + " at " +
                 building.getPosX() + ", " + building.getPosY() + ", " + building.getPosZ());
     }
 
@@ -164,6 +165,42 @@ public class VillageManager {
             if (b.getAssignedVillagerId() == null) return b;
         }
         return null;
+    }
+
+    /**
+     * Finds the completed residential building assigned to a villager.
+     * This is the authoritative housing state; VillagerData.hasHouse is only a
+     * live-entity mirror and can be stale while the NPC chunk is unloaded.
+     */
+    public static BuildingRecord findHouseOf(VillageData data, UUID villagerUuid) {
+        if (data == null || villagerUuid == null) return null;
+        for (BuildingRecord b : data.getBuildings()) {
+            if (!b.isCompleted()) continue;
+            if (!BuildingType.isResidential(b.getType())) continue;
+            if (villagerUuid.equals(b.getAssignedVillagerId())) return b;
+        }
+        return null;
+    }
+
+    public static boolean hasHouse(VillageData data, UUID villagerUuid) {
+        return findHouseOf(data, villagerUuid) != null;
+    }
+
+    /**
+     * Advances needs that live entirely in VillageData. This path works even
+     * when no villager NPC entities or village chunks are loaded.
+     */
+    public static void tickHungerAbstract(VillageData village) {
+        if (village == null) return;
+        for (VillagerSummary summary : village.getVillagers()) {
+            if (summary == null || summary.getVillagerUuid() == null) continue;
+            summary.setHasHouse(hasHouse(village, summary.getVillagerUuid()));
+            if (VillagerData.PROF_FARMER.equals(summary.getProfession())) {
+                summary.setHunger(0);
+            } else {
+                summary.setHunger(summary.getHunger() + 1);
+            }
+        }
     }
 
     /**
@@ -184,7 +221,7 @@ public class VillageManager {
         }
 
         save(store, playerRef, data);
-        LOGGER.info("Villager " + villagerUuid + " assigned to house at "
+        LOG.info("Villager " + villagerUuid + " assigned to house at "
                 + house.getPosX() + "," + house.getPosY() + "," + house.getPosZ());
     }
 
@@ -251,11 +288,11 @@ public class VillageManager {
     }
 
     /**
-     * Returns the first completed sawmill, or null.
+     * Returns the first completed Woodcutter's Hut, or null.
      */
     public BuildingRecord findCompletedSawmill(VillageData data) {
         return data.getBuildings().stream()
-                .filter(b -> b.isCompleted() && BuildingType.SAWMILL.equals(b.getType()))
+                .filter(b -> b.isCompleted() && BuildingType.WOODCUTTERS_HUT.equals(b.getType()))
                 .findFirst().orElse(null);
     }
 
@@ -305,7 +342,7 @@ public class VillageManager {
             building.setAssignedVillagerId(uuid);
             save(store, playerRef, data);
 
-            LOGGER.info("Assigned " + profession + " profession to villager " + uuid);
+            LOG.info("Assigned " + profession + " profession to villager " + uuid);
             return uuid;
         }
         return null;
@@ -398,7 +435,7 @@ public class VillageManager {
             }
         }
         if (touched > 0) {
-            LOGGER.info("replaceVillagerUuid: " + oldUuid + " → " + newUuid + " (" + touched + " refs)");
+            LOG.info("replaceVillagerUuid: " + oldUuid + " → " + newUuid + " (" + touched + " refs)");
         }
         return touched;
     }
@@ -574,6 +611,6 @@ public class VillageManager {
         }
 
         save(store, playerRef, data);
-        LOGGER.info("Building completed: " + building.getType() + " (stage → " + data.getStage() + ")");
+        LOG.info("Building completed: " + building.getType() + " (stage → " + data.getStage() + ")");
     }
 }

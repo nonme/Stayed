@@ -37,7 +37,7 @@ public class BrazierHandler extends EntityEventSystem<EntityStore, UseBlockEvent
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.BRAZIER_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.HOUSE_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;

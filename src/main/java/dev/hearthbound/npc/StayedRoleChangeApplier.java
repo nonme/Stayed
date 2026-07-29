@@ -13,8 +13,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
-
 /**
  * Durable role-change path for registry-backed Stayed NPCs.
  *
@@ -25,7 +23,8 @@ import java.util.logging.Logger;
  */
 public final class StayedRoleChangeApplier {
 
-    private static final Logger LOGGER = Logger.getLogger(StayedRoleChangeApplier.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.role");
     private static final long RETRY_MS = 500L;
     private static final int MAX_RETRIES = 120;
     private static final Set<String> inFlight = ConcurrentHashMap.newKeySet();
@@ -75,11 +74,12 @@ public final class StayedRoleChangeApplier {
 
         int roleIndex = NPCPlugin.get().getIndex(generatedRole);
         if (roleIndex < 0) {
-            LOGGER.info("[STAYED-ROLECHANGE] generated role not indexed yet; pending"
-                    + " npcId=" + record.npcId
-                    + " generatedRole=" + generatedRole
-                    + " liveRole=" + liveRole
-                    + " reason=" + reason);
+            LOG
+                .with("npcId", record.npcId)
+                .with("generatedRole", generatedRole)
+                .with("liveRole", liveRole)
+                .with("reason", reason)
+                .debug("rolechange pending: generated role not indexed yet");
             schedule(record.npcId, generatedRole, world, changeAppearance, reason);
             return false;
         }
@@ -87,10 +87,12 @@ public final class StayedRoleChangeApplier {
         RoleChangeSystem.requestRoleChange(liveRef, npc.getRole(), roleIndex, changeAppearance, store);
         NpcRestorer.restoreAfterRoleChange(liveRef, world, record);
         scheduleVerification(record.npcId, generatedRole, world, changeAppearance, reason);
-        LOGGER.info("[STAYED-ROLECHANGE] applied npcId=" + record.npcId
-                + " liveRole=" + liveRole
-                + " generatedRole=" + generatedRole
-                + " reason=" + reason);
+        LOG
+            .with("npcId", record.npcId)
+            .with("liveRole", liveRole)
+            .with("generatedRole", generatedRole)
+            .with("reason", reason)
+            .debug("rolechange applied");
         return true;
     }
 
@@ -130,14 +132,14 @@ public final class StayedRoleChangeApplier {
                         }
                     }
                     if (++attempts[0] >= MAX_RETRIES) {
-                        LOGGER.warning("[STAYED-ROLECHANGE] pending role not applied before timeout"
+                        LOG.warn("[STAYED-ROLECHANGE] pending role not applied before timeout"
                                 + " npcId=" + npcId
                                 + " generatedRole=" + generatedRole
                                 + " reason=" + reason);
                         cancel(key, task[0]);
                     }
                 } catch (RuntimeException e) {
-                    LOGGER.warning("[STAYED-ROLECHANGE] retry failed npcId=" + npcId
+                    LOG.warn("[STAYED-ROLECHANGE] retry failed npcId=" + npcId
                             + " generatedRole=" + generatedRole
                             + " reason=" + reason
                             + " error=" + e.getMessage());
@@ -167,7 +169,7 @@ public final class StayedRoleChangeApplier {
                 String liveRole = npc != null && npc.getRole() != null
                         ? npc.getRole().getRoleName() : null;
                 if (!generatedRole.equals(liveRole)) {
-                    LOGGER.warning("[STAYED-ROLECHANGE] requested role did not settle; retrying"
+                    LOG.warn("[STAYED-ROLECHANGE] requested role did not settle; retrying"
                             + " npcId=" + npcId
                             + " generatedRole=" + generatedRole
                             + " liveRole=" + liveRole

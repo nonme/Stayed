@@ -14,15 +14,15 @@ import com.hypixel.hytale.server.core.event.events.ecs.UseBlockEvent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import dev.hearthbound.ui.SawmillPage;
+import dev.hearthbound.ui.WoodcuttersPage;
 import dev.hearthbound.village.BuildingType;
 
 /**
- * Intercepts F-key interaction on the Lumbermill anchor and opens the sawmill management UI.
+ * Intercepts F-key interaction on the Woodcutters anchor and opens the Woodcutter's Hut management UI.
  */
-public class LumbermillHandler extends EntityEventSystem<EntityStore, UseBlockEvent.Pre> {
+public class WoodcuttersHandler extends EntityEventSystem<EntityStore, UseBlockEvent.Pre> {
 
-    public LumbermillHandler() {
+    public WoodcuttersHandler() {
         super(UseBlockEvent.Pre.class);
     }
 
@@ -37,7 +37,7 @@ public class LumbermillHandler extends EntityEventSystem<EntityStore, UseBlockEv
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.LUMBERMILL_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.WOODCUTTERS_HUT_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;
@@ -56,7 +56,7 @@ public class LumbermillHandler extends EntityEventSystem<EntityStore, UseBlockEv
         World world = player.getWorld();
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
 
-        SawmillPage page = new SawmillPage(playerRef, ref, world, pos.x, pos.y, pos.z);
+        WoodcuttersPage page = new WoodcuttersPage(playerRef, ref, world, pos.x, pos.y, pos.z);
         player.getPageManager().openCustomPage(ref, store, page);
     }
 }

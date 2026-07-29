@@ -14,8 +14,6 @@ import dev.hearthbound.village.BuildingType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.logging.Logger;
-
 /**
  * Reads ItemContainerBlock contents from all Stayed_Storage_Chest blocks
  * that belong to a completed Warehouse.
@@ -25,22 +23,21 @@ import java.util.logging.Logger;
  */
 public class StorageChestReader {
 
-    private static final Logger LOGGER = Logger.getLogger(StorageChestReader.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.resource");
     /**
-     * Prefab-local offsets of each Storage Chest master block relative to the Counter anchor.
-     * Anchor is at prefab (-2, 1, 3) (no-filler Counter). Chests are at prefabY=1.
-     * Offsets = chest_prefab_pos - anchor_prefab_pos, but Y is same level (dy=0).
+     * Prefab-local offsets of each Storage Chest master block relative to the Warehouse anchor.
+     * Derived from Warehouse_lvl1_v2.prefab.json: anchor at (1,2,2).
+     * Master chests (container=true, no filler): (-6,2,0), (-5,5,3), (4,5,3), (6,2,1)
+     * dx = chest.x - anchor.x, dy = chest.y - anchor.y, dz = chest.z - anchor.z
      *
-     * Chest prefab positions (filler=0): (-3,1,-3), (-1,1,-4), (2,1,-4), (3,1,-2)
-     * Anchor prefab position:            (-2,1,3)
-     * dx = chest.x - anchor.x,  dz = chest.z - anchor.z
+     * WarehouseDepositor references this array directly — update both together or only here.
      */
-    private static final int[][] CHEST_OFFSETS = {
-        { -3 - (-2),  1 - 1,  -3 - 3 },   // (-1, 0, -6)
-        { -1 - (-2),  1 - 1,  -4 - 3 },   //  (1, 0, -7)
-        {  2 - (-2),  1 - 1,  -4 - 3 },   //  (4, 0, -7)
-        {  3 - (-2),  1 - 1,  -2 - 3 },   //  (5, 0, -5)
+    static final int[][] CHEST_OFFSETS = {
+        { -7,  0, -2 },
+        { -6,  3,  1 },
+        {  3,  3,  1 },
+        {  5,  0, -1 },
     };
 
     /**
@@ -76,7 +73,7 @@ public class StorageChestReader {
             readChestAt(world, wx, wy, wz, totals);
         }
 
-        LOGGER.info("StorageChestReader: read " + totals.size() + " unique items from warehouse at "
+        LOG.info("StorageChestReader: read " + totals.size() + " unique items from warehouse at "
                 + anchorX + "," + anchorY + "," + anchorZ + " rotation=" + record.getRotation());
         return totals;
     }
@@ -85,7 +82,7 @@ public class StorageChestReader {
         try {
             WorldChunk chunk = world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(x, z));
             if (chunk == null) {
-                LOGGER.warning("StorageChestReader: chunk not loaded at " + x + "," + y + "," + z);
+                LOG.warn("StorageChestReader: chunk not loaded at " + x + "," + y + "," + z);
                 return;
             }
 
@@ -95,7 +92,7 @@ public class StorageChestReader {
                 // Fallback to live Ref
                 Ref<ChunkStore> blockRef = chunk.getBlockComponentEntity(x, y, z);
                 if (blockRef == null) {
-                    LOGGER.warning("StorageChestReader: no block entity at " + x + "," + y + "," + z);
+                    LOG.warn("StorageChestReader: no block entity at " + x + "," + y + "," + z);
                     return;
                 }
                 ItemContainerBlock container = world.getChunkStore().getStore().getComponent(
@@ -107,13 +104,13 @@ public class StorageChestReader {
             ItemContainerBlock container = holder.getComponent(
                     BlockModule.get().getItemContainerBlockComponentType());
             if (container == null) {
-                LOGGER.warning("StorageChestReader: no ItemContainerBlock at " + x + "," + y + "," + z);
+                LOG.warn("StorageChestReader: no ItemContainerBlock at " + x + "," + y + "," + z);
                 return;
             }
 
             readContainer(container, totals);
         } catch (Exception e) {
-            LOGGER.warning("StorageChestReader: error reading chest at " + x + "," + y + "," + z + ": " + e);
+            LOG.warn("StorageChestReader: error reading chest at " + x + "," + y + "," + z + ": " + e);
         }
     }
 

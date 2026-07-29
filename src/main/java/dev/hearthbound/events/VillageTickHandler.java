@@ -35,8 +35,6 @@ import dev.hearthbound.village.VillagerSummary;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Logger;
-
 /**
  * Periodic handler for village lifecycle events:
  * - Converting any live rescue followers into villagers (no proximity check —
@@ -47,8 +45,10 @@ import java.util.logging.Logger;
  */
 public class VillageTickHandler {
 
-    private static final Logger LOGGER = Logger.getLogger(VillageTickHandler.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("event.tick");
     private static final long TICK_INTERVAL_MS = 5000;
+    public static final int MAX_CATCH_UP_TICKS = 1000;
     private static final double WORK_START = 6.0;
     private static final double WORK_END   = 20.0;
 
@@ -74,7 +74,7 @@ public class VillageTickHandler {
             tick(liveStore, playerRef, world);
         });
 
-        LOGGER.info("VillageTickHandler started");
+        LOG.info("VillageTickHandler started");
     }
 
     /**
@@ -108,6 +108,41 @@ public class VillageTickHandler {
         return villagerScheduler;
     }
 
+    public static int catchUpTicksDue(long lastMs, long nowMs) {
+        if (lastMs <= 0 || nowMs <= lastMs) return 0;
+        long ticks = (nowMs - lastMs) / TICK_INTERVAL_MS;
+        return (int) Math.min(MAX_CATCH_UP_TICKS, ticks);
+    }
+
+    public void runCatchUp(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
+        runCatchUp(store, playerRef, world, System.currentTimeMillis());
+    }
+
+    void runCatchUp(Store<EntityStore> store, Ref<EntityStore> playerRef, World world, long nowMs) {
+        if (playerRef == null || !playerRef.isValid()) return;
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null || !village.isFounded()) return;
+        if (!village.belongsToWorld(NpcRegistry.worldUuidOf(world))) return;
+
+        long lastMs = village.getLastSimTimeEpochMs();
+        if (lastMs <= 0) {
+            village.setLastSimTimeEpochMs(nowMs);
+            VillageManager.get().save(store, playerRef, village);
+            return;
+        }
+
+        int ticks = catchUpTicksDue(lastMs, nowMs);
+        if (ticks <= 0) return;
+        for (int i = 0; i < ticks; i++) {
+            runAbstractTick(store, playerRef, village, world, false);
+            village = VillageManager.get().getVillageData(store, playerRef);
+            if (village == null) return;
+        }
+        village.setLastSimTimeEpochMs(nowMs);
+        VillageManager.get().save(store, playerRef, village);
+        LOG.info("Village catch-up completed: ticks=" + ticks);
+    }
+
     private void tick(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
         if (!playerRef.isValid()) {
             stop();
@@ -116,6 +151,7 @@ public class VillageTickHandler {
 
         VillageData village = VillageManager.get().getVillageData(store, playerRef);
         if (village == null || !village.isFounded()) return;
+        if (!village.belongsToWorld(NpcRegistry.worldUuidOf(world))) return;
 
         convertAllFollowers(store, playerRef, village, world);
         int reconciled = VillageManager.get().reconcileNpcReferences(store, playerRef, village, world);
@@ -123,23 +159,31 @@ public class VillageTickHandler {
             village = VillageManager.get().getVillageData(store, playerRef);
             if (village == null) return;
         }
-        // Free buildings whose assigned villager is permanently lost. Runs
-        // before the assign* passes so a freed slot can immediately be picked
-        // up by another villager on the same tick — no empty house or
-        // workplace lingers when there's a candidate available.
-        cleanupOrphanedAssignments(store, playerRef, village, world);
-        // Re-read in case cleanup mutated village state via save().
+        runAbstractTick(store, playerRef, village, world, true);
         village = VillageManager.get().getVillageData(store, playerRef);
         if (village == null) return;
+        syncLoadedVillagerNeeds(store, village);
+        villagerScheduler.tick(store, playerRef, village, world);
+    }
+
+    private void runAbstractTick(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                                 VillageData village, World world, boolean updateTimestamp) {
+        cleanupOrphanedAssignments(store, playerRef, village, world);
+        village = VillageManager.get().getVillageData(store, playerRef);
+        if (village == null) return;
+
         assignHomelessVillagers(store, playerRef, village, world);
         assignUnstaffedFarms(store, playerRef, village);
         assignUnstaffedSawmills(store, playerRef, village);
         assignUnstaffedMines(store, playerRef, village);
         assignUnstaffedGuardHouses(store, playerRef, village);
         assignUnstaffedForges(store, playerRef, village);
-        tickHunger(store, village);
+        VillageManager.tickHungerAbstract(village);
         tickProduction(store, playerRef, village, world);
-        villagerScheduler.tick(store, playerRef, village, world);
+        if (updateTimestamp) {
+            village.setLastSimTimeEpochMs(System.currentTimeMillis());
+        }
+        VillageManager.get().save(store, playerRef, village);
     }
 
     private void convertAllFollowers(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -154,6 +198,7 @@ public class VillageTickHandler {
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
             if (record.interaction != NpcRegistry.InteractionType.RESCUE
                     && record.interaction != NpcRegistry.InteractionType.FOLLOWER) continue;
+            if (!record.belongsToWorld(NpcRegistry.worldUuidOf(world))) continue;
             if (record.entityUuid == null) continue;
 
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
@@ -174,7 +219,7 @@ public class VillageTickHandler {
                 // Registry already says Follower → re-issue the role change.
                 StayedRoleChangeApplier.applyOrSchedule(ref, store, world, record,
                         false, "convert-followers-reapply");
-                LOGGER.info("convertAllFollowers: ensured Trapped->Follower role change for uuid="
+                LOG.info("convertAllFollowers: ensured Trapped->Follower role change for uuid="
                         + record.entityUuid);
             }
         }
@@ -232,7 +277,7 @@ public class VillageTickHandler {
                         false, "follower-to-villager");
             }
 
-            LOGGER.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");
+            LOG.info(() -> "Rescue follower converted to villager (total: " + village.getVillagerCount() + ")");
 
             // On the next tick (after RoleChangeSystem applies the new role):
             // - if the villager is far from the village, teleport them next to the player
@@ -266,7 +311,7 @@ public class VillageTickHandler {
                         entity.moveTo(followerRef,
                                 playerPos.getX() + 2.0, playerPos.getY(), playerPos.getZ() + 2.0,
                                 liveStore);
-                        LOGGER.fine("Teleported new villager next to player (was far from village)");
+                        LOG.debug("Teleported new villager next to player (was far from village)");
                     }
                 }
 
@@ -287,20 +332,17 @@ public class VillageTickHandler {
             });
 
         } catch (Exception e) {
-            LOGGER.warning("convertFollowerToVillager failed: " + e.getMessage());
+            LOG.warn("convertFollowerToVillager failed: " + e.getMessage());
         }
     }
 
-    // Hunger increase per tick (every 5 seconds)
-    private static final int HUNGER_PER_TICK = 1;
-
     /**
-     * Increases hunger for every registered villager and saves updated VillagerData.
+     * Mirrors abstract VillageData needs onto live villager entities.
      * Iterates over NPCEntity chunks to find live villagers by UUID.
      * Profession is read from VillagerSummary (VillageData BSON), not VillagerData component
      * — VillagerData.getProfession() always returns PROF_NONE on live entities.
      */
-    private void tickHunger(Store<EntityStore> store, VillageData village) {
+    private void syncLoadedVillagerNeeds(Store<EntityStore> store, VillageData village) {
         Archetype<EntityStore> query = Archetype.of(NPCEntity.getComponentType());
         store.forEachChunk(query, (chunk, buffer) -> {
             for (int i = 0; i < chunk.size(); i++) {
@@ -314,16 +356,15 @@ public class VillageTickHandler {
                     VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
                     if (summary == null) continue;
 
-                    // Farmers eat what they grow — keep them at 0 hunger always
-                    if (VillagerData.PROF_FARMER.equals(summary.getProfession())) {
-                        if (data.getHunger() > 0) {
-                            data.setHunger(0);
-                            store.putComponent(ref, VillagerData.getComponentType(), data);
-                        }
-                        continue;
-                    }
-                    data.setHunger(data.getHunger() + HUNGER_PER_TICK);
+                    // Summary is the durable source of truth while chunks are unloaded.
+                    data.setHunger(summary.getHunger());
+                    data.setHasHouse(VillageManager.hasHouse(village, uuid));
+                    data.setProfession(summary.getProfession());
                     store.putComponent(ref, VillagerData.getComponentType(), data);
+
+                    // Keep the legacy summary field current for UI paths not yet migrated.
+                    summary.setHunger(data.getHunger());
+                    summary.setHasHouse(data.isHasHouse());
                 } catch (Exception ignored) {}
             }
         });
@@ -341,7 +382,7 @@ public class VillageTickHandler {
 
         BuildingRecord warehouse = VillageManager.get().findCompletedWarehouse(village);
         if (warehouse == null) {
-            LOGGER.info("tickProduction: no completed warehouse, skipping");
+            LOG.info("tickProduction: no completed warehouse, skipping");
             return;
         }
 
@@ -351,12 +392,12 @@ public class VillageTickHandler {
 
             String type = building.getType();
             String itemId = ResourceProducer.roll(type, rng);
-            LOGGER.info("tickProduction: " + type + " assigned=" + building.getAssignedVillagerId()
+            LOG.info("tickProduction: " + type + " assigned=" + building.getAssignedVillagerId()
                     + " rolled=" + (itemId != null ? itemId : "nothing"));
             if (itemId == null) continue;
 
-            boolean deposited = WarehouseDepositor.deposit(world, warehouse, itemId);
-            LOGGER.info("tickProduction: deposit " + itemId + " → " + (deposited ? "OK" : "FAILED/FULL"));
+            boolean deposited = WarehouseDepositor.depositAbstract(warehouse, itemId);
+            LOG.info("tickProduction: deposit " + itemId + " → " + (deposited ? "OK" : "FAILED/FULL"));
         }
     }
 
@@ -406,14 +447,14 @@ public class VillageTickHandler {
                 if (rewritten > 0) {
                     assigned = record.entityUuid;
                     anyFreed = true;
-                    LOGGER.info("cleanupOrphanedAssignments: rewrote stale assignment refs to "
+                    LOG.info("cleanupOrphanedAssignments: rewrote stale assignment refs to "
                             + assigned + " (" + rewritten + " refs)");
                 }
             }
             boolean orphaned = record == null || record.broken;
             if (orphaned) {
                 String reason = record == null ? "no registry entry" : "broken=true";
-                LOGGER.info("cleanupOrphanedAssignments: freeing " + building.getType() + " at "
+                LOG.info("cleanupOrphanedAssignments: freeing " + building.getType() + " at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ()
                         + " (assigned=" + assigned + ", " + reason + ")");
                 building.setAssignedVillagerId(null);
@@ -463,7 +504,7 @@ public class VillageTickHandler {
         data.setFirstName(summary.getFirstName());
         data.setLastName(summary.getLastName());
         store.putComponent(ref, VillagerData.getComponentType(), data);
-        LOGGER.info("healVillagerDataIfMissing: re-attached VillagerData to " + villagerUuid
+        LOG.info("healVillagerDataIfMissing: re-attached VillagerData to " + villagerUuid
                 + " (" + summary.getFullName() + ")");
     }
 
@@ -524,7 +565,7 @@ public class VillageTickHandler {
                     npcEntity.setLeashPoint(new Vector3d(doorX, doorY, doorZ));
                 }
 
-                LOGGER.info("Villager " + assignedUuid + " moved to house door at "
+                LOG.info("Villager " + assignedUuid + " moved to house door at "
                         + doorX + "," + doorY + "," + doorZ);
             });
         }
@@ -546,7 +587,7 @@ public class VillageTickHandler {
 
             UUID uuid = mgr.assignFarmerProfession(store, playerRef, village, building);
             if (uuid != null) {
-                LOGGER.info("assignUnstaffedFarms: assigned " + uuid + " to farm at "
+                LOG.info("assignUnstaffedFarms: assigned " + uuid + " to farm at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;
@@ -559,12 +600,12 @@ public class VillageTickHandler {
         VillageManager mgr = VillageManager.get();
         for (BuildingRecord building : village.getBuildings()) {
             if (!building.isCompleted()) continue;
-            if (!BuildingType.SAWMILL.equals(building.getType())) continue;
+            if (!BuildingType.WOODCUTTERS_HUT.equals(building.getType())) continue;
             if (building.getAssignedVillagerId() != null) continue;
 
             UUID uuid = mgr.assignLumberjackProfession(store, playerRef, village, building);
             if (uuid != null) {
-                LOGGER.info("assignUnstaffedSawmills: assigned " + uuid + " to sawmill at "
+                LOG.info("assignUnstaffedSawmills: assigned " + uuid + " to sawmill at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;
@@ -582,7 +623,7 @@ public class VillageTickHandler {
 
             UUID uuid = mgr.assignMinerProfession(store, playerRef, village, building);
             if (uuid != null) {
-                LOGGER.info("assignUnstaffedMines: assigned " + uuid + " to mine at "
+                LOG.info("assignUnstaffedMines: assigned " + uuid + " to mine at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;
@@ -600,7 +641,7 @@ public class VillageTickHandler {
 
             UUID uuid = mgr.assignGuardProfession(store, playerRef, village, building);
             if (uuid != null) {
-                LOGGER.info("assignUnstaffedGuardHouses: assigned " + uuid + " to guard house at "
+                LOG.info("assignUnstaffedGuardHouses: assigned " + uuid + " to guard house at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;
@@ -618,7 +659,7 @@ public class VillageTickHandler {
 
             UUID uuid = mgr.assignBlacksmithProfession(store, playerRef, village, building);
             if (uuid != null) {
-                LOGGER.info("assignUnstaffedForges: assigned " + uuid + " to forge at "
+                LOG.info("assignUnstaffedForges: assigned " + uuid + " to forge at "
                         + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ());
                 village = mgr.getVillageData(store, playerRef);
                 if (village == null) return;

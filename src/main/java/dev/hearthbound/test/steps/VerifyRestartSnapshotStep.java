@@ -98,7 +98,8 @@ public final class VerifyRestartSnapshotStep implements TestStep {
             if (ref != null && ref.isValid()) {
                 java.util.UUID resolvedUuid = NpcManager.extractUuid(ctx.getStore(), ref);
                 if (resolvedUuid != null && !resolvedUuid.equals(live.entityUuid)) {
-                    NpcRegistry.get().bindEntityUuid(live.npcId, resolvedUuid);
+                    NpcRegistry.get().bindEntityUuid(live.npcId, resolvedUuid,
+                            NpcRegistry.worldUuidOf(ctx.getWorld()));
                     live = NpcRegistry.get().getRecordByNpcId(live.npcId);
                 }
             }

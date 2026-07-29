@@ -11,10 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.logging.Logger;
-
 public final class StayedRoleAssetPackManager {
-    private static final Logger LOGGER = Logger.getLogger(StayedRoleAssetPackManager.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.role.assetpack");
     private static final String MOD_ID = "hearthbound:StayedGeneratedRoles";
     private static final Path ROOT = Paths.get("mods", "StayedGeneratedRoles");
     private static final Path ROLES = ROOT.resolve(Paths.get("Server", "NPC", "Roles"));
@@ -32,11 +31,11 @@ public final class StayedRoleAssetPackManager {
             boolean createdManifest = ensureManifest();
             ensureEnabledWhenNeeded(Paths.get("config.json"));
             if (createdManifest) {
-                LOGGER.warning("Created StayedGeneratedRoles asset pack; restarting server so Hytale indexes generated roles.");
+                LOG.warn("Created StayedGeneratedRoles asset pack; restarting server so Hytale indexes generated roles.");
                 HytaleServer.get().shutdownServer();
             }
         } catch (IOException e) {
-            LOGGER.warning("StayedRoleAssetPackManager setup failed: " + e.getMessage());
+            LOG.warn("StayedRoleAssetPackManager setup failed: " + e.getMessage());
         }
     }
 

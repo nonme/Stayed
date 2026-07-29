@@ -10,8 +10,6 @@ import dev.hearthbound.npc.NpcRegistry;
 import dev.hearthbound.util.TickScheduler;
 
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Logger;
-
 /**
  * Periodic background runner for {@link NpcRegistryInvariantAudit}. Logs every
  * violation as WARN so regressions surface in the server log even when no test
@@ -26,7 +24,8 @@ import java.util.logging.Logger;
  */
 public final class NpcRegistrySelfCheck {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcRegistrySelfCheck.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("test");
     private static final long INITIAL_DELAY_MS = 30_000L;
     private static final long PERIOD_MS = 30_000L;
 
@@ -43,9 +42,9 @@ public final class NpcRegistrySelfCheck {
                 Store<EntityStore> store = world.getEntityStore().getStore();
                 AuditResult result = NpcRegistryInvariantAudit.run(world, store);
                 if (!result.isClean()) {
-                    LOGGER.warning("NpcRegistrySelfCheck: " + result.summary());
+                    LOG.warn("NpcRegistrySelfCheck: " + result.summary());
                     for (Violation v : result.getViolations()) {
-                        LOGGER.warning("  " + v);
+                        LOG.warn("  " + v);
                         if (v.getType() == ViolationType.MISSING_ENTITY && v.getNpcId() != null) {
                             NpcRegistry.NpcRecord record = NpcRegistry.get().getRecordByNpcId(v.getNpcId());
                             NpcMissingEntityRecovery.request(world, record, null, "self-check");
@@ -55,10 +54,10 @@ public final class NpcRegistrySelfCheck {
                     }
                 }
             } catch (Exception e) {
-                LOGGER.warning("NpcRegistrySelfCheck failed: " + e.getMessage());
+                LOG.warn("NpcRegistrySelfCheck failed: " + e.getMessage());
             }
         });
-        LOGGER.info("NpcRegistrySelfCheck started (period " + PERIOD_MS + "ms)");
+        LOG.info("NpcRegistrySelfCheck started (period " + PERIOD_MS + "ms)");
     }
 
     public static synchronized void stop() {
@@ -81,10 +80,10 @@ public final class NpcRegistrySelfCheck {
                 Store<EntityStore> store = world.getEntityStore().getStore();
                 if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
                 store.tryRemoveComponent(ref, Frozen.getComponentType());
-                LOGGER.info("NpcRegistrySelfCheck: removed stale Frozen from npcId="
+                LOG.info("NpcRegistrySelfCheck: removed stale Frozen from npcId="
                         + violation.getNpcId() + " uuid=" + violation.getEntityUuid());
             } catch (Exception e) {
-                LOGGER.fine("NpcRegistrySelfCheck: stale Frozen repair failed for npcId="
+                LOG.debug("NpcRegistrySelfCheck: stale Frozen repair failed for npcId="
                         + violation.getNpcId() + ": " + e.getMessage());
             }
         });

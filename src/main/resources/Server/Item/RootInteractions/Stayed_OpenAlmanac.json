@@ -1,0 +1,6 @@
+{
+  "$Comment": "Root interaction bound to the Founder's Almanac item's Secondary slot.",
+  "Interactions": [
+    "Stayed_OpenAlmanacAction"
+  ]
+}

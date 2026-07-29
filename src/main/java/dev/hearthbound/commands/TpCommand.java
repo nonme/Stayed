@@ -30,8 +30,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
-import java.util.logging.Logger;
-
 /**
  * Dev teleport command:
  *   /hb tp random          — teleport to random coords (Y=130, dx,dz >= 1000 from current)
@@ -43,7 +41,8 @@ import java.util.logging.Logger;
  */
 public class TpCommand extends AbstractPlayerCommand {
 
-    private static final Logger LOGGER = Logger.getLogger(TpCommand.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.tp");
     private static final Path DATA_FILE = Paths.get("mods", "HearthboundData", "tp_locations.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final double MIN_RANDOM_DISTANCE = 1000.0;
@@ -200,7 +199,7 @@ public class TpCommand extends AbstractPlayerCommand {
             Map<String, SavedLocation> loaded = GSON.fromJson(reader, type);
             cache = (loaded != null) ? loaded : new LinkedHashMap<>();
         } catch (Exception e) {
-            LOGGER.warning("TpCommand: failed to load locations: " + e.getMessage());
+            LOG.warn("TpCommand: failed to load locations: " + e.getMessage());
             cache = new LinkedHashMap<>();
         }
         return cache;
@@ -218,7 +217,7 @@ public class TpCommand extends AbstractPlayerCommand {
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
         } catch (Exception e) {
-            LOGGER.warning("TpCommand: failed to save locations: " + e.getMessage());
+            LOG.warn("TpCommand: failed to save locations: " + e.getMessage());
         }
     }
 

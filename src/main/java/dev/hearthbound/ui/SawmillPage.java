@@ -19,20 +19,17 @@ import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
-import dev.hearthbound.village.VillagerSummary;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
- * Sawmill management UI — opened when the player presses F on the Lumbermill anchor block.
+ * Sawmill management UI — opened on F-key on the Sawmill anchor block.
+ * Crafting logic (planks, stairs, slabs, etc.) will be added in a future update.
  */
 public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(SawmillPage.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.sawmill");
     private final Ref<EntityStore> playerRef;
     private final PlayerRef networkPlayerRef;
     private final UUID ownerUuid;
@@ -78,6 +75,10 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                 EventData.of(DialogEventData.ACTION_KEY, "deposit"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#StartBuildButton",
                 EventData.of(DialogEventData.ACTION_KEY, "start_build"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#DepositRepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "deposit_repair"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#RepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "repair"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
     }
@@ -103,7 +104,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
         b.set("#TabConstructionInactive.Visible", false);
         b.set("#ConfirmInfo.Text",
                 "A preview of the sawmill is shown.\n" +
-                "Place the lumbermill block where you want it inside the building, " +
+                "Place the sawmill block where you want it inside the building, " +
                 "then confirm to designate this as a building site.");
     }
 
@@ -123,25 +124,13 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
     private void populateInfoTab(UICommandBuilder b, Store<EntityStore> store, BuildingRecord record) {
         if (record == null || !record.isCompleted()) {
             b.set("#BuildingStatusLabel.Text", "Not built yet.");
-            b.set("#BuildingStatusDetail.Text", "Build the sawmill first.");
+            b.set("#BuildingStatusDetail.Text", "Build the Sawmill first.");
             b.set("#BuildingWorkerLabel.Text", "—");
             return;
         }
-
         b.set("#BuildingStatusLabel.Text", "Operational");
-
-        VillageData village = VillageManager.get().getVillageData(store, playerRef);
-        UUID workerUuid = record.getAssignedVillagerId();
-        VillagerSummary worker = (village != null && workerUuid != null)
-                ? VillageManager.get().findVillagerSummary(village, workerUuid) : null;
-
-        if (worker != null) {
-            b.set("#BuildingWorkerLabel.Text", worker.getFullName());
-            b.set("#BuildingStatusDetail.Text", "Chopping wood.");
-        } else {
-            b.set("#BuildingWorkerLabel.Text", "No one assigned yet");
-            b.set("#BuildingStatusDetail.Text", "A villager will be assigned once they have a home.");
-        }
+        b.set("#BuildingStatusDetail.Text", "Wood crafting coming in a future update.");
+        b.set("#BuildingWorkerLabel.Text", "—");
     }
 
     private void setTabActive(UICommandBuilder b, String tab) {
@@ -165,6 +154,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
         boolean isCompleted = record != null && record.isCompleted();
         boolean elfBusy = !isBuilding && BuildingSystem.get().isBuilding();
         applyConstructionState(b, isBuilding, isCompleted, allSatisfied, elfBusy);
+        renderRepairSection(b, record);
     }
 
     private boolean renderResourceList(UICommandBuilder b,
@@ -179,7 +169,9 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                                          boolean isCompleted, boolean allSatisfied, boolean elfBusy) {
         if (isCompleted) {
             b.set("#ConstructionStatus.Text",
-                    "The Sawmill stands complete. Upgrades coming in a future update.");
+                    "The Sawmill stands complete. Wood crafting coming in a future update.");
+            b.set("#ResourceListWrapper.Visible", false);
+            b.set("#ResourceHeader.Visible", false);
             b.set("#ResourceListContainer.Visible", false);
             b.set("#StartBuildButton.Visible", false);
             b.set("#DepositButton.Visible", false);
@@ -229,6 +221,39 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
         }
     }
 
+
+    private void renderRepairSection(UICommandBuilder b, BuildingRecord record) {
+        if (record == null || !record.isCompleted()) {
+            b.set("#RepairSection.Visible", false);
+            return;
+        }
+        b.set("#RepairSection.Visible", true);
+        Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+        b.clear("#RepairResourceContainer");
+        if (cost.isEmpty()) {
+            b.set("#RepairStatus.Text", "Building is intact — no repairs needed.");
+            b.set("#RepairResourceContainer.Visible", false);
+            b.set("#DepositRepairButton.Visible", false);
+            b.set("#RepairButton.Visible", false);
+            b.set("#RepairHint.Text", "");
+        } else {
+            b.set("#RepairStatus.Text", cost.size() + " block(s) need repair:");
+            b.set("#RepairResourceContainer.Visible", true);
+            String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+            Map<String, Integer> have = readStorage(record);
+            boolean hasDeficit = cost.entrySet().stream()
+                    .anyMatch(e -> have.getOrDefault(e.getKey(), 0) < e.getValue());
+            boolean canAfford = !hasDeficit;
+            dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                    b, "#RepairResourceContainer", cost, have, language);
+            b.set("#DepositRepairButton.Visible", hasDeficit);
+            b.set("#RepairButton.Visible", canAfford);
+            b.set("#RepairHint.Text", canAfford
+                    ? "All materials ready — press Repair to restore the building."
+                    : "Deposit missing materials to repair.");
+        }
+    }
+
     // ========== Event handling ==========
 
     @Override
@@ -272,7 +297,6 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                 VillageManager.get().save(store, playerRef, village);
 
                 BuildingSystem.get().clearGhostPreview(store, playerRef, world);
-
                 BuildingSystem.get().tryIntegrateExisting(store, playerRef, world, record, record.getRotation());
 
                 confirmed = true;
@@ -328,9 +352,53 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                 if (record == null) { sendUpdate(new UICommandBuilder(), false); return; }
 
                 VillageManager.get().save(store, playerRef, village);
-
                 BuildingSystem.get().startResourceBuilding(
                         store, playerRef, world, record, record.getRotation(), ownerUuid);
+
+                UICommandBuilder b = new UICommandBuilder();
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
+
+            case "deposit_repair" -> {
+                if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingRecord record = findRecord(store);
+                if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                Player player = store.getComponent(ref, Player.getComponentType());
+                if (player == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+                com.hypixel.hytale.protocol.GameMode gm = player.getGameMode();
+                boolean isCreative = gm != null && "Creative".equals(gm.name());
+                int deposited = isCreative
+                        ? depositCreative(record, cost)
+                        : depositFromInventory(player, record, cost);
+
+                VillageManager.get().save(store, playerRef, dv);
+
+                UICommandBuilder b = new UICommandBuilder();
+                b.set("#RepairHint.Text", isCreative
+                        ? (deposited > 0 ? "Creative: " + deposited + " items conjured." : "Nothing needed.")
+                        : (deposited > 0 ? "Deposited " + deposited + " items." : "No matching resources in inventory."));
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
+
+            case "repair" -> {
+                if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerRef);
+                if (dv == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingRecord record = findRecord(store);
+                if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingSystem.get().startRepair(store, playerRef, world, record);
 
                 UICommandBuilder b = new UICommandBuilder();
                 populateConstructionTab(b, record);
@@ -392,7 +460,7 @@ public class SawmillPage extends InteractiveCustomUIPage<DialogEventData> {
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error depositing resources", e);
+            LOG.warn("Error depositing resources", e);
         }
         return totalDeposited;
     }

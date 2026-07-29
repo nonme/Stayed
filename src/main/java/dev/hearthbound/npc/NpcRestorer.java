@@ -14,8 +14,6 @@ import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
-
 import dev.hearthbound.util.TickScheduler;
 
 /**
@@ -30,7 +28,8 @@ import dev.hearthbound.util.TickScheduler;
  */
 public final class NpcRestorer {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcRestorer.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.role.apply");
 
     private static final long APPLY_DELAY_MS = 500;
     private static final long APPLY_RETRY_MS = 2_000;
@@ -83,9 +82,12 @@ public final class NpcRestorer {
         if (repaired) {
             NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
             String live = npc != null && npc.getRole() != null ? npc.getRole().getRoleName() : "?";
-            LOGGER.info("[ROLEBIND-REPAIR] npcId=" + record.npcId
-                    + " liveRole=" + live
-                    + " interaction=" + record.interaction);
+            LOG
+                .with("npcId", record.npcId)
+                .with("liveRole", live)
+                .with("interaction", record.interaction)
+                .with("components", componentSummary(ref, store))
+                .debug("rolebind repair");
         }
         return repaired;
     }
@@ -109,18 +111,23 @@ public final class NpcRestorer {
                 Ref<EntityStore> liveRef = (ref != null && ref.isValid())
                         ? ref : NpcLiveEntityResolver.findLiveNpcByRecord(liveStore, record);
                 if (liveRef == null || !liveRef.isValid()) {
-                    LOGGER.info("[ROLEBIND-APPLY] npcId=" + record.npcId
-                            + " delayMs=" + delayMs + " SKIP: no live ref");
+                    LOG
+                        .with("npcId", record.npcId)
+                        .with("delayMs", delayMs)
+                        .debug("rolebind apply skipped: no live ref");
                     return;
                 }
                 applyInteraction(liveRef, liveStore, record.interaction);
                 NPCEntity npc = liveStore.getComponent(liveRef, NPCEntity.getComponentType());
                 String live = (npc != null && npc.getRole() != null)
                         ? npc.getRole().getRoleName() : "?";
-                LOGGER.info("[ROLEBIND-APPLY] npcId=" + record.npcId
-                        + " delayMs=" + delayMs
-                        + " liveRole=" + live
-                        + " applied=" + record.interaction);
+                LOG
+                    .with("npcId", record.npcId)
+                    .with("delayMs", delayMs)
+                    .with("liveRole", live)
+                    .with("applied", record.interaction)
+                    .with("components", componentSummary(liveRef, liveStore))
+                    .debug("rolebind apply");
             }),
             delayMs, TimeUnit.MILLISECONDS);
     }
@@ -152,7 +159,7 @@ public final class NpcRestorer {
     public static void equipProfessionItem(Ref<EntityStore> ref, Store<EntityStore> store, String roleName) {
         NPCEntity npc = store.getComponent(ref, NPCEntity.getComponentType());
         if (npc == null) {
-            LOGGER.warning("equipProfessionItem: NPCEntity null for " + roleName);
+            LOG.warn("equipProfessionItem: NPCEntity null for " + roleName);
             return;
         }
         // Use live role name — may differ from record.roleName if a profession swap happened.
@@ -195,5 +202,19 @@ public final class NpcRestorer {
         interactions.setInteractionId(InteractionType.Use, interactionId);
         interactions.setInteractionHint("server.interactionHints.talk");
         store.putComponent(ref, Interactions.getComponentType(), interactions);
+    }
+
+    private static String componentSummary(Ref<EntityStore> ref, Store<EntityStore> store) {
+        if (ref == null || store == null) return "ref/store=null";
+        boolean interactable = store.getComponent(ref, Interactable.getComponentType()) != null;
+        boolean interactions = store.getComponent(ref, Interactions.getComponentType()) != null;
+        boolean skin = store.getComponent(ref, PlayerSkinComponent.getComponentType()) != null;
+        boolean model = store.getComponent(ref, ModelComponent.getComponentType()) != null;
+        boolean persistentModel = store.getComponent(ref, PersistentModel.getComponentType()) != null;
+        return "Interactable=" + interactable
+                + ",Interactions=" + interactions
+                + ",PlayerSkin=" + skin
+                + ",Model=" + model
+                + ",PersistentModel=" + persistentModel;
     }
 }

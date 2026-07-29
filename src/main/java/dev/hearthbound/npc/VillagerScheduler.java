@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Archetype;
@@ -62,7 +61,14 @@ import dev.hearthbound.village.VillagerSummary;
  */
 public class VillagerScheduler {
 
-    private static final Logger LOGGER = Logger.getLogger(VillagerScheduler.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.schedule");
+    private static final dev.hearthbound.util.log.Log LOG_GATE =
+            dev.hearthbound.util.log.Log.get("npc.schedule.gate");
+    private static final dev.hearthbound.util.log.Log LOG_ROLE =
+            dev.hearthbound.util.log.Log.get("npc.role");
+    private static final dev.hearthbound.util.log.Log LOG_MEAL =
+            dev.hearthbound.util.log.Log.get("npc.meal");
 
     // Role names — must match JSON files in Server/NPC/Roles/
     private static final String ROLE_VILLAGER    = "Villager_Human";
@@ -137,7 +143,7 @@ public class VillagerScheduler {
                 try {
                     store.removeEntity(markerRef, RemoveReason.REMOVE);
                 } catch (RuntimeException e) {
-                    LOGGER.warning("VillagerScheduler.clear: failed to remove marker: " + e.getMessage());
+                    LOG.warn("clear: failed to remove marker: " + e.getMessage(), e);
                 }
             }
         }
@@ -155,7 +161,7 @@ public class VillagerScheduler {
         activityLabel.clear();
         fedThisMeal.clear();
         eatingVillagers.clear();
-        LOGGER.info("VillagerScheduler cleared");
+        LOG.info("VillagerScheduler cleared");
     }
 
     // null gateX means "no gate/door to manage"
@@ -235,17 +241,18 @@ public class VillagerScheduler {
                             data.setHasHouse(true);
                             store.putComponent(ref, VillagerData.getComponentType(), data);
                         }
-                        tickVillager(ref, store, data, village, farm, warehouse, sawmill,
+                        tickVillager(ref, store, playerRef, data, village, farm, warehouse, sawmill,
                                 mine, guardHouse, forge, time24, world);
                     }
                 } catch (Exception e) {
-                    LOGGER.warning("VillagerScheduler tick error: " + e.getMessage());
+                    LOG.warn("tick error: " + e.getMessage(), e);
                 }
             }
         });
     }
 
-    private void tickVillager(Ref<EntityStore> ref, Store<EntityStore> store, VillagerData data,
+    private void tickVillager(Ref<EntityStore> ref, Store<EntityStore> store,
+                              Ref<EntityStore> playerRef, VillagerData data,
                               VillageData village, BuildingRecord farm, BuildingRecord warehouse,
                               BuildingRecord sawmill, BuildingRecord mine,
                               BuildingRecord guardHouse, BuildingRecord forge,
@@ -289,7 +296,8 @@ public class VillagerScheduler {
         boolean isGuardWorkingTarget = ROLE_GUARD.equals(target.arrivedRole())
                 && ACTIVITY_WORKING.equals(target.activity());
 
-        if (shouldStartGuardPatrol(isGuardWorkingTarget, arrived)
+        boolean guardPatrolActive = guardPatrolSessions.containsKey(uuid);
+        if ((isGuardWorkingTarget && (arrived || guardPatrolActive))
                 && executeGuardPatrol(ref, store, uuid, village, world, target, houseTarget)) {
             farmerWork.clear(uuid, world);
             return;
@@ -316,12 +324,13 @@ public class VillagerScheduler {
             if (!isFarmerWorkingTarget) {
                 farmerWork.clear(uuid, world);
             }
-            LOGGER.info("scheduleTargetChanged uuid=" + uuid
-                    + " time24=" + String.format("%.2f", time24)
-                    + " profession=" + profession
-                    + " activity=" + travelActivity(target.activity())
-                    + " origin=" + describeTarget(originTarget)
-                    + " target=(" + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")");
+            LOG.with("uuid", uuid)
+               .with("time24", String.format("%.2f", time24))
+               .with("profession", profession)
+               .with("activity", travelActivity(target.activity()))
+               .with("origin", describeTarget(originTarget))
+               .with("target", String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()))
+               .debug("scheduleTargetChanged");
             world.execute(() -> {
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 startTraveling(ref, liveStore, target, world, uuid);
@@ -339,14 +348,15 @@ public class VillagerScheduler {
             closeRouteIfUnused(uuid, world);
             routeOrigin.remove(uuid);
             travelProgress.remove(uuid);
-            LOGGER.info("scheduleArrived uuid=" + uuid
-                    + " time24=" + String.format("%.2f", time24)
-                    + " activity=" + target.activity()
-                    + " role=" + target.arrivedRole());
+            LOG.with("uuid", uuid)
+               .with("time24", String.format("%.2f", time24))
+               .with("activity", target.activity())
+               .with("role", target.arrivedRole())
+               .debug("scheduleArrived");
 
             if (ACTIVITY_EATING.equals(target.activity()) && warehouse != null
                     && !fedThisMeal.contains(uuid)) {
-                tickMeal(ref, warehouse, world, uuid);
+                tickMeal(ref, playerRef, village, warehouse, world, uuid);
             }
 
             if (isFarmerWorkingTarget && effectiveFarm != null) {
@@ -381,10 +391,11 @@ public class VillagerScheduler {
                         return;
                     }
                     removeMarker(uuid, world);
-                    LOGGER.info("scheduleTravelStuck uuid=" + uuid
-                            + " activity=" + travelActivity
-                            + " target=(" + String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()) + ")"
-                            + " action=reissueRoute");
+                    LOG.with("uuid", uuid)
+                       .with("activity", travelActivity)
+                       .with("target", String.format("%.2f,%.2f,%.2f", target.x(), target.y(), target.z()))
+                       .with("action", "reissueRoute")
+                       .debug("scheduleTravelStuck");
                     startTraveling(ref, liveStore, target, world, uuid);
                 } else {
                     maintainTraveling(ref, liveStore, target, world, uuid);
@@ -398,10 +409,11 @@ public class VillagerScheduler {
                                             String travelActivity) {
         boolean recalled = NpcTeleporter.recall(world, uuid, houseTarget.x(), houseTarget.y(), houseTarget.z());
         if (!recalled) {
-            LOGGER.info("scheduleTravelStuck uuid=" + uuid
-                    + " activity=" + travelActivity
-                    + " home=(" + String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()) + ")"
-                    + " action=recallHomeFailed");
+            LOG.with("uuid", uuid)
+               .with("activity", travelActivity)
+               .with("home", String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()))
+               .with("action", "recallHomeFailed")
+               .debug("scheduleTravelStuck");
             return false;
         }
 
@@ -411,10 +423,11 @@ public class VillagerScheduler {
         lastTarget.remove(uuid);
         travelProgress.remove(uuid);
         activityLabel.put(uuid, ACTIVITY_GOING_HOME);
-        LOGGER.info("scheduleTravelStuck uuid=" + uuid
-                + " activity=" + travelActivity
-                + " home=(" + String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()) + ")"
-                + " action=recallHome");
+        LOG.with("uuid", uuid)
+           .with("activity", travelActivity)
+           .with("home", String.format("%.2f,%.2f,%.2f", houseTarget.x(), houseTarget.y(), houseTarget.z()))
+           .with("action", "recallHome")
+           .debug("scheduleTravelStuck");
         return true;
     }
 
@@ -538,7 +551,7 @@ public class VillagerScheduler {
         if (stuck || !ROLE_TRAVELING.equals(getCurrentRole(store, ref))) {
             if (stuck) {
                 removeMarker(uuid, world);
-                LOGGER.info("guardPatrolStuck uuid=" + uuid + " action=reissueRoute");
+                LOG.with("uuid", uuid).with("action", "reissueRoute").debug("guardPatrolStuck");
             }
             startTraveling(ref, store, target, world, uuid);
         } else {
@@ -706,13 +719,13 @@ public class VillagerScheduler {
             Ref<EntityStore> markerRef = world.getEntityStore().getStore()
                     .addEntity(holder, AddReason.SPAWN);
             if (markerRef == null || !markerRef.isValid()) {
-                LOGGER.warning("VillagerScheduler: failed to spawn marker for " + uuid);
+                LOG.with("uuid", uuid).warn("failed to spawn marker");
                 return null;
             }
             markerRefs.put(uuid, markerRef);
             return markerRef;
         } catch (Exception e) {
-            LOGGER.warning("VillagerScheduler: marker spawn error: " + e.getMessage());
+            LOG.warn("marker spawn error: " + e.getMessage(), e);
             return null;
         }
     }
@@ -964,21 +977,24 @@ public class VillagerScheduler {
         int steps = layout.rotationSteps(building.getRotation());
         int[] center = rotateLocalOffset(layout.centerLX(), layout.floorLY(), layout.centerLZ(), steps);
         double targetY = building.getPosY() + layout.floorLY() + 1.0;
-        LOGGER.info("workTarget [" + building.getType() + "] anchor=(" + building.getPosX() + "," + building.getPosY() + "," + building.getPosZ() + ")"
-                + " rot=" + building.getRotation() + " steps=" + steps
-                + " localCenter=(" + layout.centerLX() + "," + layout.centerLZ() + ")"
-                + " worldCenter=(" + (building.getPosX() + center[0] + 0.5) + "," + targetY + "," + (building.getPosZ() + center[2] + 0.5) + ")"
-                + " hasDoor=" + layout.hasDoor());
+        LOG.with("type", building.getType())
+           .with("anchor", building.getPosX() + "," + building.getPosY() + "," + building.getPosZ())
+           .with("rot", building.getRotation())
+           .with("steps", steps)
+           .with("localCenter", layout.centerLX() + "," + layout.centerLZ())
+           .with("worldCenter", (building.getPosX() + center[0] + 0.5) + "," + targetY + "," + (building.getPosZ() + center[2] + 0.5))
+           .with("hasDoor", layout.hasDoor())
+           .debug("workTarget");
         if (layout.hasDoor()) {
             int[] door = rotateLocalOffset(layout.doorLX(), layout.doorLY(), layout.doorLZ(), steps);
             int doorRot = layout.doorWorldRotation(building.getRotation());
-            LOGGER.info("workTarget [" + building.getType() + "] door local=("
-                    + layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ()
-                    + ") world=(" + (building.getPosX() + door[0]) + ","
-                    + (building.getPosY() + door[1]) + ","
-                    + (building.getPosZ() + door[2]) + ") rot=" + doorRot
-                    + " openBlock=" + layout.openBlock()
-                    + " closeBlock=" + layout.closeBlock());
+            LOG.with("type", building.getType())
+               .with("doorLocal", layout.doorLX() + "," + layout.doorLY() + "," + layout.doorLZ())
+               .with("doorWorld", (building.getPosX() + door[0]) + "," + (building.getPosY() + door[1]) + "," + (building.getPosZ() + door[2]))
+               .with("rot", doorRot)
+               .with("openBlock", layout.openBlock())
+               .with("closeBlock", layout.closeBlock())
+               .debug("workTarget door");
             return new ScheduleTarget(
                     building.getPosX() + center[0] + 0.5,
                     targetY,
@@ -1078,12 +1094,13 @@ public class VillagerScheduler {
      * Called once per village tick while the villager is at the warehouse eating.
      * Deferred via world.execute() to avoid "Store is currently processing" — called from forEachChunk.
      */
-    private void tickMeal(Ref<EntityStore> ref, BuildingRecord warehouse, World world, UUID uuid) {
-        String foodId = WarehouseDepositor.withdrawRandomFood(world, warehouse, foodRandom);
+    private void tickMeal(Ref<EntityStore> ref, Ref<EntityStore> playerRef, VillageData village,
+                          BuildingRecord warehouse, World world, UUID uuid) {
+        String foodId = WarehouseDepositor.withdrawRandomFoodAbstract(warehouse, foodRandom);
         if (foodId == null) {
             eatingVillagers.remove(uuid);
             fedThisMeal.add(uuid);
-            LOGGER.fine("tickMeal: no food in warehouse for " + uuid);
+            LOG_MEAL.with("uuid", uuid).debug("no food in warehouse storage");
             return;
         }
 
@@ -1094,6 +1111,13 @@ public class VillagerScheduler {
             if (liveData == null) return;
             liveData.setHunger(liveData.getHunger() - 20);
             liveStore.putComponent(ref, VillagerData.getComponentType(), liveData);
+            VillagerSummary summary = VillageManager.get().findVillagerSummary(village, uuid);
+            if (summary != null) {
+                summary.setHunger(liveData.getHunger());
+                if (playerRef != null && playerRef.isValid()) {
+                    VillageManager.get().save(liveStore, playerRef, village);
+                }
+            }
             HotbarUtil.setSlot0(world, uuid, foodId);
             playEatingAnimation(ref, liveStore, foodId);
             if (liveData.getHunger() <= 0) {
@@ -1102,7 +1126,7 @@ public class VillagerScheduler {
             } else {
                 eatingVillagers.add(uuid);
             }
-            LOGGER.info("tickMeal: " + uuid + " ate " + foodId + " hunger=" + liveData.getHunger());
+            LOG_MEAL.with("uuid", uuid).with("food", foodId).with("hunger", liveData.getHunger()).debug("ate");
         });
     }
 
@@ -1116,7 +1140,7 @@ public class VillagerScheduler {
             if (animations == null) return;
             AnimationUtils.playAnimation(ref, AnimationSlot.Action, animations, "Consume", store);
         } catch (RuntimeException e) {
-            LOGGER.fine("tickMeal: failed to play consume animation for " + foodId + ": " + e.getMessage());
+            LOG_MEAL.with("food", foodId).debug("failed to play consume animation: " + e.getMessage());
         }
     }
 
@@ -1134,17 +1158,22 @@ public class VillagerScheduler {
             String oldRoleName = npc.getRole().getRoleName();
             StayedRoleChangeApplier.persistAndApply(ref, store, world, updated,
                     false, "villager-scheduler-switch");
-            LOGGER.info("[ROLEBIND] uuid=" + uuid + " " + oldRoleName + "->" + roleName
-                    + " ensured durable role change interaction=" + record.interaction);
+            LOG_ROLE
+                .with("uuid", uuid)
+                .with("from", oldRoleName)
+                .with("to", roleName)
+                .with("interaction", record.interaction)
+                .debug("rolebind: durable role change applied");
         } else {
             int idx = NPCPlugin.get().getIndex(roleName);
             if (idx < 0) {
-                LOGGER.warning("VillagerScheduler: role not registered: " + roleName);
+                LOG_ROLE.with("role", roleName).warn("role not registered");
                 return;
             }
             RoleChangeSystem.requestRoleChange(ref, npc.getRole(), idx, false, store);
-            LOGGER.warning("[ROLEBIND] " + npc.getRole().getRoleName() + "->" + roleName
-                    + " NO REGISTRY RECORD - interactions will not be restored");
+            LOG_ROLE.with("from", npc.getRole().getRoleName())
+                    .with("to", roleName)
+                    .warn("rolebind without registry record — interactions will not be restored");
         }
         // After role change, re-equip profession item — RoleChangeSystem is async,
         // so delay to let the new role settle before touching inventory.
@@ -1172,42 +1201,54 @@ public class VillagerScheduler {
     private void setSingleGateState(Gate gate, World world, boolean open) {
         int gx = gate.x(), gy = gate.y(), gz = gate.z();
         int gateRotation = gate.rotation();
-        // Use a single-door prefab + rotate() so the engine places the state-variant with correct rotation.
-        // world.setBlock("*...CloseDoorIn") resets rotation to 0; chunk.setBlock + setBlock combo
-        // also loses rotation. Only BlockSelection.placeNoReturn preserves both state and rotation.
+        // Resolve a state-variant prefab from the door's OWN block ID — never substitute a
+        // fixed prefab regardless of block type, that's the bug that replaced warehouse/
+        // tavern fence-gates with the village door. BlockSelection.placeNoReturn is the
+        // only path that preserves both state-variant and rotation, so each gate kind
+        // needs its own single-cell prefab under Server/Prefabs/.
         String stateBlock = open ? gate.openBlock() : gate.closeBlock();
-        if (stateBlock == null || stateBlock.isBlank()) return;
-        boolean doorOut = stateBlock.contains("DoorOut");
-        String prefabName = open
-                ? (doorOut ? "door_open_out" : "door_open_in")
-                : (doorOut ? "door_closed_out" : "door_closed_in");
+        String prefabName = dev.hearthbound.building.DoorPrefabResolver.resolve(stateBlock);
+        if (prefabName == null) {
+            LOG_GATE
+                .with("stateBlock", stateBlock)
+                .with("x", gx).with("y", gy).with("z", gz)
+                .warn("setGateState: no prefab for stateBlock — gate kind not supported");
+            return;
+        }
         TickScheduler.runLater(world, 0L, () -> {
             try {
                 long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(gx, gz);
                 if (world.getChunkIfLoaded(chunkIndex) == null) {
-                    LOGGER.fine("setGateState skipped unloaded chunk stateBlock=" + stateBlock
-                            + " at (" + gx + "," + gy + "," + gz + ")");
+                    LOG_GATE
+                        .with("stateBlock", stateBlock)
+                        .with("x", gx).with("y", gy).with("z", gz)
+                        .debug("setGateState skipped: chunk not loaded");
                     return;
                 }
                 com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection selection =
                         com.hypixel.hytale.server.core.prefab.PrefabStore.get()
                                 .getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
-                // door_*_in.prefab.json has door at rotation=0; rotate gateRotation steps.
+                // Prefab door/gate is stored at rotation=0; rotate gateRotation steps.
                 int angleDeg = (gateRotation * 90) % 360;
                 com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection rotated =
                         angleDeg == 0 ? selection : selection.rotate(com.hypixel.hytale.math.Axis.Y, angleDeg);
-                // Door base block is at (0,0,0) in the prefab; Y-rotation keeps it there.
+                // Door base block is at (0,0,0); Y-rotation keeps it there.
                 rotated.setAnchorAtWorldPos(0, 0, 0);
                 com.hypixel.hytale.math.vector.Vector3i gatePos =
                         new com.hypixel.hytale.math.vector.Vector3i(gx, gy, gz);
                 Store<EntityStore> liveStore = world.getEntityStore().getStore();
                 rotated.placeNoReturn(world, gatePos, liveStore);
-                LOGGER.info("setGateState: prefab=" + prefabName
-                        + " stateBlock=" + stateBlock
-                        + " rot=" + gateRotation
-                        + " at (" + gx + "," + gy + "," + gz + ")");
+                LOG_GATE
+                    .with("prefab", prefabName)
+                    .with("stateBlock", stateBlock)
+                    .with("rot", gateRotation)
+                    .with("x", gx).with("y", gy).with("z", gz)
+                    .debug("setGateState applied");
             } catch (Exception e) {
-                LOGGER.warning("setGateState failed: " + e.getMessage());
+                LOG_GATE
+                    .with("prefab", prefabName)
+                    .with("x", gx).with("y", gy).with("z", gz)
+                    .warn("setGateState failed: " + e.getMessage(), e);
             }
         });
     }

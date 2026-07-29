@@ -9,7 +9,6 @@ import dev.hearthbound.util.TickScheduler;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Logger;
 import java.util.UUID;
 
 /**
@@ -25,7 +24,8 @@ import java.util.UUID;
  */
 public final class NpcPositionTracker {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcPositionTracker.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.tracker");
     private static final long SYNC_INTERVAL_MS = 15L;
     private static final long BINDING_REPAIR_INTERVAL_MS = 500L;
 
@@ -41,7 +41,7 @@ public final class NpcPositionTracker {
         trackedWorld = world;
         task = TickScheduler.getExecutor().scheduleAtFixedRate(NpcPositionTracker::tick,
                 SYNC_INTERVAL_MS, SYNC_INTERVAL_MS, TimeUnit.MILLISECONDS);
-        LOGGER.info("NpcPositionTracker started (interval=" + SYNC_INTERVAL_MS + "ms)");
+        LOG.info("NpcPositionTracker started (interval=" + SYNC_INTERVAL_MS + "ms)");
     }
 
     public static synchronized void stop() {
@@ -91,7 +91,14 @@ public final class NpcPositionTracker {
         long now = System.currentTimeMillis();
         boolean repairBindings = now - lastBindingRepairMs >= BINDING_REPAIR_INTERVAL_MS;
         if (repairBindings) lastBindingRepairMs = now;
+        UUID worldUuid = NpcRegistry.worldUuidOf(world);
+        String worldName = NpcRegistry.worldNameOf(world);
         for (NpcRegistry.NpcRecord record : NpcRegistry.get().allRecords()) {
+            if (!record.belongsToWorld(worldUuid)) continue;
+            if (!record.hasWorld()) {
+                record.setWorld(worldUuid, worldName);
+                anyChanged = true;
+            }
             if (record.entityUuid == null) continue;
             Ref<EntityStore> ref = world.getEntityRef(record.entityUuid);
             if (ref == null || !ref.isValid()) {
@@ -101,7 +108,7 @@ public final class NpcPositionTracker {
                         : null;
                 if (liveUuid == null) continue;
                 if (!liveUuid.equals(record.entityUuid)) {
-                    NpcRegistry.get().bindEntityUuid(record.npcId, liveUuid);
+                    NpcRegistry.get().bindEntityUuid(record.npcId, liveUuid, worldUuid);
                     record = NpcRegistry.get().getRecordByNpcId(record.npcId);
                     anyChanged = true;
                     if (record == null) continue;

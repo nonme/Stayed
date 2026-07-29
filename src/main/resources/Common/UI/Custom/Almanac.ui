@@ -1,0 +1,294 @@
+@TabActiveStyle = TextButtonStyle(
+  Default: (Background: #2a3a50, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e8f0f8, FontSize: 12, RenderBold: true)),
+  Hovered: (Background: #354a62, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #ffffff, FontSize: 12, RenderBold: true)),
+  Pressed: (Background: #1e2d3d, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e8f0f8, FontSize: 12, RenderBold: true))
+);
+
+@TabInactiveStyle = TextButtonStyle(
+  Default: (Background: #161e28, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a7080, FontSize: 12)),
+  Hovered: (Background: #1e2a36, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #9ab8cc, FontSize: 12)),
+  Pressed: (Background: #0e161e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a7080, FontSize: 12))
+);
+
+@SubTabActiveStyle = TextButtonStyle(
+  Default: (Background: #25344a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e0d8b8, FontSize: 10, RenderBold: true)),
+  Hovered: (Background: #2f4258, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #ffeacc, FontSize: 10, RenderBold: true)),
+  Pressed: (Background: #1a2638, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #e0d8b8, FontSize: 10, RenderBold: true))
+);
+
+@SubTabInactiveStyle = TextButtonStyle(
+  Default: (Background: #121820, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a6878, FontSize: 10)),
+  Hovered: (Background: #1a2230, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #8aa0b8, FontSize: 10)),
+  Pressed: (Background: #0a1018, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #5a6878, FontSize: 10))
+);
+
+@CloseBtnStyle = TextButtonStyle(
+  Default: (Background: #3a1a1a, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11)),
+  Hovered: (Background: #501e1e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #f0b0b0, FontSize: 11)),
+  Pressed: (Background: #280e0e, LabelStyle: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #c89090, FontSize: 11))
+);
+
+Group {
+  LayoutMode: Middle;
+  Background: #050810(0.88);
+
+  Group {
+    Anchor: (Width: 620, Height: 540);
+    Background: #0d1018;
+    OutlineColor: #2a3a4a(0.6);
+    OutlineSize: 1;
+    LayoutMode: Top;
+
+    // ── Title bar ──
+    Group {
+      Anchor: (Height: 52);
+      Background: #111820;
+      LayoutMode: Full;
+
+      Group {
+        Anchor: (Left: 48, Right: 48, Top: 0, Bottom: 0);
+        LayoutMode: MiddleCenter;
+
+        Label {
+          Anchor: (Top: 8);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #d4a84a, FontSize: 18, RenderBold: true);
+          Text: "Founder's Almanac";
+        }
+
+        Label #AlmanacSubtitle {
+          Anchor: (Top: 0);
+          Style: (HorizontalAlignment: Center, VerticalAlignment: Center, TextColor: #4e6070, FontSize: 10);
+        }
+      }
+
+      TextButton #CloseButton {
+        Anchor: (Top: 12, Right: 12, Width: 28, Height: 28);
+        Style: @CloseBtnStyle;
+        Text: "X";
+      }
+    }
+
+    // ── Main tab bar ──
+    Group {
+      Anchor: (Height: 38);
+      Background: #0a1018;
+      LayoutMode: Center;
+      Padding: (Vertical: 4, Horizontal: 3);
+
+      TextButton #TabOverview {
+        Anchor: (Width: 140, Height: 28);
+        Style: @TabActiveStyle;
+        Text: "Overview";
+      }
+      TextButton #TabOverviewInactive {
+        Anchor: (Width: 140, Height: 28);
+        Visible: false;
+        Style: @TabInactiveStyle;
+        Text: "Overview";
+      }
+
+      TextButton #TabBuildings {
+        Anchor: (Left: 4, Width: 140, Height: 28);
+        Visible: false;
+        Style: @TabActiveStyle;
+        Text: "Buildings";
+      }
+      TextButton #TabBuildingsInactive {
+        Anchor: (Left: 4, Width: 140, Height: 28);
+        Style: @TabInactiveStyle;
+        Text: "Buildings";
+      }
+    }
+
+    Group {
+      Anchor: (Height: 1);
+      Background: #1e2d3a;
+    }
+
+    // ── Overview panel ──
+    Group #PanelOverview {
+      FlexWeight: 1;
+      LayoutMode: Top;
+      Padding: (Top: 14, Bottom: 12, Left: 20, Right: 20);
+
+      // Settlement info card
+      Group {
+        Anchor: (Height: 110);
+        LayoutMode: Top;
+        Background: #0a0e14;
+        OutlineColor: #1e2a34(0.8);
+        OutlineSize: 1;
+        Padding: (Full: 12);
+
+        Label {
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 10, RenderBold: true);
+          Text: "SETTLEMENT";
+        }
+
+        Group {
+          Anchor: (Top: 6, Height: 1);
+          Background: #1e2a34;
+        }
+
+        Label #OverviewVillageName {
+          Anchor: (Top: 6);
+          Style: (HorizontalAlignment: Start, TextColor: #e0d4b0, FontSize: 14, RenderBold: true);
+        }
+
+        Label #OverviewPopulation {
+          Anchor: (Top: 4);
+          Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 11);
+        }
+
+        Label #OverviewBuildings {
+          Anchor: (Top: 2);
+          Style: (HorizontalAlignment: Start, TextColor: #b0c0cc, FontSize: 11);
+        }
+      }
+
+      // Complaints section
+      Group {
+        Anchor: (Top: 12, Full: 0);
+        LayoutMode: Top;
+        Background: #0a0e14;
+        OutlineColor: #1e2a34(0.8);
+        OutlineSize: 1;
+        Padding: (Full: 12);
+
+        Label {
+          Style: (HorizontalAlignment: Start, VerticalAlignment: Center, TextColor: #8a7050, FontSize: 10, RenderBold: true);
+          Text: "VOICES OF THE SETTLEMENT";
+        }
+
+        Group {
+          Anchor: (Top: 6, Height: 1);
+          Background: #1e2a34;
+        }
+
+        Group #ComplaintsListContainer {
+          Anchor: (Top: 6, Full: 0);
+          LayoutMode: TopScrolling;
+          Padding: (Vertical: 2, Horizontal: 2);
+        }
+      }
+    }
+
+    // ── Buildings panel ──
+    Group #PanelBuildings {
+      Visible: false;
+      FlexWeight: 1;
+      LayoutMode: Top;
+      Padding: (Top: 10, Bottom: 12, Left: 14, Right: 14);
+
+      // Subcategory bar
+      Group {
+        Anchor: (Height: 32);
+        LayoutMode: Center;
+        Padding: (Vertical: 2);
+
+        TextButton #SubTabCivic {
+          Anchor: (Width: 76, Height: 26);
+          Style: @SubTabActiveStyle;
+          Text: "Civic";
+        }
+        TextButton #SubTabCivicInactive {
+          Anchor: (Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabInactiveStyle;
+          Text: "Civic";
+        }
+
+        TextButton #SubTabProduction {
+          Anchor: (Left: 3, Width: 90, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Production";
+        }
+        TextButton #SubTabProductionInactive {
+          Anchor: (Left: 3, Width: 90, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Production";
+        }
+
+        TextButton #SubTabCrafting {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Crafting";
+        }
+        TextButton #SubTabCraftingInactive {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Crafting";
+        }
+
+        TextButton #SubTabServices {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Services";
+        }
+        TextButton #SubTabServicesInactive {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Services";
+        }
+
+        TextButton #SubTabHousing {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Housing";
+        }
+        TextButton #SubTabHousingInactive {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Housing";
+        }
+
+        TextButton #SubTabDefense {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Defense";
+        }
+        TextButton #SubTabDefenseInactive {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Defense";
+        }
+
+        TextButton #SubTabStorage {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Visible: false;
+          Style: @SubTabActiveStyle;
+          Text: "Storage";
+        }
+        TextButton #SubTabStorageInactive {
+          Anchor: (Left: 3, Width: 76, Height: 26);
+          Style: @SubTabInactiveStyle;
+          Text: "Storage";
+        }
+      }
+
+      Group {
+        Anchor: (Top: 4, Height: 1);
+        Background: #1e2d3a;
+      }
+
+      // Building list for selected category
+      Group {
+        Anchor: (Top: 8, Full: 0);
+        Background: #080c10;
+        OutlineColor: #1a2530(0.8);
+        OutlineSize: 1;
+
+        Group #BuildingListContainer {
+          Anchor: (Full: 0);
+          LayoutMode: TopScrolling;
+          Padding: (Vertical: 8, Horizontal: 8);
+        }
+      }
+    }
+  }
+}

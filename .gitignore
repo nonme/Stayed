@@ -49,3 +49,6 @@ devserver
 *.bak
 *.bak2
 *.off
+
+# javac output from running the standalone main()-based tests by hand
+*.class

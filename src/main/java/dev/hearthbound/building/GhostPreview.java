@@ -27,8 +27,6 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.List;
-import java.util.logging.Logger;
-
 /**
  * Spawns transient BlockEntity markers for building ghost previews.
  * Never writes to the chunk — no snapshot, no restore, no cascade, no collision holes.
@@ -36,7 +34,8 @@ import java.util.logging.Logger;
  */
 public final class GhostPreview {
 
-    private static final Logger LOGGER = Logger.getLogger(GhostPreview.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.ghost");
     private static final int MAX_ENTITIES = 4096;
 
     private GhostPreview() {}
@@ -102,11 +101,11 @@ public final class GhostPreview {
                 Ref<EntityStore> ref = store.addEntity(holder, AddReason.SPAWN);
                 if (ref != null) refs.add(ref);
             } catch (RuntimeException e) {
-                LOGGER.warning("GhostPreview: failed to spawn entity for " + blockId + ": " + e.getMessage());
+                LOG.warn("GhostPreview: failed to spawn entity for " + blockId + ": " + e.getMessage());
             }
         }
 
-        LOGGER.info("[Ghost] show: spawned=" + refs.size() + " skipped=" + skipped
+        LOG.info("[Ghost] show: spawned=" + refs.size() + " skipped=" + skipped
                 + " planSize=" + plan.size());
         return refs;
     }
@@ -124,12 +123,12 @@ public final class GhostPreview {
                     store.removeEntity(ref, RemoveReason.REMOVE);
                     removed++;
                 } catch (RuntimeException e) {
-                    LOGGER.warning("GhostPreview: failed to remove entity: " + e.getMessage());
+                    LOG.warn("GhostPreview: failed to remove entity: " + e.getMessage());
                 }
             }
         }
         refs.clear();
-        LOGGER.info("[Ghost] clear: removed=" + removed);
+        LOG.info("[Ghost] clear: removed=" + removed);
     }
 
     private static boolean isDoorBlock(String blockType) {

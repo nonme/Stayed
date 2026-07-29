@@ -37,7 +37,7 @@ public class TargetDummyHandler extends EntityEventSystem<EntityStore, UseBlockE
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.TARGET_DUMMY_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.GUARD_HOUSE_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;

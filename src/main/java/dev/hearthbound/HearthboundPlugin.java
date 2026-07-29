@@ -4,6 +4,8 @@ import com.hypixel.hytale.assetstore.event.LoadedAssetsEvent;
 import com.hypixel.hytale.assetstore.map.DefaultAssetMap;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.server.core.asset.type.item.config.ItemDropList;
+import com.hypixel.hytale.server.core.event.events.player.PlayerInteractEvent;
+import com.hypixel.hytale.server.core.event.events.player.PlayerMouseButtonEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.server.OpenCustomUIInteraction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -19,7 +21,11 @@ import dev.hearthbound.events.BrazierHandler;
 import dev.hearthbound.events.FoundingStoneHandler;
 import dev.hearthbound.events.CounterHandler;
 import dev.hearthbound.events.ForgeHandler;
-import dev.hearthbound.events.LumbermillHandler;
+import dev.hearthbound.events.TavernHandler;
+import dev.hearthbound.events.InteractionDebugHandler;
+import dev.hearthbound.events.SawmillHandler;
+import dev.hearthbound.events.WoodcuttersHandler;
+
 import dev.hearthbound.events.MineTorchHandler;
 import dev.hearthbound.events.ScarecrowHandler;
 import dev.hearthbound.events.TargetDummyHandler;
@@ -34,11 +40,11 @@ import dev.hearthbound.village.VillageManager;
 import dev.hearthbound.village.VillagerData;
 
 import javax.annotation.Nonnull;
-import java.util.logging.Logger;
 
 public class HearthboundPlugin extends JavaPlugin {
 
-    static final Logger LOGGER = Logger.getLogger(HearthboundPlugin.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("plugin");
     private static HearthboundPlugin instance;
     private VillageTickHandler villageTickHandler;
 
@@ -57,6 +63,8 @@ public class HearthboundPlugin extends JavaPlugin {
     @Override
     protected void setup() {
         instance = this;
+        // Logger first — everything else logs through it.
+        dev.hearthbound.util.log.Log.install();
         villageTickHandler = new VillageTickHandler();
 
         // Initialize managers
@@ -94,9 +102,11 @@ public class HearthboundPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new BrazierHandler());
         this.getEntityStoreRegistry().registerSystem(new ScarecrowHandler());
         this.getEntityStoreRegistry().registerSystem(new CounterHandler());
-        this.getEntityStoreRegistry().registerSystem(new LumbermillHandler());
+        this.getEntityStoreRegistry().registerSystem(new WoodcuttersHandler());
+        this.getEntityStoreRegistry().registerSystem(new SawmillHandler());
         this.getEntityStoreRegistry().registerSystem(new MineTorchHandler());
         this.getEntityStoreRegistry().registerSystem(new ForgeHandler());
+        this.getEntityStoreRegistry().registerSystem(new TavernHandler());
         this.getEntityStoreRegistry().registerSystem(new TargetDummyHandler());
         // Engine-level guard against duplicate NPC entities sharing one npcId.
         this.getEntityStoreRegistry().registerSystem(new dev.hearthbound.npc.DuplicateNpcPrevention());
@@ -129,10 +139,21 @@ public class HearthboundPlugin extends JavaPlugin {
                 }
         );
 
+        // Founder's Almanac — opened via the Stayed_Founders_Almanac inventory item
+        // (right-click → Stayed_OpenAlmanac interaction → this page id).
+        OpenCustomUIInteraction.registerCustomPageSupplier(
+                this, HearthboundPlugin.class, "hearthbound_almanac",
+                (ref, accessor, playerRef, context) ->
+                        new dev.hearthbound.ui.AlmanacPage(playerRef, ref)
+        );
+
         // Register events
         this.getEventRegistry().register(LoadedAssetsEvent.class, Item.class, CraftabilityIndex::onItemsLoaded);
         this.getEventRegistry().register(LoadedAssetsEvent.class, ItemDropList.class, CraftabilityIndex::onDropListsLoaded);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, PlayerJoinHandler::onPlayerReady);
+        this.getEventRegistry().registerGlobal(PlayerInteractEvent.class, InteractionDebugHandler::onPlayerInteract);
+        this.getEventRegistry().registerGlobal(PlayerMouseButtonEvent.class, InteractionDebugHandler::onPlayerMouseButton);
+        InteractionDebugHandler.registerPacketWatcher();
         // EventPriority.LAST: NPC plugin runs first and finishes deserialising
         // identity components (e.g. StayedNpcIdentityComponent) before our
         // handler walks the holders. Without this, Holder.getComponent returned
@@ -159,12 +180,14 @@ public class HearthboundPlugin extends JavaPlugin {
     @Override
     protected void shutdown() {
         // Save any in-flight NPC state and cancel all scheduled tasks.
+        InteractionDebugHandler.unregisterPacketWatcher();
         dev.hearthbound.test.audit.NpcRegistrySelfCheck.stop();
         dev.hearthbound.npc.NpcPositionTracker.stop();
         dev.hearthbound.npc.HearthboundDataStore.get().stopPeriodicFlush();
         dev.hearthbound.npc.HearthboundDataStore.get().save();
         dev.hearthbound.npc.NpcRegistry.get().stopReconcileTask();
         dev.hearthbound.util.TickScheduler.shutdown();
-        LOGGER.info("HearthboundPlugin shutdown complete");
+        LOG.info("HearthboundPlugin shutdown complete");
+        dev.hearthbound.util.log.Log.shutdown();
     }
 }

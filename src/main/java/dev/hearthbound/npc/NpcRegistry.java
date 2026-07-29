@@ -8,8 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
-
+import com.hypixel.hytale.server.core.universe.world.World;
 /**
  * In-memory registry of all Stayed-managed NPCs.
  *
@@ -28,8 +27,8 @@ import java.util.logging.Logger;
  */
 public final class NpcRegistry {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcRegistry.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.registry");
     private static final NpcRegistry INSTANCE = new NpcRegistry();
 
     public static NpcRegistry get() {
@@ -64,6 +63,10 @@ public final class NpcRegistry {
         public final long skinSeed;
         /** Chunk index where this NPC was last seen. Updated on position sync. */
         public volatile long chunkIndex;
+        /** World that owns this NPC. Null only for legacy records before first migration. */
+        public volatile UUID worldUuid;
+        /** Human-readable world name for logs/save inspection. */
+        public volatile String worldName;
         /** Last known world position. Valid only when hasPosition=true. */
         public volatile double lastX, lastY, lastZ;
         /** False until the first position sync. */
@@ -136,6 +139,19 @@ public final class NpcRegistry {
             this.baseChunkIndex = other.baseChunkIndex;
             this.hasBasePosition = true;
         }
+
+        public void setWorld(UUID worldUuid, String worldName) {
+            this.worldUuid = worldUuid;
+            this.worldName = worldName;
+        }
+
+        public boolean hasWorld() {
+            return worldUuid != null;
+        }
+
+        public boolean belongsToWorld(UUID currentWorldUuid) {
+            return worldUuid == null || currentWorldUuid == null || worldUuid.equals(currentWorldUuid);
+        }
     }
 
     // npcId → record (primary index)
@@ -143,10 +159,24 @@ public final class NpcRegistry {
     // entityUuid → record (secondary lookup; mutates with entity respawns)
     private final ConcurrentHashMap<UUID, NpcRecord> byEntityUuid = new ConcurrentHashMap<>();
 
-    // entityUuid → chunkIndex: NPCs that must be deleted when their chunk next loads.
-    // NOT persisted to disk — a stale orphan that survives a restart will be caught by
-    // DuplicateNpcPrevention next time anyway.
-    private final ConcurrentHashMap<UUID, Long> pendingRemovals = new ConcurrentHashMap<>();
+    private record PendingRemovalKey(UUID worldUuid, UUID entityUuid) {}
+
+    public static final class PendingRemoval {
+        public final UUID worldUuid;
+        public final String worldName;
+        public final UUID entityUuid;
+        public final long chunkIndex;
+
+        private PendingRemoval(UUID worldUuid, String worldName, UUID entityUuid, long chunkIndex) {
+            this.worldUuid = worldUuid;
+            this.worldName = worldName;
+            this.entityUuid = entityUuid;
+            this.chunkIndex = chunkIndex;
+        }
+    }
+
+    // (worldUuid, entityUuid) → tombstone. worldUuid=null is legacy/global.
+    private final ConcurrentHashMap<PendingRemovalKey, PendingRemoval> pendingRemovals = new ConcurrentHashMap<>();
 
     private NpcRegistry() {}
 
@@ -158,7 +188,7 @@ public final class NpcRegistry {
         if (record == null) return;
         byNpcId.put(record.npcId, record);
         if (record.entityUuid != null) byEntityUuid.put(record.entityUuid, record);
-        LOGGER.fine("NpcRegistry registered " + record.roleName + " npcId=" + record.npcId
+        LOG.debug("NpcRegistry registered " + record.roleName + " npcId=" + record.npcId
                 + " entityUuid=" + record.entityUuid + " interaction=" + record.interaction);
     }
 
@@ -176,6 +206,10 @@ public final class NpcRegistry {
             NpcRecord record) {
         if (record == null) return;
         if (store != null && ref != null) {
+            if (!record.hasWorld()) {
+                World world = store.getExternalData() != null ? store.getExternalData().getWorld() : null;
+                record.setWorld(worldUuidOf(world), worldNameOf(world));
+            }
             store.putComponent(ref, StayedNpcIdentityComponent.getComponentType(),
                     new StayedNpcIdentityComponent(record.npcId));
         }
@@ -193,12 +227,15 @@ public final class NpcRegistry {
             newRecord.npcId = old.npcId;
             newRecord.refreshGeneratedRoleName();
             newRecord.copyBasePositionFrom(old);
+            if (!newRecord.hasWorld()) {
+                newRecord.setWorld(old.worldUuid, old.worldName);
+            }
             byNpcId.put(old.npcId, newRecord);
         } else {
             byNpcId.put(newRecord.npcId, newRecord);
         }
         if (newRecord.entityUuid != null) byEntityUuid.put(newRecord.entityUuid, newRecord);
-        LOGGER.fine("NpcRegistry updated " + newRecord.roleName + " npcId=" + newRecord.npcId
+        LOG.debug("NpcRegistry updated " + newRecord.roleName + " npcId=" + newRecord.npcId
                 + " entityUuid=" + newRecord.entityUuid);
     }
 
@@ -207,7 +244,7 @@ public final class NpcRegistry {
         NpcRecord removed = byEntityUuid.remove(entityUuid);
         if (removed != null) {
             byNpcId.remove(removed.npcId);
-            LOGGER.fine("NpcRegistry unregistered " + removed.roleName + " npcId=" + removed.npcId
+            LOG.debug("NpcRegistry unregistered " + removed.roleName + " npcId=" + removed.npcId
                     + " entityUuid=" + entityUuid);
         }
     }
@@ -224,14 +261,14 @@ public final class NpcRegistry {
         byNpcId.clear();
         byEntityUuid.clear();
         pendingRemovals.clear();
-        LOGGER.info("NpcRegistry cleared");
+        LOG.info("NpcRegistry cleared");
     }
 
     /** Clears NPC records only — pending removals survive to delete unloaded entities. */
     public void clearRecords() {
         byNpcId.clear();
         byEntityUuid.clear();
-        LOGGER.info("NpcRegistry records cleared");
+        LOG.info("NpcRegistry records cleared");
     }
 
     // -------------------------------------------------------------------------
@@ -251,9 +288,13 @@ public final class NpcRegistry {
     }
 
     public List<NpcRecord> getForChunk(long chunkIndex) {
+        return getForChunk(null, chunkIndex);
+    }
+
+    public List<NpcRecord> getForChunk(UUID worldUuid, long chunkIndex) {
         List<NpcRecord> result = new ArrayList<>();
         for (NpcRecord r : byNpcId.values()) {
-            if (r.chunkIndex == chunkIndex) result.add(r);
+            if (r.chunkIndex == chunkIndex && r.belongsToWorld(worldUuid)) result.add(r);
         }
         return result;
     }
@@ -277,6 +318,14 @@ public final class NpcRegistry {
         }
         record.entityUuid = newEntityUuid;
         byEntityUuid.put(newEntityUuid, record);
+    }
+
+    public boolean bindEntityUuid(String npcId, UUID newEntityUuid, UUID worldUuid) {
+        if (npcId == null || newEntityUuid == null) return false;
+        NpcRecord record = byNpcId.get(npcId);
+        if (record == null || !record.belongsToWorld(worldUuid)) return false;
+        bindEntityUuid(npcId, newEntityUuid);
+        return true;
     }
 
     /**
@@ -305,21 +354,74 @@ public final class NpcRegistry {
     // -------------------------------------------------------------------------
 
     public void markForRemoval(UUID entityUuid, long chunkIndex) {
+        markForRemoval(null, null, entityUuid, chunkIndex);
+    }
+
+    public void markForRemoval(UUID worldUuid, UUID entityUuid, long chunkIndex) {
+        markForRemoval(worldUuid, null, entityUuid, chunkIndex);
+    }
+
+    public void markForRemoval(UUID worldUuid, String worldName, UUID entityUuid, long chunkIndex) {
         if (entityUuid == null) return;
-        pendingRemovals.put(entityUuid, chunkIndex);
-        LOGGER.fine("NpcRegistry: marked for deferred removal entityUuid=" + entityUuid);
+        pendingRemovals.put(new PendingRemovalKey(worldUuid, entityUuid),
+                new PendingRemoval(worldUuid, worldName, entityUuid, chunkIndex));
+        LOG.debug("NpcRegistry: marked for deferred removal entityUuid=" + entityUuid
+                + " worldUuid=" + worldUuid);
     }
 
     public boolean isPendingRemoval(UUID entityUuid) {
-        return entityUuid != null && pendingRemovals.containsKey(entityUuid);
+        if (entityUuid == null) return false;
+        for (PendingRemovalKey key : pendingRemovals.keySet()) {
+            if (entityUuid.equals(key.entityUuid())) return true;
+        }
+        return false;
+    }
+
+    public boolean isPendingRemoval(UUID worldUuid, UUID entityUuid) {
+        if (entityUuid == null) return false;
+        return pendingRemovals.containsKey(new PendingRemovalKey(worldUuid, entityUuid))
+                || pendingRemovals.containsKey(new PendingRemovalKey(null, entityUuid));
     }
 
     public Map<UUID, Long> getPendingRemovals() {
-        return Collections.unmodifiableMap(pendingRemovals);
+        Map<UUID, Long> flattened = new java.util.HashMap<>();
+        for (PendingRemoval removal : pendingRemovals.values()) {
+            flattened.put(removal.entityUuid, removal.chunkIndex);
+        }
+        return Collections.unmodifiableMap(flattened);
+    }
+
+    public List<PendingRemoval> getPendingRemovalEntries() {
+        return new ArrayList<>(pendingRemovals.values());
     }
 
     public void clearPendingRemoval(UUID entityUuid) {
-        if (entityUuid != null) pendingRemovals.remove(entityUuid);
+        if (entityUuid == null) return;
+        pendingRemovals.keySet().removeIf(key -> entityUuid.equals(key.entityUuid()));
+    }
+
+    public void clearPendingRemoval(UUID worldUuid, UUID entityUuid) {
+        if (entityUuid == null) return;
+        pendingRemovals.remove(new PendingRemovalKey(worldUuid, entityUuid));
+        pendingRemovals.remove(new PendingRemovalKey(null, entityUuid));
+    }
+
+    public static UUID worldUuidOf(World world) {
+        try {
+            return world != null && world.getWorldConfig() != null
+                    ? world.getWorldConfig().getUuid()
+                    : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public static String worldNameOf(World world) {
+        try {
+            return world != null ? world.getName() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

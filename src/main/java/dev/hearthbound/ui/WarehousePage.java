@@ -15,7 +15,6 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.building.BuildingSystem;
-import dev.hearthbound.building.StorageChestReader;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
@@ -23,16 +22,14 @@ import dev.hearthbound.village.VillageManager;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Warehouse management UI — opened when the player presses F on the Counter anchor block.
- * Tabs: Info | Storage (live chest contents) | Construction
+ * Tabs: Info | Storage (VillageData warehouse storage) | Construction
  */
 public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(WarehousePage.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.warehouse");
     // Scan radius around the counter anchor when reading storage chests.
     private static final int STORAGE_SCAN_RADIUS = 20;
 
@@ -85,6 +82,10 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
                 EventData.of(DialogEventData.ACTION_KEY, "deposit"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#StartBuildButton",
                 EventData.of(DialogEventData.ACTION_KEY, "start_build"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#DepositRepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "deposit_repair"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#RepairButton",
+                EventData.of(DialogEventData.ACTION_KEY, "repair"), false);
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of(DialogEventData.ACTION_KEY, "close"), false);
     }
@@ -154,7 +155,7 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
     }
 
     private void populateStorageTab(UICommandBuilder b, BuildingRecord record) {
-        Map<String, Integer> contents = StorageChestReader.readAll(world, record);
+        Map<String, Integer> contents = buildingStorageMap(record);
 
         b.clear("#StorageListContainer");
 
@@ -183,6 +184,7 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
         boolean isCompleted = record != null && record.isCompleted();
         boolean elfBusy = !isBuilding && BuildingSystem.get().isBuilding();
         applyConstructionState(b, isBuilding, isCompleted, allSatisfied, elfBusy);
+        renderRepairSection(b, record);
     }
 
     private boolean renderResourceList(UICommandBuilder b,
@@ -198,6 +200,8 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
         if (isCompleted) {
             b.set("#ConstructionStatus.Text",
                     "The Warehouse stands complete. Upgrades coming in a future update.");
+            b.set("#ResourceListWrapper.Visible", false);
+            b.set("#ResourceHeader.Visible", false);
             b.set("#ResourceListContainer.Visible", false);
             b.set("#StartBuildButton.Visible", false);
             b.set("#DepositButton.Visible", false);
@@ -244,6 +248,37 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
             b.set("#StartBuildButton.Visible", false);
             b.set("#DepositButton.Visible", true);
             b.set("#DepositHint.Text", "Click Deposit to transfer matching resources from your inventory.");
+        }
+    }
+
+    private void renderRepairSection(UICommandBuilder b, BuildingRecord record) {
+        if (record == null || !record.isCompleted()) {
+            b.set("#RepairSection.Visible", false);
+            return;
+        }
+        b.set("#RepairSection.Visible", true);
+        Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+        b.clear("#RepairResourceContainer");
+        if (cost.isEmpty()) {
+            b.set("#RepairStatus.Text", "Building is intact — no repairs needed.");
+            b.set("#RepairResourceContainer.Visible", false);
+            b.set("#DepositRepairButton.Visible", false);
+            b.set("#RepairButton.Visible", false);
+            b.set("#RepairHint.Text", "");
+        } else {
+            b.set("#RepairStatus.Text", cost.size() + " block(s) need repair:");
+            b.set("#RepairResourceContainer.Visible", true);
+            String language = networkPlayerRef != null ? networkPlayerRef.getLanguage() : null;
+            Map<String, Integer> have = buildingStorageMap(record);
+            boolean hasDeficit = cost.entrySet().stream()
+                    .anyMatch(e -> have.getOrDefault(e.getKey(), 0) < e.getValue());
+            dev.hearthbound.util.ResourceListRenderer.renderRequired(
+                    b, "#RepairResourceContainer", cost, have, language);
+            b.set("#DepositRepairButton.Visible", hasDeficit);
+            b.set("#RepairButton.Visible", !hasDeficit);
+            b.set("#RepairHint.Text", !hasDeficit
+                    ? "All materials ready — press Repair to restore the building."
+                    : "Deposit missing materials to repair.");
         }
     }
 
@@ -366,6 +401,51 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
                 populateConstructionTab(b, record);
                 sendUpdate(b, false);
             }
+
+            case "deposit_repair" -> {
+                if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerEntityRef);
+                if (dv == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingRecord record = findRecord(store);
+                if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                Player player = store.getComponent(ref, Player.getComponentType());
+                if (player == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                Map<String, Integer> cost = BuildingSystem.getRepairCost(record, world);
+                com.hypixel.hytale.protocol.GameMode gm = player.getGameMode();
+                boolean isCreative = gm != null && "Creative".equals(gm.name());
+                int deposited = isCreative
+                        ? depositCreative(record, cost)
+                        : depositFromInventory(player, record, cost);
+
+                VillageManager.get().save(store, playerEntityRef, dv);
+
+                UICommandBuilder b = new UICommandBuilder();
+                b.set("#RepairHint.Text", isCreative
+                        ? (deposited > 0 ? "Creative: " + deposited + " items conjured." : "Nothing needed.")
+                        : (deposited > 0 ? "Deposited " + deposited + " items." : "No matching resources in inventory."));
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
+
+            case "repair" -> {
+                if (!confirmed) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                VillageData dv = VillageManager.get().getVillageData(store, playerEntityRef);
+                if (dv == null) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingRecord record = findRecord(store);
+                if (record == null || !record.isCompleted()) { sendUpdate(new UICommandBuilder(), false); return; }
+
+                BuildingSystem.get().startRepair(store, playerEntityRef, world, record);
+
+                UICommandBuilder b = new UICommandBuilder();
+                populateConstructionTab(b, record);
+                sendUpdate(b, false);
+            }
         }
     }
 
@@ -422,7 +502,7 @@ public class WarehousePage extends InteractiveCustomUIPage<DialogEventData> {
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error depositing resources", e);
+            LOG.warn("Error depositing resources", e);
         }
         return totalDeposited;
     }

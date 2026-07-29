@@ -1,0 +1,17 @@
+{
+  "version": 8,
+  "blockIdVersion": 11,
+  "anchorX": 0,
+  "anchorY": 0,
+  "anchorZ": 0,
+  "blocks": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "name": "*Wood_Hardwood_Fence_Gate_State_Definitions_OpenDoorIn",
+      "rotation": 0
+    }
+  ],
+  "fluids": []
+}

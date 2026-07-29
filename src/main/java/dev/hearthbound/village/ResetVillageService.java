@@ -96,7 +96,9 @@ public final class ResetVillageService {
         NpcRegistry.get().clearRecords();
         HearthboundDataStore.get().save();
 
-        store.putComponent(playerRef, VillageData.getComponentType(), new VillageData());
+        VillageData fresh = new VillageData();
+        fresh.setWorld(NpcRegistry.worldUuidOf(world), NpcRegistry.worldNameOf(world));
+        store.putComponent(playerRef, VillageData.getComponentType(), fresh);
         ElfSage.spawnIfNeeded(store, playerRef, world);
     }
 
@@ -108,7 +110,13 @@ public final class ResetVillageService {
         }
         NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(uuid);
         long chunkIndex = record != null ? record.chunkIndex : 0L;
-        NpcRegistry.get().markForRemoval(uuid, chunkIndex);
+        UUID removalWorld = record != null && record.worldUuid != null
+                ? record.worldUuid
+                : NpcRegistry.worldUuidOf(world);
+        String removalWorldName = record != null && record.worldName != null
+                ? record.worldName
+                : NpcRegistry.worldNameOf(world);
+        NpcRegistry.get().markForRemoval(removalWorld, removalWorldName, uuid, chunkIndex);
     }
 
     private static void removeLoadedManagedNpcs(Store<EntityStore> store, Set<UUID> doomedNpcUuids) {

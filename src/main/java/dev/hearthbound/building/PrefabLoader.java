@@ -7,8 +7,6 @@ import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Logger;
-
 /**
  * Loads a .prefab.json and converts it to a BlockEntry list for ResourceBlockPlacer.
  *
@@ -23,8 +21,8 @@ import java.util.logging.Logger;
  */
 public class PrefabLoader {
 
-    private static final Logger LOGGER = Logger.getLogger(PrefabLoader.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.prefab");
     private static final Set<String> SKIP_BLOCKS = Set.of(
             "Empty",
             "Editor_Empty",
@@ -86,7 +84,7 @@ public class PrefabLoader {
                     false);
             return mineOrder ? sortForMineOrder(blocks, worldY) : blocks;
         } catch (Exception e) {
-            LOGGER.warning("Failed to load prefab '" + prefabName + "': " + e.getMessage());
+            LOG.warn("Failed to load prefab '" + prefabName + "': " + e.getMessage());
             return List.of();
         }
     }
@@ -110,7 +108,7 @@ public class PrefabLoader {
             return extractBlocks(selection, anchorBlockId, anchorPrefabY,
                     0, anchorPrefabY, 0, 0);
         } catch (Exception e) {
-            LOGGER.warning("Failed to load prefab '" + prefabName + "' (native local): " + e.getMessage());
+            LOG.warn("Failed to load prefab '" + prefabName + "' (native local): " + e.getMessage());
             return List.of();
         }
     }
@@ -129,7 +127,7 @@ public class PrefabLoader {
             return extractBelowAnchorEmpty(selection, anchorBlockId, anchorPrefabY,
                     worldX, worldY, worldZ, rotationSteps);
         } catch (Exception e) {
-            LOGGER.warning("Failed to load prefab '" + prefabName + "' for below-anchor empty: " + e.getMessage());
+            LOG.warn("Failed to load prefab '" + prefabName + "' for below-anchor empty: " + e.getMessage());
             return List.of();
         }
     }
@@ -200,7 +198,7 @@ public class PrefabLoader {
             return extractOccupiedCells(selection, anchorBlockId, anchorPrefabY,
                     worldX, worldY, worldZ, rotationSteps);
         } catch (Exception e) {
-            LOGGER.warning("Failed to load prefab '" + prefabName + "' for occupied cells: " + e.getMessage());
+            LOG.warn("Failed to load prefab '" + prefabName + "' for occupied cells: " + e.getMessage());
             return java.util.Set.of();
         }
     }
@@ -284,7 +282,7 @@ public class PrefabLoader {
             BlockSelection selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
             return readAnchorRotation(selection, anchorBlockId, anchorPrefabY);
         } catch (Exception e) {
-            LOGGER.warning("PrefabLoader.readAnchorRotation failed for '" + prefabName + "': " + e.getMessage());
+            LOG.warn("PrefabLoader.readAnchorRotation failed for '" + prefabName + "': " + e.getMessage());
             return 0;
         }
     }
@@ -348,7 +346,7 @@ public class PrefabLoader {
             doors.sort((a, b) -> Integer.compare(doorScore(a), doorScore(b)));
             return doors;
         } catch (Exception e) {
-            LOGGER.warning("PrefabLoader.findDoors failed for '" + prefabName + "': " + e.getMessage());
+            LOG.warn("PrefabLoader.findDoors failed for '" + prefabName + "': " + e.getMessage());
             return List.of();
         }
     }
@@ -594,6 +592,8 @@ public class PrefabLoader {
         if (stripped.startsWith("Container_")) return 1;
         if (stripped.startsWith("Plant_")) return 1;
         if (stripped.startsWith("Ingredient_")) return 1;
+        if (stripped.startsWith("Food_")) return 1;
+        if (stripped.contains("Fence")) return 1;
         return 0;
     }
 
@@ -608,7 +608,6 @@ public class PrefabLoader {
         boolean isDependent = stripped.contains("Stairs")
                 || stripped.contains("Slab")
                 || stripped.contains("Beam")
-                || stripped.startsWith("Wood_") && stripped.contains("Fence")
                 || stripped.startsWith("Rock_") && stripped.contains("Wall")
                 || stripped.contains("_Branch")
                 || stripped.contains("_Corner");

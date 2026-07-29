@@ -1,0 +1,7 @@
+{
+  "$Comment": "Interaction for opening the Founder's Almanac UI from an inventory item",
+  "Type": "OpenCustomUI",
+  "Page": {
+    "Id": "hearthbound_almanac"
+  }
+}

@@ -37,7 +37,7 @@ public class ScarecrowHandler extends EntityEventSystem<EntityStore, UseBlockEve
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.SCARECROW_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.FARM_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;

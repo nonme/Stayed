@@ -1,8 +1,6 @@
 package dev.hearthbound.ui;
 
 import java.util.UUID;
-import java.util.logging.Logger;
-
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -39,7 +37,8 @@ import dev.hearthbound.village.VillageManager;
  */
 public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
-    private static final Logger LOGGER = Logger.getLogger(ElfDialogPage.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("ui.elfdialog");
     private static final String FOUNDING_STONE_ID = "Stayed_Founding_Stone";
 
     // Screen constants
@@ -72,12 +71,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
     private static final String QUEST_FORGE_OFFER       = "quest_forge_offer";
     private static final String BUILD_MENU              = "build_menu";
 
-    private static final String BRAZIER_ITEM_ID      = "Stayed_Brazier";
-    private static final String SCARECROW_ITEM_ID    = "Stayed_Scarecrow";
-    private static final String COUNTER_ITEM_ID      = "Stayed_Counter";
-    private static final String LUMBERMILL_ITEM_ID   = "Stayed_Lumbermill";
-    private static final String MINE_SIGN_ITEM_ID    = "Stayed_Mine_Sign";
-    private static final String TARGET_DUMMY_ITEM_ID = "Stayed_Target_Dummy";
+    private static final String HOUSE_ITEM_ID      = "Stayed_House";
+    private static final String FARM_ITEM_ID    = "Stayed_Farm";
+    private static final String COUNTER_ITEM_ID      = "Stayed_Warehouse";
+    private static final String WOODCUTTERS_ITEM_ID  = "Stayed_Woodcutters_Hut";
+    private static final String MINE_ITEM_ID    = "Stayed_Mine";
+    private static final String GUARD_HOUSE_ITEM_ID = "Stayed_Guard_House";
     private static final String FORGE_ITEM_ID        = "Stayed_Forge";
 
     private String screen;
@@ -150,7 +149,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
         houseBuilt      = isBuilt(village, dev.hearthbound.village.BuildingType.HOUSE_HUMAN);
         farmBuilt       = isBuilt(village, dev.hearthbound.village.BuildingType.FARM);
         warehouseBuilt  = isBuilt(village, dev.hearthbound.village.BuildingType.WAREHOUSE);
-        sawmillBuilt    = isBuilt(village, dev.hearthbound.village.BuildingType.SAWMILL);
+        sawmillBuilt    = isBuilt(village, dev.hearthbound.village.BuildingType.WOODCUTTERS_HUT);
         mineBuilt       = isBuilt(village, dev.hearthbound.village.BuildingType.MINE);
         guardHouseBuilt = isBuilt(village, dev.hearthbound.village.BuildingType.GUARD_HOUSE);
         hasStoneInInventory = player != null && player.getInventory().getCombinedHotbarFirst()
@@ -626,7 +625,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                         case "house"       -> { giveBrazier(ref, store);     close(); return; }
                         case "farm"        -> { giveScarecrow(ref, store);   close(); return; }
                         case "warehouse"   -> { giveCounter(ref, store);     close(); return; }
-                        case "sawmill"     -> { giveLumbermill(ref, store);  close(); return; }
+                        case "sawmill"     -> { giveWoodcutters(ref, store);  close(); return; }
                         case "mine"        -> { giveMineSign(ref, store);    close(); return; }
                         case "guard_house" -> { giveTargetDummy(ref, store); close(); return; }
                         case "forge"       -> { giveForgeAnvil(ref, store);  close(); return; }
@@ -722,7 +721,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
             case QUEST_SAWMILL_OFFER -> {
                 if ("choice1".equals(action)) {
-                    giveLumbermill(ref, store);
+                    giveWoodcutters(ref, store);
                     close();
                     return;
                 } else if ("choice2".equals(action)) {
@@ -789,7 +788,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
     private void launchRescueQuest(Ref<EntityStore> ref, Store<EntityStore> store) {
         if (cachedWorld == null || cachedPlayerUuid == null) {
-            LOGGER.warning("launchRescueQuest: missing cached world or UUID");
+            LOG.warn("launchRescueQuest: missing cached world or UUID");
             return;
         }
 
@@ -804,7 +803,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
 
         TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
         if (transform == null) {
-            LOGGER.warning("launchRescueQuest: player has no TransformComponent");
+            LOG.warn("launchRescueQuest: player has no TransformComponent");
             return;
         }
 
@@ -813,7 +812,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 transform.getPosition(), variant,
                 spawned -> {
                     if (spawned == null) {
-                        LOGGER.warning("launchRescueQuest: startForPlayer failed");
+                        LOG.warn("launchRescueQuest: startForPlayer failed");
                     }
                 });
     }
@@ -830,12 +829,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                     stoneGiven = true;
                     saveFlags(ref, store);
                 }
-                LOGGER.info("Gave Founding Stone to " + playerName);
+                LOG.info("Gave Founding Stone to " + playerName);
             } else {
-                LOGGER.warning("Could not give Founding Stone to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Founding Stone to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Founding Stone: " + e.getMessage());
+            LOG.warn("Failed to give Founding Stone: " + e.getMessage());
         }
     }
 
@@ -844,7 +843,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
             var tx = player.getInventory().getCombinedHotbarFirst()
-                    .addItemStack(new ItemStack(BRAZIER_ITEM_ID, 1));
+                    .addItemStack(new ItemStack(HOUSE_ITEM_ID, 1));
             if (tx.succeeded()) {
                 houseBrazierGiven = true;
                 houseQuestOffered = true;
@@ -852,12 +851,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 village.setHouseBrazierGiven(true);
                 village.setHouseQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Brazier to " + playerName);
+                LOG.info("Gave Brazier to " + playerName);
             } else {
-                LOGGER.warning("Could not give Brazier to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Brazier to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Brazier: " + e.getMessage());
+            LOG.warn("Failed to give Brazier: " + e.getMessage());
         }
     }
 
@@ -873,7 +872,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
             var tx = player.getInventory().getCombinedHotbarFirst()
-                    .addItemStack(new ItemStack(SCARECROW_ITEM_ID, 1));
+                    .addItemStack(new ItemStack(FARM_ITEM_ID, 1));
             if (tx.succeeded()) {
                 farmScarecrowGiven = true;
                 farmQuestOffered = true;
@@ -881,12 +880,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 village.setFarmScarecrowGiven(true);
                 village.setFarmQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Scarecrow to " + playerName);
+                LOG.info("Gave Scarecrow to " + playerName);
             } else {
-                LOGGER.warning("Could not give Scarecrow to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Scarecrow to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Scarecrow: " + e.getMessage());
+            LOG.warn("Failed to give Scarecrow: " + e.getMessage());
         }
     }
 
@@ -910,32 +909,32 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 village.setWarehouseCounterGiven(true);
                 village.setWarehouseQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Warehouse Counter to " + playerName);
+                LOG.info("Gave Warehouse Counter to " + playerName);
             } else {
-                LOGGER.warning("Could not give Warehouse Counter to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Warehouse Counter to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Warehouse Counter: " + e.getMessage());
+            LOG.warn("Failed to give Warehouse Counter: " + e.getMessage());
         }
     }
 
-    private void giveLumbermill(Ref<EntityStore> ref, Store<EntityStore> store) {
+    private void giveWoodcutters(Ref<EntityStore> ref, Store<EntityStore> store) {
         try {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
             var tx = player.getInventory().getCombinedHotbarFirst()
-                    .addItemStack(new ItemStack(LUMBERMILL_ITEM_ID, 1));
+                    .addItemStack(new ItemStack(WOODCUTTERS_ITEM_ID, 1));
             if (tx.succeeded()) {
                 sawmillQuestOffered = true;
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
                 village.setSawmillQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Lumbermill to " + playerName);
+                LOG.info("Gave Lumbermill to " + playerName);
             } else {
-                LOGGER.warning("Could not give Lumbermill to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Lumbermill to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Lumbermill: " + e.getMessage());
+            LOG.warn("Failed to give Lumbermill: " + e.getMessage());
         }
     }
 
@@ -951,18 +950,18 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
             var tx = player.getInventory().getCombinedHotbarFirst()
-                    .addItemStack(new ItemStack(MINE_SIGN_ITEM_ID, 1));
+                    .addItemStack(new ItemStack(MINE_ITEM_ID, 1));
             if (tx.succeeded()) {
                 mineQuestOffered = true;
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
                 village.setMineQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Mine Sign to " + playerName);
+                LOG.info("Gave Mine Sign to " + playerName);
             } else {
-                LOGGER.warning("Could not give Mine Sign to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Mine Sign to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Mine Sign: " + e.getMessage());
+            LOG.warn("Failed to give Mine Sign: " + e.getMessage());
         }
     }
 
@@ -978,18 +977,18 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
             var tx = player.getInventory().getCombinedHotbarFirst()
-                    .addItemStack(new ItemStack(TARGET_DUMMY_ITEM_ID, 1));
+                    .addItemStack(new ItemStack(GUARD_HOUSE_ITEM_ID, 1));
             if (tx.succeeded()) {
                 guardHouseQuestOffered = true;
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
                 village.setGuardHouseQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Training Dummy to " + playerName);
+                LOG.info("Gave Training Dummy to " + playerName);
             } else {
-                LOGGER.warning("Could not give Training Dummy to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Training Dummy to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Training Dummy: " + e.getMessage());
+            LOG.warn("Failed to give Training Dummy: " + e.getMessage());
         }
     }
 
@@ -1011,12 +1010,12 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
                 VillageData village = VillageManager.get().getOrCreateVillageData(store, ref);
                 village.setForgeQuestOffered(true);
                 VillageManager.get().save(store, ref, village);
-                LOGGER.info("Gave Forge Anvil to " + playerName);
+                LOG.info("Gave Forge Anvil to " + playerName);
             } else {
-                LOGGER.warning("Could not give Forge Anvil to " + playerName + " — inventory full?");
+                LOG.warn("Could not give Forge Anvil to " + playerName + " — inventory full?");
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to give Forge Anvil: " + e.getMessage());
+            LOG.warn("Failed to give Forge Anvil: " + e.getMessage());
         }
     }
 
@@ -1041,7 +1040,7 @@ public class ElfDialogPage extends InteractiveCustomUIPage<DialogEventData> {
             village.setFoundingStoneGiven(stoneGiven);
             VillageManager.get().save(store, ref, village);
         } catch (Exception e) {
-            LOGGER.warning("Failed to save elf dialog flags: " + e.getMessage());
+            LOG.warn("Failed to save elf dialog flags: " + e.getMessage());
         }
     }
 

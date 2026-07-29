@@ -2378,7 +2378,7 @@
       "x": -3,
       "y": 1,
       "z": 3,
-      "name": "Stayed_Counter",
+      "name": "Stayed_Warehouse",
       "filler": 31
     },
     {
@@ -3252,7 +3252,7 @@
       "x": -2,
       "y": 1,
       "z": 3,
-      "name": "Stayed_Counter"
+      "name": "Stayed_Warehouse"
     },
     {
       "x": -2,

@@ -60,8 +60,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
-import java.util.logging.Logger;
-
 /**
  * Manages all rescue quest variants: selects the next variant using rotation
  * logic, places the prefab, spawns NPCs, and handles cleanup.
@@ -79,8 +77,8 @@ import java.util.logging.Logger;
  */
 public final class RescueQuestManager {
 
-    private static final Logger LOGGER = Logger.getLogger(RescueQuestManager.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("quest");
     // -------------------------------------------------------------------------
     // Quest variants
     // -------------------------------------------------------------------------
@@ -230,7 +228,7 @@ public final class RescueQuestManager {
                     removeQuestNpc(store, uuid, ref);
                 }
             } catch (Exception e) {
-                LOGGER.warning("cleanup: failed to remove NPC ref: " + e.getMessage());
+                LOG.warn("cleanup: failed to remove NPC ref: " + e.getMessage());
             }
         }
         activeNpcRefs.clear();
@@ -240,7 +238,7 @@ public final class RescueQuestManager {
                     && !isQuestEnemyRecord(record)) {
                 continue;
             }
-            LOGGER.info("cleanup: removing stale quest NPC record uuid=" + record.entityUuid
+            LOG.info("cleanup: removing stale quest NPC record uuid=" + record.entityUuid
                     + " role=" + record.roleName);
             removeQuestNpc(store, record.entityUuid, null);
         }
@@ -256,7 +254,9 @@ public final class RescueQuestManager {
         if (ref != null && ref.isValid()) {
             store.removeEntity(ref, RemoveReason.REMOVE);
         } else {
-            NpcRegistry.get().markForRemoval(uuid, chunkIndex);
+            NpcRegistry.get().markForRemoval(record != null ? record.worldUuid : null,
+                    record != null ? record.worldName : null,
+                    uuid, chunkIndex);
         }
     }
 
@@ -368,7 +368,7 @@ public final class RescueQuestManager {
                     if (candidate != null || existingSites.isEmpty()) {
                         return CompletableFuture.completedFuture(candidate);
                     }
-                    LOGGER.info("startForPlayer: first pass found no valid site (likely overlap-rejected); "
+                    LOG.info("startForPlayer: first pass found no valid site (likely overlap-rejected); "
                             + "retrying with " + MAX_SPAWN_ATTEMPTS_RETRY + " attempts up to "
                             + MAX_DISTANCE_RETRY);
                     return findSpawnLocation(world, fromPos, rng, variant, existingSites,
@@ -385,7 +385,7 @@ public final class RescueQuestManager {
             cleanup(liveStore);
 
             if (candidate == null) {
-                LOGGER.warning("startForPlayer: no valid spawn after retry");
+                LOG.warn("startForPlayer: no valid spawn after retry");
                 onDone.accept(null);
                 return;
             }
@@ -398,7 +398,7 @@ public final class RescueQuestManager {
             Set<String> takenNames = collectTakenFullNames(liveStore, playerRef);
             Spawned spawned = spawn(world, liveStore, blockX, groundY, blockZ, takenNames, chosenVariant);
             if (spawned == null) {
-                LOGGER.warning("startForPlayer: spawn() failed at ("
+                LOG.warn("startForPlayer: spawn() failed at ("
                         + blockX + "," + groundY + "," + blockZ + ") variant=" + variant);
                 onDone.accept(null);
                 return;
@@ -418,10 +418,10 @@ public final class RescueQuestManager {
                     liveStore, objectiveLineId, Set.of(playerUuid),
                     world.getWorldConfig().getUuid(), null);
             if (objective == null) {
-                LOGGER.warning("startForPlayer: failed to start ObjectiveLine " + objectiveLineId);
+                LOG.warn("startForPlayer: failed to start ObjectiveLine " + objectiveLineId);
             }
 
-            LOGGER.info("Quest started. Variant=" + chosenVariant
+            LOG.info("Quest started. Variant=" + chosenVariant
                     + " at (" + blockX + "," + groundY + "," + blockZ + ")");
             onDone.accept(spawned);
         }));
@@ -451,13 +451,13 @@ public final class RescueQuestManager {
             BlockSelection selection = PrefabStore.get()
                     .getAssetPrefabFromAnyPack(QuestVariant.TRAP.prefabName + ".prefab.json");
             if (selection == null) {
-                LOGGER.warning("Prefab not found: " + QuestVariant.TRAP.prefabName);
+                LOG.warn("Prefab not found: " + QuestVariant.TRAP.prefabName);
                 return null;
             }
             selection.setAnchor(0, 0, 0);
             selection.placeNoReturn(world, new Vector3i(centerX, prefabOriginY, centerZ), store);
         } catch (Exception e) {
-            LOGGER.warning("Failed to place trap prefab: " + e.getMessage());
+            LOG.warn("Failed to place trap prefab: " + e.getMessage());
             return null;
         }
 
@@ -493,11 +493,11 @@ public final class RescueQuestManager {
         try {
             selection = PrefabStore.get().getAssetPrefabFromAnyPack(prefabFile);
             if (selection == null) {
-                LOGGER.warning("Prefab not found: " + prefabFile);
+                LOG.warn("Prefab not found: " + prefabFile);
                 return null;
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to load prefab " + prefabFile + ": " + e.getMessage());
+            LOG.warn("Failed to load prefab " + prefabFile + ": " + e.getMessage());
             return null;
         }
 
@@ -543,7 +543,7 @@ public final class RescueQuestManager {
         });
 
         if (victimPosHolder[0] == null) {
-            LOGGER.warning("No victim marker (" + VICTIM_MARKER + ") in prefab: " + prefabFile);
+            LOG.warn("No victim marker (" + VICTIM_MARKER + ") in prefab: " + prefabFile);
             return null;
         }
         Vector3d victimPos = victimPosHolder[0];
@@ -557,7 +557,7 @@ public final class RescueQuestManager {
             selection.setAnchor(0, 0, 0);
             selection.placeNoReturn(world, new Vector3i(centerX, prefabOriginY, centerZ), store);
         } catch (Exception e) {
-            LOGGER.warning("Failed to place prefab " + prefabFile + ": " + e.getMessage());
+            LOG.warn("Failed to place prefab " + prefabFile + ": " + e.getMessage());
             return null;
         }
 
@@ -605,7 +605,7 @@ public final class RescueQuestManager {
         Pair<Ref<EntityStore>, INonPlayerCharacter> result
                 = StayedNpcSpawner.spawnPersistent(store, pos, new Vector3f(0, 0, 0), record);
         if (result == null) {
-            LOGGER.warning("Failed to spawn rescue victim at " + pos);
+            LOG.warn("Failed to spawn rescue victim at " + pos);
             return;
         }
 
@@ -634,7 +634,7 @@ public final class RescueQuestManager {
         Pair<Ref<EntityStore>, INonPlayerCharacter> result
                 = NpcManager.spawnNpc(store, pos, new Vector3f(0, 0, 0), role);
         if (result == null) {
-            LOGGER.warning("Failed to spawn enemy (" + role + ") at " + pos);
+            LOG.warn("Failed to spawn enemy (" + role + ") at " + pos);
             return;
         }
         Ref<EntityStore> enemyRef = result.first();
@@ -785,11 +785,11 @@ public final class RescueQuestManager {
 
                     if (bestCandidate != null) {
                         QuestVariant chosen = QuestVariant.values()[bestCandidate[4]];
-                        LOGGER.info("findSpawnLocation: best score=" + bestScore
+                        LOG.info("findSpawnLocation: best score=" + bestScore
                                 + " variant=" + chosen
                                 + " at (" + bestCandidate[0] + "," + bestCandidate[1] + "," + bestCandidate[2] + ")");
                     } else {
-                        LOGGER.warning("findSpawnLocation: no candidate found in " + attempts + " attempts");
+                        LOG.warn("findSpawnLocation: no candidate found in " + attempts + " attempts");
                     }
                     return bestCandidate;
                 });
@@ -1023,7 +1023,7 @@ public final class RescueQuestManager {
             }
 
         } catch (Exception e) {
-            LOGGER.warning("fillCampChest: failed at " + cx + "," + cy + "," + cz + ": " + e.getMessage());
+            LOG.warn("fillCampChest: failed at " + cx + "," + cy + "," + cz + ": " + e.getMessage());
         }
     }
 
@@ -1031,7 +1031,7 @@ public final class RescueQuestManager {
         try {
             inv.addItemStack(new ItemStack(itemId, qty));
         } catch (Exception e) {
-            LOGGER.fine("addToChest: failed for " + itemId + ": " + e.getMessage());
+            LOG.debug("addToChest: failed for " + itemId + ": " + e.getMessage());
         }
     }
 

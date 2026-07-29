@@ -14,14 +14,17 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hearthbound.building.BuildingLayout;
+import dev.hearthbound.building.DoorPrefabResolver;
 import dev.hearthbound.village.BuildingRecord;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
 import java.util.List;
-import java.util.logging.Logger;
 
 public class DoorsCommand extends AbstractCommandCollection {
+
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.doors");
 
     public DoorsCommand() {
         super("doors", "Test door open/close for all village buildings");
@@ -38,37 +41,48 @@ public class DoorsCommand extends AbstractCommandCollection {
         }
 
         List<BuildingRecord> buildings = village.getBuildings();
-        String prefabName = open ? "door_open_in" : "door_closed_in";
         int count = 0;
 
         for (BuildingRecord b : buildings) {
             if (!b.isCompleted()) continue;
             BuildingLayout.Layout layout = BuildingLayout.get(b.getType(), b.getVariant());
-            if (layout == null || !layout.hasDoor()) continue;
+            if (layout == null || layout.doors().isEmpty()) continue;
 
             int steps = layout.rotationSteps(b.getRotation());
-            int[] door = rotateLocalOffset(layout.doorLX(), layout.doorLY(), layout.doorLZ(), steps);
-            int doorRot = layout.doorWorldRotation(b.getRotation());
-            int gx = b.getPosX() + door[0];
-            int gy = b.getPosY() + door[1];
-            int gz = b.getPosZ() + door[2];
-
-            final int fgx = gx, fgy = gy, fgz = gz, fRot = doorRot;
-            world.execute(() -> {
-                try {
-                    BlockSelection selection = PrefabStore.get()
-                            .getAssetPrefabFromAnyPack(prefabName + ".prefab.json");
-                    int angleDeg = (fRot * 90) % 360;
-                    BlockSelection rotated = angleDeg == 0 ? selection
-                            : selection.rotate(Axis.Y, angleDeg);
-                    rotated.setAnchorAtWorldPos(0, 0, 0);
-                    Store<EntityStore> liveStore = world.getEntityStore().getStore();
-                    rotated.placeNoReturn(world, new Vector3i(fgx, fgy, fgz), liveStore);
-                } catch (Exception e) {
-                    Logger.getLogger(DoorsCommand.class.getName())
-                            .warning("doors: failed at (" + fgx + "," + fgy + "," + fgz + "): " + e.getMessage());
+            for (BuildingLayout.DoorPlacement door : layout.doors()) {
+                int[] off = rotateLocalOffset(door.lx(), door.ly(), door.lz(), steps);
+                int doorRot = door.worldRotation(b.getRotation(), layout.anchorPrefabRotation());
+                int gx = b.getPosX() + off[0];
+                int gy = b.getPosY() + off[1];
+                int gz = b.getPosZ() + off[2];
+                String stateBlock = open ? door.openBlock() : door.closeBlock();
+                String prefabName = DoorPrefabResolver.resolve(stateBlock);
+                if (prefabName == null) {
+                    LOG.with("stateBlock", stateBlock)
+                       .with("x", gx).with("y", gy).with("z", gz)
+                       .warn("doors: no prefab for stateBlock — gate kind not supported");
+                    continue;
                 }
-            });
+
+                final int fgx = gx, fgy = gy, fgz = gz, fRot = doorRot;
+                final String fPrefab = prefabName;
+                world.execute(() -> {
+                    try {
+                        BlockSelection selection = PrefabStore.get()
+                                .getAssetPrefabFromAnyPack(fPrefab + ".prefab.json");
+                        int angleDeg = (fRot * 90) % 360;
+                        BlockSelection rotated = angleDeg == 0 ? selection
+                                : selection.rotate(Axis.Y, angleDeg);
+                        rotated.setAnchorAtWorldPos(0, 0, 0);
+                        Store<EntityStore> liveStore = world.getEntityStore().getStore();
+                        rotated.placeNoReturn(world, new Vector3i(fgx, fgy, fgz), liveStore);
+                    } catch (Exception e) {
+                        LOG.with("prefab", fPrefab)
+                           .with("x", fgx).with("y", fgy).with("z", fgz)
+                           .warn("doors: failed: " + e.getMessage(), e);
+                    }
+                });
+            }
             count++;
         }
 

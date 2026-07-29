@@ -21,9 +21,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Per-villager farming state machine. Stateless from BSON's perspective — runtime-only.
  *
@@ -40,8 +37,8 @@ import java.util.logging.Logger;
  */
 public class FarmerWorkBehavior {
 
-    private static final Logger LOGGER = Logger.getLogger(FarmerWorkBehavior.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.farmer");
     /** Distance squared at which we consider the farmer "arrived" at the target cell.
      *  JSON role's Seek StopDistance is 1.0 in 3D; in 2D xz that lands the farmer ~1.5–2 blocks
      *  from the target column when standing one block above the soil, so we allow up to 2.5. */
@@ -148,7 +145,7 @@ public class FarmerWorkBehavior {
         contexts.put(uuid, ctx);
         ctx.task = TickScheduler.runRepeating(world, INTERNAL_TICK_MS, INTERNAL_TICK_MS,
                 () -> internalTick(ctx));
-        LOGGER.info("Farmer " + uuid + " tick loop started @ farm "
+        LOG.info("Farmer " + uuid + " tick loop started @ farm "
                 + farm.getPosX() + "," + farm.getPosY() + "," + farm.getPosZ());
     }
 
@@ -235,7 +232,7 @@ public class FarmerWorkBehavior {
         state.nextWanderAt = 0;
         state.enter(Phase.SEEKING);
 
-        LOGGER.info(String.format("Farmer %s picked %s at %d,%d,%d%s",
+        LOG.info(String.format("Farmer %s picked %s at %d,%d,%d%s",
                 uuid, target.action(), target.x(), target.y(), target.z(),
                 target.cropType() != null ? " (" + target.cropType() + ")" : ""));
     }
@@ -289,7 +286,7 @@ public class FarmerWorkBehavior {
         // dominates and the pathfinder gets a chance to climb back out.
         double leashY = pos != null ? pos.getY() : b.maxY() + 1;
         setLeashPoint(ref, store, bestX + 0.5, leashY, bestZ + 0.5);
-        LOGGER.info(String.format("Farmer %s wandering to %d,%d (distSq=%.2f)",
+        LOG.info(String.format("Farmer %s wandering to %d,%d (distSq=%.2f)",
                 uuid, bestX, bestZ, bestDistSq));
     }
 
@@ -334,7 +331,7 @@ public class FarmerWorkBehavior {
         double distSq = dx * dx + dz * dz;
 
         if (distSq <= ARRIVAL_DIST_SQ) {
-            LOGGER.info(String.format(
+            LOG.info(String.format(
                     "Farmer %s arrived at %s @ %d,%d,%d (pos=%.2f,%.2f,%.2f distSq=%.2f) → ANIMATING",
                     uuid, t.action(), t.x(), t.y(), t.z(),
                     pos.getX(), pos.getY(), pos.getZ(), distSq));
@@ -343,7 +340,7 @@ public class FarmerWorkBehavior {
         }
 
         if (now - state.phaseEnteredAt > REACH_TIMEOUT_MS) {
-            LOGGER.info(String.format(
+            LOG.info(String.format(
                     "Farmer %s could not reach target %s @ %d,%d,%d — abandoning. "
                     + "farmerPos=(%.2f,%.2f,%.2f) leashedTo=(%.2f,%.2f,%.2f) distSq=%.2f arrivalSq=%.2f",
                     uuid, t.action(), t.x(), t.y(), t.z(),
@@ -376,7 +373,7 @@ public class FarmerWorkBehavior {
             equipToolFor(uuid, state, world, t.action());
             playAnimationFor(ref, store, uuid, ownerUuid, world, t);
             state.animTriggered = true;
-            LOGGER.info(String.format("Farmer %s swung tool for %s @ %d,%d,%d",
+            LOG.info(String.format("Farmer %s swung tool for %s @ %d,%d,%d",
                     uuid, t.action(), t.x(), t.y(), t.z()));
         }
 
@@ -395,7 +392,7 @@ public class FarmerWorkBehavior {
                 case WATER   -> applyWater(world, t, uuid);
             };
             state.effectApplied = true;
-            LOGGER.info(String.format("Farmer %s applied %s @ %d,%d,%d ok=%s",
+            LOG.info(String.format("Farmer %s applied %s @ %d,%d,%d ok=%s",
                     uuid, t.action(), t.x(), t.y(), t.z(), ok));
 
             if (!ok && t.action() == FarmScanner.Action.HARVEST) {
@@ -423,14 +420,14 @@ public class FarmerWorkBehavior {
         String itemId = "Plant_Crop_" + crop + "_Item";
         boolean deposited = WarehouseDepositor.deposit(world, warehouse, itemId);
         if (!deposited) {
-            LOGGER.info("Farmer " + uuid + ": deposit " + itemId + " failed (warehouse full?) — skipping harvest");
+            LOG.info("Farmer " + uuid + ": deposit " + itemId + " failed (warehouse full?) — skipping harvest");
             return false;
         }
 
         try {
             world.breakBlock(t.x(), t.y(), t.z(), 0);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Farmer " + uuid + ": breakBlock failed", e);
+            LOG.warn("Farmer " + uuid + ": breakBlock failed", e);
             return false;
         }
 
@@ -446,11 +443,11 @@ public class FarmerWorkBehavior {
             try {
                 world.setBlock(t.x(), t.y(), t.z(), "Plant_Crop_" + t.cropType() + "_Block");
             } catch (Exception e) {
-                LOGGER.fine("Farmer " + uuid + ": auto-replant failed: " + e.getMessage());
+                LOG.debug("Farmer " + uuid + ": auto-replant failed: " + e.getMessage());
             }
         }
 
-        LOGGER.fine("Farmer " + uuid + " harvested " + itemId + " from "
+        LOG.debug("Farmer " + uuid + " harvested " + itemId + " from "
                 + t.x() + "," + t.y() + "," + t.z());
         return true;
     }
@@ -460,7 +457,7 @@ public class FarmerWorkBehavior {
             world.breakBlock(t.x(), t.y(), t.z(), 0);
             return true;
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Farmer: weed breakBlock failed at "
+            LOG.warn("Farmer: weed breakBlock failed at "
                     + t.x() + "," + t.y() + "," + t.z(), e);
             return false;
         }
@@ -469,10 +466,10 @@ public class FarmerWorkBehavior {
     private boolean applyTill(World world, FarmScanner.Target t, UUID uuid) {
         try {
             world.setBlock(t.x(), t.y(), t.z(), "Soil_Dirt_Tilled");
-            LOGGER.fine("Farmer " + uuid + " tilled " + t.x() + "," + t.y() + "," + t.z());
+            LOG.debug("Farmer " + uuid + " tilled " + t.x() + "," + t.y() + "," + t.z());
             return true;
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Farmer " + uuid + ": till failed", e);
+            LOG.warn("Farmer " + uuid + ": till failed", e);
             return false;
         }
     }
@@ -483,16 +480,16 @@ public class FarmerWorkBehavior {
         // than seeding an arbitrary species.
         String cropType = t.cropType();
         if (cropType == null) {
-            LOGGER.fine("Farmer " + uuid + ": replant target had no remembered crop — skipping");
+            LOG.debug("Farmer " + uuid + ": replant target had no remembered crop — skipping");
             return false;
         }
         try {
             world.setBlock(t.x(), t.y() + 1, t.z(), "Plant_Crop_" + cropType + "_Block");
-            LOGGER.fine("Farmer " + uuid + " replanted " + cropType + " at "
+            LOG.debug("Farmer " + uuid + " replanted " + cropType + " at "
                     + t.x() + "," + (t.y() + 1) + "," + t.z());
             return true;
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Farmer " + uuid + ": replant failed", e);
+            LOG.warn("Farmer " + uuid + ": replant failed", e);
             return false;
         }
     }
@@ -511,7 +508,7 @@ public class FarmerWorkBehavior {
             try {
                 world.setBlock(t.x(), t.y(), t.z(), candidate);
             } catch (Exception e) {
-                LOGGER.fine("Farmer " + uuid + ": water setBlock(" + candidate + ") threw: " + e.getMessage());
+                LOG.debug("Farmer " + uuid + ": water setBlock(" + candidate + ") threw: " + e.getMessage());
                 continue;
             }
             // Verify the change took effect — a setBlock with an unknown id silently no-ops
@@ -522,16 +519,16 @@ public class FarmerWorkBehavior {
                 if (id != null) {
                     String norm = id.startsWith("*") ? id.substring(1) : id;
                     if (norm.contains("Watered")) {
-                        LOGGER.fine("Farmer " + uuid + " watered " + t.x() + "," + t.y() + "," + t.z()
+                        LOG.debug("Farmer " + uuid + " watered " + t.x() + "," + t.y() + "," + t.z()
                                 + " (final id=" + id + ")");
                         return true;
                     }
                 }
             } catch (Exception e) {
-                LOGGER.fine("Farmer " + uuid + ": water verify failed: " + e.getMessage());
+                LOG.debug("Farmer " + uuid + ": water verify failed: " + e.getMessage());
             }
         }
-        LOGGER.info("Farmer " + uuid + ": water failed at "
+        LOG.info("Farmer " + uuid + ": water failed at "
                 + t.x() + "," + t.y() + "," + t.z() + " — no candidate took effect");
         return false;
     }
@@ -586,10 +583,10 @@ public class FarmerWorkBehavior {
         try {
             HotbarUtil.setSlot0(world, uuid, desired);
             state.currentTool = desired;
-            LOGGER.info("Farmer " + uuid + " equipped " + desired
+            LOG.info("Farmer " + uuid + " equipped " + desired
                     + " (was " + actual + ") for " + action);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Farmer " + uuid + ": equip " + desired + " failed", e);
+            LOG.warn("Farmer " + uuid + ": equip " + desired + " failed", e);
         }
     }
 
@@ -607,7 +604,7 @@ public class FarmerWorkBehavior {
             } catch (Exception ignored) { /* cosmetic only */ }
             state.frozen = true;
         } catch (Exception e) {
-            LOGGER.fine("Farmer freeze failed: " + e.getMessage());
+            LOG.debug("Farmer freeze failed: " + e.getMessage());
         }
     }
 
@@ -616,7 +613,7 @@ public class FarmerWorkBehavior {
         try {
             store.tryRemoveComponent(ref, Frozen.getComponentType());
         } catch (Exception e) {
-            LOGGER.fine("Farmer unfreeze failed: " + e.getMessage());
+            LOG.debug("Farmer unfreeze failed: " + e.getMessage());
         }
         state.frozen = false;
     }
@@ -630,9 +627,9 @@ public class FarmerWorkBehavior {
                 Store<EntityStore> store = world.getEntityStore().getStore();
                 if (store.getComponent(ref, Frozen.getComponentType()) == null) return;
                 store.tryRemoveComponent(ref, Frozen.getComponentType());
-                LOGGER.info("Farmer " + uuid + " stale Frozen removed");
+                LOG.info("Farmer " + uuid + " stale Frozen removed");
             } catch (Exception e) {
-                LOGGER.fine("Farmer live unfreeze failed for " + uuid + ": " + e.getMessage());
+                LOG.debug("Farmer live unfreeze failed for " + uuid + ": " + e.getMessage());
             }
         });
     }
@@ -666,8 +663,7 @@ public class FarmerWorkBehavior {
             AnimationUtils.playAnimation(ref, AnimationSlot.Action, animFile, animName, false, store);
             played = true;
         } catch (Exception e) {
-            LOGGER.log(Level.FINE,
-                    "Farmer playAnimation(Action," + animFile + "," + animName + ") failed", e);
+            LOG.debug("Farmer playAnimation(Action," + animFile + "," + animName + ") failed", e);
         }
 
         // FH-style retry: a generic Status-slot swing using the equipped item's attack
@@ -682,14 +678,13 @@ public class FarmerWorkBehavior {
                     played = true;
                     break;
                 } catch (Exception e) {
-                    LOGGER.log(Level.FINE,
-                            "Farmer playAnimation(Status," + key + ") failed", e);
+                    LOG.debug("Farmer playAnimation(Status," + key + ") failed", e);
                 }
             }
         }
 
         if (!played) {
-            LOGGER.fine("Farmer " + npcUuid + ": no animation channel accepted the swing");
+            LOG.debug("Farmer " + npcUuid + ": no animation channel accepted the swing");
         }
 
         // Look-at-block packet (owner-only). Reuses BuilderBehavior's rotation packet code.
@@ -698,7 +693,7 @@ public class FarmerWorkBehavior {
                 BuilderBehavior bb = new BuilderBehavior(world, npcUuid, ownerUuid);
                 bb.lookAtBlock(t.x(), t.y(), t.z());
             } catch (Exception e) {
-                LOGGER.log(Level.FINE, "Farmer lookAtBlock failed", e);
+                LOG.debug("Farmer lookAtBlock failed", e);
             }
         }
     }

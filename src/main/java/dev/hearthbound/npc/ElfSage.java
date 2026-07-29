@@ -32,14 +32,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
-import java.util.logging.Logger;
-
 /**
  * Manages the elf sage NPC — spawning, movement, and state.
  */
 public class ElfSage {
 
-    private static final Logger LOGGER = Logger.getLogger(ElfSage.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.elf");
     public static final String ROLE_WANDERER = "Elf_Sage_Wanderer";
     public static final String ROLE_BUILDER  = "Elf_Sage_Builder";
     public static final String ROLE_VILLAGER = "Elf_Sage_Villager";
@@ -58,6 +57,15 @@ public class ElfSage {
      */
     public static void spawnIfNeeded(Store<EntityStore> store, Ref<EntityStore> playerRef, World world) {
         VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
+        UUID worldUuid = NpcRegistry.worldUuidOf(world);
+        String worldName = NpcRegistry.worldNameOf(world);
+        if (village.getWorldUuid() != null && !village.belongsToWorld(worldUuid)) {
+            LOG.info("Elf spawn skipped: village belongs to worldUuid=" + village.getWorldUuid()
+                    + " worldName=" + village.getWorldName()
+                    + " but player is in worldUuid=" + worldUuid
+                    + " worldName=" + worldName);
+            return;
+        }
 
         if (village.getElfId() != null) {
             UUID elfId = village.getElfId();
@@ -67,24 +75,37 @@ public class ElfSage {
             Ref<EntityStore> elfRef = world.getEntityRef(elfId);
             if (elfRef != null && elfRef.isValid()) {
                 NpcRegistry.NpcRecord record = NpcRegistry.get().getRecord(elfId);
+                if (record != null && !record.belongsToWorld(worldUuid)) {
+                    LOG.info("Elf restore skipped: record belongs to worldUuid=" + record.worldUuid
+                            + " but player is in worldUuid=" + worldUuid);
+                    return;
+                }
                 if (record == null) {
                     // Chunk was loaded but record missing from registry (shouldn't happen normally).
                     // Rebuild a minimal record so restore works.
                     record = buildRecordFromLiveEntity(elfId, elfRef, store);
+                    record.setWorld(worldUuid, worldName);
+                } else if (!record.hasWorld()) {
+                    record.setWorld(worldUuid, worldName);
+                    HearthboundDataStore.get().save();
                 }
-                LOGGER.info("Elf already loaded on join, restoring immediately (UUID: " + elfId + ")");
+                LOG.info("Elf already loaded on join, restoring immediately (UUID: " + elfId + ")");
                 NpcRestorer.restore(elfRef, store, world, record);
             } else {
-                LOGGER.info("Elf chunk not yet loaded on join (UUID: " + elfId
+                LOG.info("Elf chunk not yet loaded on join (UUID: " + elfId
                         + "); NpcChunkLoadHandler will restore when chunk loads");
             }
             return;
         }
 
         // No elf recorded yet — spawn now.
+        if (village.getWorldUuid() == null) {
+            village.setWorld(worldUuid, worldName);
+            VillageManager.get().save(store, playerRef, village);
+        }
         Vector3d spawnPos = getElfSpawnPosition(world);
         if (spawnPos == null) {
-            LOGGER.warning("Could not determine world spawn position for elf placement");
+            LOG.warn("Could not determine world spawn position for elf placement");
             return;
         }
         doSpawn(store, playerRef, world, spawnPos);
@@ -119,15 +140,27 @@ public class ElfSage {
     public static void respawnAs(Store<EntityStore> store, Ref<EntityStore> playerRef, World world,
                                   String role, Vector3d position, Vector3f rotation) {
         VillageData village = VillageManager.get().getOrCreateVillageData(store, playerRef);
+        UUID worldUuid = NpcRegistry.worldUuidOf(world);
+        if (village.getWorldUuid() != null && !village.belongsToWorld(worldUuid)) {
+            LOG.info("respawnAs skipped: village belongs to worldUuid=" + village.getWorldUuid()
+                    + " but current worldUuid=" + worldUuid);
+            return;
+        }
 
         UUID oldId = village.getElfId();
         NpcRegistry.NpcRecord record = oldId != null ? NpcRegistry.get().getRecord(oldId) : null;
+        if (record != null && !record.belongsToWorld(worldUuid)) {
+            LOG.info("respawnAs skipped: elf record belongs to worldUuid=" + record.worldUuid
+                    + " but current worldUuid=" + worldUuid);
+            return;
+        }
         Ref<EntityStore> elfRef = oldId != null ? world.getEntityRef(oldId) : null;
 
         if (record != null && (elfRef == null || !elfRef.isValid())) {
             NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
                     record.npcId, record.entityUuid, role, NpcRegistry.InteractionType.ELF,
                     record.skinSeed, position != null ? NpcManager.chunkIndexFor(position) : record.chunkIndex);
+            updated.setWorld(record.worldUuid, record.worldName);
             updated.copyBasePositionFrom(record);
             if (position != null) {
                 updated.setPosition(position.getX(), position.getY(), position.getZ());
@@ -136,7 +169,7 @@ public class ElfSage {
             }
             NpcRegistry.get().updateRecord(updated);
             HearthboundDataStore.get().save();
-            LOGGER.info("respawnAs: elf chunk unloaded (oldId=" + oldId
+            LOG.info("respawnAs: elf chunk unloaded (oldId=" + oldId
                     + "), requesting recovery as " + role);
             NpcMissingEntityRecovery.request(world, updated,
                     position != null
@@ -147,7 +180,7 @@ public class ElfSage {
         }
 
         if (record == null || elfRef == null || !elfRef.isValid()) {
-            LOGGER.info("respawnAs: no recorded elf to role-change (oldId=" + oldId
+            LOG.info("respawnAs: no recorded elf to role-change (oldId=" + oldId
                     + "), falling back to fresh spawn");
             doSpawn(store, playerRef, world, position);
             return;
@@ -156,7 +189,7 @@ public class ElfSage {
         var npcEntity = store.getComponent(elfRef,
                 com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType());
         if (npcEntity == null) {
-            LOGGER.warning("respawnAs: NPCEntity null on elf ref " + elfRef);
+            LOG.warn("respawnAs: NPCEntity null on elf ref " + elfRef);
             return;
         }
 
@@ -165,6 +198,8 @@ public class ElfSage {
         NpcRegistry.NpcRecord updated = new NpcRegistry.NpcRecord(
                 record.npcId, oldId, role, NpcRegistry.InteractionType.ELF,
                 record.skinSeed, record.chunkIndex);
+        updated.setWorld(record.worldUuid != null ? record.worldUuid : worldUuid,
+                record.worldName != null ? record.worldName : NpcRegistry.worldNameOf(world));
         if (record.hasPosition) updated.setPosition(record.lastX, record.lastY, record.lastZ);
 
         // Move the entity if a non-null position was supplied. Skipping the move
@@ -188,7 +223,7 @@ public class ElfSage {
             NpcRestorer.restore(elfRef, store, world, updated);
         }
 
-        LOGGER.info("Elf role-changed to " + role + " (UUID: " + oldId + ", npcId=" + updated.npcId + ")");
+        LOG.info("Elf role-changed to " + role + " (UUID: " + oldId + ", npcId=" + updated.npcId + ")");
     }
 
     /**
@@ -209,7 +244,7 @@ public class ElfSage {
 
             int[] campfireLocal = findCampfireLocal(selection);
             if (campfireLocal == null) {
-                LOGGER.warning("Elf_tent prefab has no Bench_Campfire, skipping tent placement");
+                LOG.warn("Elf_tent prefab has no Bench_Campfire, skipping tent placement");
                 return null;
             }
             selection.setAnchor(campfireLocal[0], campfireLocal[1], campfireLocal[2]);
@@ -231,10 +266,10 @@ public class ElfSage {
             TerrainBlender.clearFloating(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
             TerrainBlender.restoreGrassDecor(world, campfireWorldX, blendGroundY, campfireWorldZ, TENT_FOOTPRINT);
 
-            LOGGER.info("Elf tent placed, campfire at " + campfirePos);
+            LOG.info("Elf tent placed, campfire at " + campfirePos);
             return new Vector3d(campfireWorldX - 0.5, campfireWorldY, campfireWorldZ + 0.5);
         } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "Failed to place Elf_tent prefab", e);
+            LOG.warn("Failed to place Elf_tent prefab", e);
             return null;
         }
     }
@@ -302,10 +337,10 @@ public class ElfSage {
                 if (e != null) e.remove();
             }
             if (!doomed.isEmpty()) {
-                LOGGER.info("Purged " + doomed.size() + " orphaned Elf_Sage NPC(s) near " + center);
+                LOG.info("Purged " + doomed.size() + " orphaned Elf_Sage NPC(s) near " + center);
             }
         } catch (Exception e) {
-            LOGGER.log(java.util.logging.Level.WARNING, "purgeOrphanedElfSages failed", e);
+            LOG.warn("purgeOrphanedElfSages failed", e);
         }
     }
 
@@ -342,7 +377,7 @@ public class ElfSage {
             if (liveVillage.getElfId() != null) {
                 // elfId is recorded — elf was already spawned. If the chunk isn't loaded yet,
                 // NpcChunkLoadHandler will restore it. Don't spawn a duplicate.
-                LOGGER.fine(() -> "doSpawn: elfId already set (" + liveVillage.getElfId() + "), skipping");
+                LOG.debug(() -> "doSpawn: elfId already set (" + liveVillage.getElfId() + "), skipping");
                 return;
             }
 
@@ -372,7 +407,7 @@ public class ElfSage {
             }
             int bestY = surfaceY(world, bestX, bestZ);
             Vector3d tentPos = new Vector3d(bestX, bestY, bestZ);
-            LOGGER.info("Tent spot chosen: " + tentPos + " variance=" + bestVariance);
+            LOG.info("Tent spot chosen: " + tentPos + " variance=" + bestVariance);
 
             purgeOrphanedElfSages(liveStore, world, tentPos, 8.0, null);
 
@@ -384,24 +419,26 @@ public class ElfSage {
             long elfChunk = NpcManager.chunkIndexFor(finalPos);
             NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
                     npcId, null, ROLE_WANDERER, NpcRegistry.InteractionType.ELF, 0L, elfChunk);
+            record.setWorld(NpcRegistry.worldUuidOf(world), NpcRegistry.worldNameOf(world));
             record.setPosition(finalPos.getX(), finalPos.getY(), finalPos.getZ());
 
             Pair<Ref<EntityStore>, INonPlayerCharacter> result = StayedNpcSpawner.spawnPersistent(
                     liveStore, finalPos, new Vector3f(0, 0, 0), record);
             if (result == null) {
-                LOGGER.warning("doSpawn: failed to spawn elf sage");
+                LOG.warn("doSpawn: failed to spawn elf sage");
                 return;
             }
 
             Ref<EntityStore> elfRef = result.first();
             INonPlayerCharacter npc = result.second();
             if (!(npc instanceof Entity entity)) {
-                LOGGER.warning("doSpawn: spawned NPC is not an Entity");
+                LOG.warn("doSpawn: spawned NPC is not an Entity");
                 return;
             }
 
             @SuppressWarnings("removal")
             UUID elfUuid = entity.getUuid();
+            liveVillage.setWorld(NpcRegistry.worldUuidOf(world), NpcRegistry.worldNameOf(world));
             liveVillage.setElfId(elfUuid);
             VillageManager.get().save(liveStore, playerRef, liveVillage);
 
@@ -410,7 +447,7 @@ public class ElfSage {
             // Entity is live on this thread — restore immediately (interaction + skin with delay).
             NpcRestorer.restore(elfRef, liveStore, world, record);
 
-            LOGGER.info("Elf sage spawned at " + finalPos + " (UUID: " + elfUuid + ")");
+            LOG.info("Elf sage spawned at " + finalPos + " (UUID: " + elfUuid + ")");
         }));
     }
 
@@ -420,7 +457,7 @@ public class ElfSage {
         try {
             I18nModule i18n = I18nModule.get();
             if (i18n == null) {
-                LOGGER.warning("resolveElfName: I18nModule is null");
+                LOG.warn("resolveElfName: I18nModule is null");
                 return "Elf";
             }
             String name = i18n.getMessage("en-US", ELF_NAME_KEY);
@@ -428,7 +465,7 @@ public class ElfSage {
                 return name;
             }
         } catch (Exception e) {
-            LOGGER.warning("Failed to resolve elf name: " + e.getMessage());
+            LOG.warn("Failed to resolve elf name: " + e.getMessage());
         }
         return "Elf";
     }
@@ -460,7 +497,7 @@ public class ElfSage {
         skin.faceAccessory   = null;
         skin.earAccessory    = null;
 
-        LOGGER.fine("Sage skin built: hair=" + skin.haircut + " body=" + skin.bodyCharacteristic
+        LOG.debug("Sage skin built: hair=" + skin.haircut + " body=" + skin.bodyCharacteristic
                 + " eyes=" + skin.eyes + " overtop=" + skin.overtop);
         return skin;
     }
@@ -468,7 +505,7 @@ public class ElfSage {
     private static String buildCompound(Map<String, ?> categoryMap, CosmeticRegistry reg,
                                          String partId, String... preferredKeys) {
         if (categoryMap == null || !categoryMap.containsKey(partId)) {
-            LOGGER.warning("Part not found in registry: " + partId);
+            LOG.warn("Part not found in registry: " + partId);
             return partId;
         }
         Object value = categoryMap.get(partId);
@@ -476,7 +513,7 @@ public class ElfSage {
 
         List<String> textureKeys = getTextureKeys(part, reg);
         if (textureKeys.isEmpty()) {
-            LOGGER.warning("No texture keys for: " + partId);
+            LOG.warn("No texture keys for: " + partId);
             return partId;
         }
         for (String pref : preferredKeys) {
@@ -512,7 +549,7 @@ public class ElfSage {
         try {
             CosmeticsModule cosmetics = CosmeticsModule.get();
             if (cosmetics == null) {
-                LOGGER.warning("CosmeticsModule not available");
+                LOG.warn("CosmeticsModule not available");
                 return;
             }
 
@@ -520,13 +557,13 @@ public class ElfSage {
             Model model = tryCreateModel(cosmetics, skin);
 
             if (model == null) {
-                LOGGER.warning("Custom skin failed, trying pure random skin");
+                LOG.warn("Custom skin failed, trying pure random skin");
                 skin = cosmetics.generateRandomSkin(new Random());
                 model = tryCreateModel(cosmetics, skin);
             }
 
             if (model == null) {
-                LOGGER.warning("Even random skin failed — cannot apply appearance");
+                LOG.warn("Even random skin failed — cannot apply appearance");
                 return;
             }
 
@@ -542,12 +579,12 @@ public class ElfSage {
                             model.getAnimationSetMap() == null));
                 }
             } catch (Exception pmEx) {
-                LOGGER.warning("Could not fix PersistentModel after skin apply: " + pmEx.getMessage());
+                LOG.warn("Could not fix PersistentModel after skin apply: " + pmEx.getMessage());
             }
 
-            LOGGER.fine("Applied sage appearance to elf NPC");
+            LOG.debug("Applied sage appearance to elf NPC");
         } catch (Exception e) {
-            LOGGER.warning("Failed to apply sage appearance: " + e.getMessage());
+            LOG.warn("Failed to apply sage appearance: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -556,7 +593,7 @@ public class ElfSage {
         try {
             return cosmetics.createModel(skin, 1.0f);
         } catch (Exception e) {
-            LOGGER.warning("createModel failed: " + e.getMessage());
+            LOG.warn("createModel failed: " + e.getMessage());
             return null;
         }
     }

@@ -5,9 +5,6 @@ import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
@@ -18,8 +15,8 @@ import com.hypixel.hytale.server.core.universe.world.connectedblocks.ConnectedBl
 
 public class BlockPlacer {
 
-    private static final Logger LOGGER = Logger.getLogger(BlockPlacer.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.placer");
     public record BlockEntry(int x, int y, int z, String blockType, int rotation) {
 
         public BlockEntry(int x, int y, int z, String blockType) {
@@ -62,7 +59,7 @@ public class BlockPlacer {
                 world.execute(() -> placeBlock(world, entry));
                 currentIndex++;
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "BlockPlacer tick failed at index " + currentIndex, e);
+                LOG.warn("BlockPlacer tick failed at index " + currentIndex, e);
                 if (task != null) {
                     task.cancel(false);
                 }

@@ -14,8 +14,6 @@ import it.unimi.dsi.fastutil.Pair;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
-
 /**
  * Last-resort recovery for registry records whose managed entity is missing
  * while its chunk is loaded. This is deliberately stricter than ordinary
@@ -24,7 +22,8 @@ import java.util.logging.Logger;
  */
 public final class NpcMissingEntityRecovery {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcMissingEntityRecovery.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.recovery");
     private static final long RESOLVE_DELAY_MS = 1_500L;
     private static final long SPAWN_COOLDOWN_MS = 30_000L;
 
@@ -43,8 +42,20 @@ public final class NpcMissingEntityRecovery {
         if (record.broken || record.interaction == NpcRegistry.InteractionType.NONE) {
             return false;
         }
+        UUID worldUuid = NpcRegistry.worldUuidOf(world);
+        if (!record.belongsToWorld(worldUuid)) {
+            LOG.info("[NPC-RECOVERY] skip npcId=" + record.npcId
+                    + " reason=" + reason
+                    + " recordWorldUuid=" + record.worldUuid
+                    + " currentWorldUuid=" + worldUuid);
+            return false;
+        }
+        if (!record.hasWorld()) {
+            record.setWorld(worldUuid, NpcRegistry.worldNameOf(world));
+            HearthboundDataStore.get().save();
+        }
         if (!inFlight.add(record.npcId)) {
-            LOGGER.info("[NPC-RECOVERY] skip npcId=" + record.npcId
+            LOG.info("[NPC-RECOVERY] skip npcId=" + record.npcId
                     + " reason=" + reason + " alreadyInFlight=true");
             return false;
         }
@@ -57,6 +68,10 @@ public final class NpcMissingEntityRecovery {
                                              Target target, String reason) {
         NpcRegistry.NpcRecord record = NpcRegistry.get().getRecordByNpcId(npcId);
         if (record == null) {
+            finish(npcId);
+            return;
+        }
+        if (!record.belongsToWorld(NpcRegistry.worldUuidOf(world))) {
             finish(npcId);
             return;
         }
@@ -87,6 +102,7 @@ public final class NpcMissingEntityRecovery {
         try {
             NpcRegistry.NpcRecord record = NpcRegistry.get().getRecordByNpcId(npcId);
             if (record == null) return;
+            if (!record.belongsToWorld(NpcRegistry.worldUuidOf(world))) return;
 
             Store<EntityStore> store = world.getEntityStore().getStore();
             Ref<EntityStore> live = NpcLiveEntityResolver.findLiveNpcByRecord(store, record);
@@ -98,7 +114,7 @@ public final class NpcMissingEntityRecovery {
             long now = System.currentTimeMillis();
             long last = lastSpawnAttemptMs.getOrDefault(npcId, 0L);
             if (now - last < SPAWN_COOLDOWN_MS) {
-                LOGGER.warning("[NPC-RECOVERY] cooldown npcId=" + npcId
+                LOG.warn("[NPC-RECOVERY] cooldown npcId=" + npcId
                         + " reason=" + reason
                         + " remainingMs=" + (SPAWN_COOLDOWN_MS - (now - last)));
                 return;
@@ -107,7 +123,7 @@ public final class NpcMissingEntityRecovery {
 
             Target spawnTarget = target != null ? target : fallbackTarget(record);
             if (spawnTarget == null) {
-                LOGGER.warning("[NPC-RECOVERY] no spawn target npcId=" + npcId
+                LOG.warn("[NPC-RECOVERY] no spawn target npcId=" + npcId
                         + " reason=" + reason);
                 return;
             }
@@ -130,7 +146,7 @@ public final class NpcMissingEntityRecovery {
         UUID liveUuid = NpcManager.extractUuid(store, ref);
         if (liveUuid != null && !liveUuid.equals(record.entityUuid)) {
             UUID oldUuid = record.entityUuid;
-            NpcRegistry.get().bindEntityUuid(record.npcId, liveUuid);
+            NpcRegistry.get().bindEntityUuid(record.npcId, liveUuid, NpcRegistry.worldUuidOf(world));
             if (oldUuid != null) {
                 NpcChunkLoadHandler.rewriteVillageReferences(world, store, oldUuid, liveUuid);
             }
@@ -143,7 +159,7 @@ public final class NpcMissingEntityRecovery {
         if (target != null) {
             NpcTeleporter.doMove(world, store, ref, record, target.x(), target.y(), target.z());
         }
-        LOGGER.info("[NPC-RECOVERY] resolved npcId=" + record.npcId
+        LOG.info("[NPC-RECOVERY] resolved npcId=" + record.npcId
                 + " liveUuid=" + liveUuid
                 + " reason=" + reason
                 + " phase=" + phase
@@ -160,7 +176,7 @@ public final class NpcMissingEntityRecovery {
                 new Vector3f(0, 0, 0),
                 record);
         if (spawn == null || spawn.first() == null) {
-            LOGGER.warning("[NPC-RECOVERY] spawn returned null npcId=" + record.npcId
+            LOG.warn("[NPC-RECOVERY] spawn returned null npcId=" + record.npcId
                     + " reason=" + reason);
             return;
         }
@@ -170,7 +186,7 @@ public final class NpcMissingEntityRecovery {
 
         UUID newUuid = NpcManager.extractUuid(store, ref);
         if (newUuid == null) {
-            LOGGER.warning("[NPC-RECOVERY] spawned entity has no UUID npcId=" + record.npcId
+            LOG.warn("[NPC-RECOVERY] spawned entity has no UUID npcId=" + record.npcId
                     + " reason=" + reason);
             return;
         }
@@ -182,7 +198,7 @@ public final class NpcMissingEntityRecovery {
 
         HearthboundDataStore.get().save();
         NpcRestorer.restore(ref, store, world, NpcRegistry.get().getRecordByNpcId(record.npcId));
-        LOGGER.warning("[NPC-RECOVERY] spawned replacement npcId=" + record.npcId
+        LOG.warn("[NPC-RECOVERY] spawned replacement npcId=" + record.npcId
                 + " oldUuid=" + oldUuid
                 + " newUuid=" + newUuid
                 + " reason=" + reason

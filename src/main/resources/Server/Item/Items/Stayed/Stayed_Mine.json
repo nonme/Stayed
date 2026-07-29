@@ -1,22 +1,22 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Stayed_Lumbermill.name"
+    "Name": "server.items.Stayed_Mine.name"
   },
-  "Icon": "Icons/ItemsGenerated/Bench_Lumbermill.png",
+  "Icon": "Icons/ItemsGenerated/Furniture_Lumberjack_Sign.png",
   "Categories": ["Blocks.Deco"],
   "MaxStack": 1,
   "BlockType": {
     "Material": "Solid",
     "DrawType": "Model",
     "Opacity": "Transparent",
-    "CustomModel": "Blocks/Benches/Lumbermill.blockymodel",
+    "CustomModel": "Blocks/Decorative_Sets/Lumberjack/Sign.blockymodel",
     "CustomModelTexture": [
       {
         "Weight": 1,
-        "Texture": "Blocks/Benches/Lumbermill_Texture.png"
+        "Texture": "Blocks/Decorative_Sets/Lumberjack/Sign_Texture.png"
       }
     ],
-    "HitboxType": "Bench_Lumbermill",
+    "HitboxType": "Sign_Tall",
     "VariantRotation": "NESW",
     "Flags": {
       "IsUsable": true
@@ -24,19 +24,12 @@
     "Gathering": {
       "Breaking": {
         "GatherType": "Woods",
-        "ItemId": "Stayed_Lumbermill"
+        "ItemId": "Stayed_Mine"
       }
     },
     "BlockParticleSetId": "Wood",
     "BlockSoundSetId": "Wood",
-    "Support": {
-      "Down": [
-        {
-          "FaceType": "Full"
-        }
-      ]
-    },
-    "InteractionHint": "server.interactionHints.manage_lumbermill",
+    "InteractionHint": "server.interactionHints.manage_mine",
     "Interactions": {
       "Use": "Open_Container"
     }

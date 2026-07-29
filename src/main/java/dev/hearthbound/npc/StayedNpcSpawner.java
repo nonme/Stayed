@@ -11,11 +11,9 @@ import com.hypixel.hytale.server.npc.NPCPlugin;
 import it.unimi.dsi.fastutil.Pair;
 
 import java.util.UUID;
-import java.util.logging.Logger;
-
 public final class StayedNpcSpawner {
-    private static final Logger LOGGER = Logger.getLogger(StayedNpcSpawner.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.spawner");
     private StayedNpcSpawner() {}
 
     public static Pair<Ref<EntityStore>, INonPlayerCharacter> spawnPersistent(
@@ -25,13 +23,19 @@ public final class StayedNpcSpawner {
             NpcRegistry.NpcRecord record
     ) {
         if (record == null) throw new IllegalArgumentException("record is required");
+        World world = store != null && store.getExternalData() != null
+                ? store.getExternalData().getWorld()
+                : null;
+        if (!record.hasWorld()) {
+            record.setWorld(NpcRegistry.worldUuidOf(world), NpcRegistry.worldNameOf(world));
+        }
         record.refreshGeneratedRoleName();
         String generatedRole = StayedRoleGenerator.get().generateRoleIfChanged(record);
         boolean generatedRoleIndexed = NPCPlugin.get().getIndex(generatedRole) >= 0;
         String spawnRole = StayedSpawnRolePolicy.selectSpawnRole(
                 generatedRole, record.baseRoleName(), generatedRoleIndexed, true);
         if (!generatedRoleIndexed) {
-            LOGGER.warning("[STAYED-SPAWN] generated role not indexed yet; spawning identity-tagged base role"
+            LOG.warn("[STAYED-SPAWN] generated role not indexed yet; spawning identity-tagged base role"
                     + " npcId=" + record.npcId
                     + " generatedRole=" + generatedRole
                     + " baseRole=" + record.baseRoleName());
@@ -60,11 +64,10 @@ public final class StayedNpcSpawner {
         NpcRegistry.get().register(record);
         HearthboundDataStore.get().save();
         if (!generatedRoleIndexed) {
-            World world = store.getExternalData() != null ? store.getExternalData().getWorld() : null;
             StayedRoleChangeApplier.applyOrSchedule(ref, store, world, record,
                     false, "spawn-generated-role-pending");
         }
-        LOGGER.info("[STAYED-SPAWN] npcId=" + record.npcId
+        LOG.info("[STAYED-SPAWN] npcId=" + record.npcId
                 + " entityUuid=" + uuid
                 + " baseRole=" + record.baseRoleName()
                 + " generatedRole=" + generatedRole);

@@ -12,31 +12,45 @@ public final class BuildingType {
     public static final String HOUSE_KWEEBEC = "house_kweebec";
     public static final String HOUSE_TRORK = "house_trork";
     public static final String FARM = "farm";
-    public static final String SAWMILL = "sawmill";
+    public static final String WOODCUTTERS_HUT = "woodcutters_hut";
+    /** Legacy type string stored in BSON by v0.8.x saves. Kept as a read-only alias — always maps to WOODCUTTERS_HUT display/prefab logic. */
+    public static final String SAWMILL_LEGACY = "sawmill";
+    public static final String SAWMILL = "sawmill_v2";
     public static final String MINE = "mine";
     public static final String GUARD_HOUSE = "guard_house";
     public static final String FORGE = "forge";
+    public static final String TAVERN = "tavern";
+
+    // Functional categories — used by the Founder's Almanac to group buildings in the catalog.
+    // These are display-only strings and are NOT persisted to BSON, so they can be renamed freely.
+    public static final String CATEGORY_CIVIC      = "civic";
+    public static final String CATEGORY_PRODUCTION = "production";
+    public static final String CATEGORY_CRAFTING   = "crafting";
+    public static final String CATEGORY_SERVICES   = "services";
+    public static final String CATEGORY_HOUSING    = "housing";
+    public static final String CATEGORY_DEFENSE    = "defense";
+    public static final String CATEGORY_STORAGE    = "storage";
 
     // Anchor block IDs (custom Hearthbound blocks)
     public static final String FOUNDING_STONE_BLOCK = "Stayed_Founding_Stone";
-    public static final String BRAZIER_BLOCK = "Stayed_Brazier";
-    public static final String SCARECROW_BLOCK = "Stayed_Scarecrow";
-    public static final String COUNTER_BLOCK = "Stayed_Counter";
-    public static final String LUMBERMILL_BLOCK = "Stayed_Lumbermill";
-    public static final String MINE_SIGN_BLOCK = "Stayed_Mine_Sign";
-    public static final String TARGET_DUMMY_BLOCK = "Stayed_Target_Dummy";
+    public static final String HOUSE_BLOCK = "Stayed_House";
+    public static final String FARM_BLOCK = "Stayed_Farm";
+    public static final String WAREHOUSE_BLOCK = "Stayed_Warehouse";
+    public static final String WOODCUTTERS_HUT_BLOCK = "Stayed_Woodcutters_Hut";
+    public static final String SAWMILL_BLOCK = "Stayed_Sawmill";
+    public static final String MINE_BLOCK = "Stayed_Mine";
+    public static final String GUARD_HOUSE_BLOCK = "Stayed_Guard_House";
     public static final String FORGE_BLOCK = "Stayed_Forge";
+    public static final String TAVERN_BLOCK = "Stayed_Tavern";
 
-    // Per-variant tables for HOUSE_HUMAN. variant=0 maps to the original v1 prefab so
-    // existing village data (which has no variant field, defaults to 0) keeps rendering
-    // the same building.
+    // Per-variant tables for HOUSE_HUMAN. variant=0..3 = v2 variants.
     private static final String[] HOUSE_HUMAN_PREFABS = {
-            "VillagerHouse_lvl1_v1",
-            "VillagerHouse_lvl1_v1_alt1",
-            "VillagerHouse_lvl1_v1_alt2",
-            "VillagerHouse_lvl1_v1_alt3",
+            "VillagerHouse_lvl1_v2",
+            "VillagerHouse_lvl1_v2_alt1",
+            "VillagerHouse_lvl1_v2_alt2",
+            "VillagerHouse_lvl1_v2_alt3",
     };
-    // Brazier Y inside each prefab (verified by grepping the prefab files for Stayed_Brazier).
+    // Brazier Y inside each prefab (verified by grepping the prefab files for Stayed_House).
     private static final int[] HOUSE_HUMAN_ANCHOR_Y = {1, 1, 1, 1};
     private static final String[] HOUSE_HUMAN_VARIANT_NAMES = {
             "Variant 1", "Variant 2", "Variant 3", "Variant 4"
@@ -48,13 +62,15 @@ public final class BuildingType {
     public static String getBuildingTypeForAnchor(String blockId) {
         return switch (blockId) {
             case FOUNDING_STONE_BLOCK -> TOWN_HALL;
-            case BRAZIER_BLOCK -> HOUSE_HUMAN;
-            case SCARECROW_BLOCK -> FARM;
-            case COUNTER_BLOCK -> WAREHOUSE;
-            case LUMBERMILL_BLOCK -> SAWMILL;
-            case MINE_SIGN_BLOCK -> MINE;
-            case TARGET_DUMMY_BLOCK -> GUARD_HOUSE;
+            case HOUSE_BLOCK -> HOUSE_HUMAN;
+            case FARM_BLOCK -> FARM;
+            case WAREHOUSE_BLOCK -> WAREHOUSE;
+            case WOODCUTTERS_HUT_BLOCK -> WOODCUTTERS_HUT;
+            case SAWMILL_BLOCK -> SAWMILL;
+            case MINE_BLOCK -> MINE;
+            case GUARD_HOUSE_BLOCK -> GUARD_HOUSE;
             case FORGE_BLOCK -> FORGE;
+            case TAVERN_BLOCK -> TAVERN;
             default -> null;
         };
     }
@@ -80,12 +96,14 @@ public final class BuildingType {
         }
         return switch (type) {
             case TOWN_HALL -> "Townhall_lvl1_v3";
-            case FARM -> "Farm_lvl1_v1";
-            case WAREHOUSE -> "Warehouse_lvl1_v1";
-            case SAWMILL -> "Sawmill_lvl1_v1";
-            case MINE -> "Mine_lvl1_v1";
+            case FARM -> "Farm_lvl1_v2";
+            case WAREHOUSE -> "Warehouse_lvl1_v2";
+            case WOODCUTTERS_HUT, SAWMILL_LEGACY -> "WoodcuttersHut_lvl1_v1";
+            case SAWMILL -> "Sawmill_lvl1_v2";
+            case MINE -> "Mine_lvl1_v2";
             case GUARD_HOUSE -> "GuardHouse_lvl1_v1";
             case FORGE -> "Forge_lvl1_v1";
+            case TAVERN -> "Tavern_lvl1_v1";
             default -> null;
         };
     }
@@ -116,13 +134,15 @@ public final class BuildingType {
     public static String getAnchorBlockId(String type) {
         return switch (type) {
             case TOWN_HALL -> FOUNDING_STONE_BLOCK;
-            case HOUSE_HUMAN -> BRAZIER_BLOCK;
-            case FARM -> SCARECROW_BLOCK;
-            case WAREHOUSE -> COUNTER_BLOCK;
-            case SAWMILL -> LUMBERMILL_BLOCK;
-            case MINE -> MINE_SIGN_BLOCK;
-            case GUARD_HOUSE -> TARGET_DUMMY_BLOCK;
+            case HOUSE_HUMAN -> HOUSE_BLOCK;
+            case FARM -> FARM_BLOCK;
+            case WAREHOUSE -> WAREHOUSE_BLOCK;
+            case WOODCUTTERS_HUT, SAWMILL_LEGACY -> WOODCUTTERS_HUT_BLOCK;
+            case SAWMILL -> SAWMILL_BLOCK;
+            case MINE -> MINE_BLOCK;
+            case GUARD_HOUSE -> GUARD_HOUSE_BLOCK;
             case FORGE -> FORGE_BLOCK;
+            case TAVERN -> TAVERN_BLOCK;
             default -> FOUNDING_STONE_BLOCK;
         };
     }
@@ -147,13 +167,15 @@ public final class BuildingType {
             return HOUSE_HUMAN_ANCHOR_Y[clampHouseVariant(variant)];
         }
         return switch (type) {
-            case TOWN_HALL -> 1;
-            case FARM -> 2;
-            case WAREHOUSE -> 1;
-            case SAWMILL -> 2;
-            case MINE -> 10;
+            case TOWN_HALL -> 2;
+            case FARM -> 1;
+            case WAREHOUSE -> 2;
+            case WOODCUTTERS_HUT, SAWMILL_LEGACY -> 1;
+            case SAWMILL -> 4;
+            case MINE -> 8;
             case GUARD_HOUSE -> 1;
             case FORGE -> 2;
+            case TAVERN -> 4;
             default -> 0;
         };
     }
@@ -162,14 +184,14 @@ public final class BuildingType {
      * Explicit NPC stand-point for buildings where auto-detection fails (e.g. mine — pit filled
      * with stone makes center-of-mass useless). Returns {centerLX, floorLY, centerLZ} or null
      * to fall back to auto-detection.
-     * Measured in-game: Mine_Sign anchor → miner stood at world (-129,71,229), anchor (-118,80,227),
-     * rot=1 steps=0 → local offset lx=-11.5 ly=-10 lz=+1.5 → rounded lx=-12 lz=2 floorLY=-10.
      */
     public static int[] getWorkPointOverride(String type) {
-        return switch (type) {
-            case MINE -> new int[]{-12, -10, 2};
-            default -> null;
-        };
+        // Farm v2: anchor (Stayed_Farm) at (-3,1,0). Centre of field at prefab (0,0,0) → lx=3, ly=0, lz=0.
+        if (FARM.equals(type)) return new int[]{3, 0, 0};
+        // Mine v2: anchor (Stayed_Mine) at prefab (9,8,4). Cave floor Empty blocks centred at (0,1,-4)
+        // in prefab space → local lx=-9, lz=-4. floorLY=-7 (Empty air at cave bottom; solid floor at -8).
+        if (MINE.equals(type)) return new int[]{-9, -7, -4};
+        return null;
     }
 
     /**
@@ -225,16 +247,18 @@ public final class BuildingType {
             // NOTE: villager recall/assignment uses getInteriorStandPoint instead — this branch is
             // only here for legacy callers (e.g. building construction) that need a "near house" point.
             case HOUSE_HUMAN -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
-            // Anchor at prefab (-5,1,1); main door at (0,1,-2) facing -Z; stand at (0,-3) → dx=5, dz=-4.
-            case TOWN_HALL   -> { dx =  5; dz = -4; anchorPrefabRotation = 0; }
-            case WAREHOUSE   -> { dx =  0; dz = -3; anchorPrefabRotation = 0; }
-            // Farm: scarecrow anchor at prefab (0,2,4), gate at (0,1,-4) → dz = -4-4 = -8.
-            // Stand just outside the gate (one block in front) → dz = -9.
-            case FARM        -> { dx =  0; dz = -9; anchorPrefabRotation = 2; }
-            // Sawmill: open yard, no door — stand in front of the building.
+            // v3: anchor at (0,2,2) rot=2, door at (0,2,-2) facing -Z, stand at z=-3 → dx=0, dz=-5.
+            case TOWN_HALL   -> { dx =  0; dz = -5; anchorPrefabRotation = 2; }
+            // v2: anchor (1,2,2) rot=0, entrance at prefab (0,*,-2), exterior at (0,*,-3) → dx=-1, dz=-5.
+            case WAREHOUSE   -> { dx = -1; dz = -5; anchorPrefabRotation = 0; }
+            // Farm v2: scarecrow anchor at (-3,1,0) rot=1, no gate — stand beside anchor.
+            case FARM        -> { dx =  1; dz =  0; anchorPrefabRotation = 1; }
+            // WoodcuttersHut: open yard, no door — stand in front of the building.
+            case WOODCUTTERS_HUT, SAWMILL_LEGACY -> { dx =  0; dz = -3; anchorPrefabRotation = 2; }
+            // Sawmill (v2): open yard — anchor at prefab (2,4,5) rot=2, stand in front.
             case SAWMILL     -> { dx =  0; dz = -3; anchorPrefabRotation = 2; }
-            // Mine: door at prefab (7,10,-5), anchor at (4,10,1) → dx=3, dz=-6. anchorPrefabRotation=1.
-            case MINE        -> { dx =  3; dz = -6; anchorPrefabRotation = 1; }
+            // v2: anchor (9,8,5) rot=3, fence gate (4,8,-9) rot=1 facing +X, stand outside at (3,8,-9) → dx=-6, dz=-14.
+            case MINE        -> { dx = -6; dz =-14; anchorPrefabRotation = 3; }
             // GuardHouse: anchor (Target Dummy) sits OUTSIDE the building on the training yard
             // at prefab (5,1,-1). External door is at (2,1,3) facing +X — so dx=-3, dz=4 from
             // anchor to door. anchorPrefabRotation=1 because the dummy is stored with rot=1.
@@ -244,6 +268,8 @@ public final class BuildingType {
             // Forge: anvil anchor at prefab (2,2,3) rot=3; door at (3,2,-10) rot=1.
             // Stand one tile past the door (z=-11) → from anchor: dx=1, dz=-14.
             case FORGE       -> { dx =  1; dz =-14; anchorPrefabRotation = 3; }
+            // Tavern: anchor (-4,4,4) rot=2, main door (-1,1,0) rot=2 facing -Z, stand at (-1,1,-1) → dx=3, dz=-5.
+            case TAVERN      -> { dx =  3; dz = -5; anchorPrefabRotation = 2; }
             default          -> { dx =  0; dz = -2; anchorPrefabRotation = 0; }
         }
         int steps = (recordRotation - anchorPrefabRotation + 4) % 4;
@@ -296,11 +322,61 @@ public final class BuildingType {
             case HOUSE_KWEEBEC -> "Kweebec House";
             case HOUSE_TRORK -> "Trork House";
             case FARM -> "Farm";
+            case WOODCUTTERS_HUT, SAWMILL_LEGACY -> "Woodcutter's Hut";
             case SAWMILL -> "Sawmill";
             case MINE -> "Mine";
             case GUARD_HOUSE -> "Guard House";
             case FORGE -> "Forge";
+            case TAVERN -> "Tavern";
             default -> type;
+        };
+    }
+
+    /**
+     * Functional category for the Almanac catalog. Returns CATEGORY_* constants;
+     * unknown types default to CATEGORY_CIVIC (so the Almanac never drops a row silently).
+     */
+    public static String getCategory(String type) {
+        return switch (type) {
+            case TOWN_HALL -> CATEGORY_CIVIC;
+            case FARM, WOODCUTTERS_HUT, SAWMILL_LEGACY, MINE -> CATEGORY_PRODUCTION;
+            case SAWMILL, FORGE -> CATEGORY_CRAFTING;
+            case TAVERN -> CATEGORY_SERVICES;
+            case HOUSE_HUMAN, HOUSE_KWEEBEC, HOUSE_TRORK -> CATEGORY_HOUSING;
+            case GUARD_HOUSE -> CATEGORY_DEFENSE;
+            case WAREHOUSE -> CATEGORY_STORAGE;
+            default -> CATEGORY_CIVIC;
+        };
+    }
+
+    public static String getCategoryDisplayName(String category) {
+        return switch (category) {
+            case CATEGORY_CIVIC      -> "Civic";
+            case CATEGORY_PRODUCTION -> "Production";
+            case CATEGORY_CRAFTING   -> "Crafting";
+            case CATEGORY_SERVICES   -> "Services";
+            case CATEGORY_HOUSING    -> "Housing";
+            case CATEGORY_DEFENSE    -> "Defense";
+            case CATEGORY_STORAGE    -> "Storage";
+            default                  -> category;
+        };
+    }
+
+    /** Short description shown in the Almanac next to the building name. */
+    public static String getShortDescription(String type) {
+        return switch (type) {
+            case TOWN_HALL       -> "Heart of the village. Aelin lives here.";
+            case WAREHOUSE       -> "Central storage for the settlement.";
+            case HOUSE_HUMAN     -> "Home for two settlers — a pair can raise children here.";
+            case FARM            -> "Grows vegetables and grain.";
+            case WOODCUTTERS_HUT,
+                 SAWMILL_LEGACY  -> "A lumberjack fells nearby trees.";
+            case SAWMILL         -> "Carpenter turns logs into planks more efficiently.";
+            case MINE            -> "Stone, coal and ore from deep underground.";
+            case GUARD_HOUSE     -> "A guard patrols the village perimeter.";
+            case FORGE           -> "Smith crafts weapons, tools and armour from ore.";
+            case TAVERN          -> "Cooked meals raise everyone's spirits.";
+            default              -> "";
         };
     }
 }

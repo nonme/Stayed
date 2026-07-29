@@ -15,16 +15,14 @@ import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
-import java.util.logging.Logger;
-
 /**
  * Reports each farm's bbox and scan result. Used to verify FarmBounds rotation handling
  * and FarmScanner classification without involving any NPC behavior.
  */
 public class FarmScanCommand extends AbstractPlayerCommand {
 
-    private static final Logger LOGGER = Logger.getLogger(FarmScanCommand.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.farmscan");
     public FarmScanCommand() {
         super("farmscan", "Print bbox and scan results for every farm in the village");
     }
@@ -54,7 +52,7 @@ public class FarmScanCommand extends AbstractPlayerCommand {
                 + " rot=" + farm.getRotation()
                 + (farm.isCompleted() ? " [completed]" : " [under construction]");
         ctx.sendMessage(Message.raw(header));
-        LOGGER.info(header);
+        LOG.info(header);
 
         FarmBounds.Bounds b = FarmBounds.compute(farm);
         if (b == null) {
@@ -66,7 +64,7 @@ public class FarmScanCommand extends AbstractPlayerCommand {
                 + " z[" + b.minZ() + ".." + b.maxZ() + "]"
                 + " size=" + b.width() + "x" + b.height() + "x" + b.depth();
         ctx.sendMessage(Message.raw(bboxLine));
-        LOGGER.info(bboxLine);
+        LOG.info(bboxLine);
 
         FarmScanner.Scan scan = FarmScanner.scan(world, farm);
         String summary = "  scan: harvest=" + scan.harvest().size()
@@ -75,7 +73,7 @@ public class FarmScanCommand extends AbstractPlayerCommand {
                 + " replant=" + scan.replant().size()
                 + " water=" + scan.water().size();
         ctx.sendMessage(Message.raw(summary));
-        LOGGER.info(summary);
+        LOG.info(summary);
 
         // Print first few of each category — full detail goes to log.
         printSample(ctx, "harvest", scan.harvest());
@@ -92,7 +90,7 @@ public class FarmScanCommand extends AbstractPlayerCommand {
             String line = "    " + label + ": " + t.x() + "," + t.y() + "," + t.z()
                     + (t.cropType() != null ? " (" + t.cropType() + ")" : "");
             ctx.sendMessage(Message.raw(line));
-            LOGGER.info(line);
+            LOG.info(line);
         }
         if (list.size() > max) {
             ctx.sendMessage(Message.raw("    " + label + ": ... (+" + (list.size() - max) + " more)"));

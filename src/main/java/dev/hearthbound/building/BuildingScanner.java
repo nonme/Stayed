@@ -2,9 +2,9 @@ package dev.hearthbound.building;
 
 import com.hypixel.hytale.server.core.universe.world.World;
 
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.logging.Logger;
-
+import java.util.Map;
 /**
  * Scans the world against a building plan to detect when a player has already built
  * (or pasted) the structure manually. Used by {@code BuildingSystem.startResourceBuilding}
@@ -17,8 +17,8 @@ import java.util.logging.Logger;
  */
 public final class BuildingScanner {
 
-    private static final Logger LOGGER = Logger.getLogger(BuildingScanner.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.scan");
     private BuildingScanner() {}
 
     /**
@@ -47,18 +47,43 @@ public final class BuildingScanner {
             if (actual.equals(expected)) {
                 matched++;
             } else if (mismatchSamplesLogged < MAX_MISMATCH_SAMPLES) {
-                LOGGER.info("[Scanner] mismatch at (" + entry.x() + "," + entry.y() + "," + entry.z()
+                LOG.info("[Scanner] mismatch at (" + entry.x() + "," + entry.y() + "," + entry.z()
                         + "): expected=" + expected + " actual=" + actual);
                 mismatchSamplesLogged++;
             }
         }
 
         if (total == 0) {
-            LOGGER.info("[Scanner] no countable blocks in plan (size=" + plan.size() + ")");
+            LOG.info("[Scanner] no countable blocks in plan (size=" + plan.size() + ")");
             return 0.0;
         }
         double pct = (double) matched / total;
-        LOGGER.info("[Scanner] match=" + matched + "/" + total + " (" + (int)(pct * 100) + "%)");
+        LOG.info("[Scanner] match=" + matched + "/" + total + " (" + (int)(pct * 100) + "%)");
         return pct;
+    }
+
+    /**
+     * Returns the resources needed to repair a completed building — only blocks that
+     * currently differ from the prefab plan are counted. Free blocks are excluded.
+     * Returns an empty map when the building is fully intact.
+     */
+    public static Map<String, Integer> getRepairCost(World world, List<BlockPlacer.BlockEntry> plan) {
+        Map<String, Integer> cost = new LinkedHashMap<>();
+        for (BlockPlacer.BlockEntry entry : plan) {
+            String expected = ResourceBlockPlacer.normalizeBlockId(entry.blockType());
+            if (ResourceBlockPlacer.isFreeBlock(expected)) continue;
+
+            String actual;
+            try {
+                var bt = world.getBlockType(entry.x(), entry.y(), entry.z());
+                actual = bt != null ? ResourceBlockPlacer.normalizeBlockId(bt.getId()) : "Empty";
+            } catch (Exception e) {
+                actual = "Empty";
+            }
+            if (!actual.equals(expected)) {
+                cost.merge(expected, 1, Integer::sum);
+            }
+        }
+        return cost;
     }
 }

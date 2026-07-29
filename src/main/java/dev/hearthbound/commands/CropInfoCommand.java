@@ -26,8 +26,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
-
 /**
  * PoC command: dumps everything we can read about the block the player is looking at,
  * or in a small area around them. Used to verify whether we can detect:
@@ -45,8 +43,8 @@ import java.util.logging.Logger;
  */
 public class CropInfoCommand extends AbstractPlayerCommand {
 
-    private static final Logger LOGGER = Logger.getLogger(CropInfoCommand.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.cropinfo");
     private final DefaultArg<String> modeArg;
 
     public CropInfoCommand() {
@@ -125,14 +123,14 @@ public class CropInfoCommand extends AbstractPlayerCommand {
             }
         } catch (Exception e) {
             ctx.sendMessage(Message.raw("Failed to write dump: " + e.getMessage()));
-            LOGGER.warning("CropInfo dump failed: " + e);
+            LOG.warn("CropInfo dump failed: " + e);
             return;
         }
 
         ctx.sendMessage(Message.raw("Cropinfo: " + reportLines.size()
                 + " blocks scanned, " + summary.size() + " unique types"));
         ctx.sendMessage(Message.raw("Saved to: " + outPath.toAbsolutePath()));
-        LOGGER.info("CropInfo dump saved to: " + outPath.toAbsolutePath());
+        LOG.info("CropInfo dump saved to: " + outPath.toAbsolutePath());
     }
 
     /**

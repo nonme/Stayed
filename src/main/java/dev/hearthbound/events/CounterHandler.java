@@ -37,7 +37,7 @@ public class CounterHandler extends EntityEventSystem<EntityStore, UseBlockEvent
                        UseBlockEvent.Pre event) {
         BlockType blockType = event.getBlockType();
         if (blockType == null) return;
-        if (!BuildingType.COUNTER_BLOCK.equals(blockType.getId())) return;
+        if (!BuildingType.WAREHOUSE_BLOCK.equals(blockType.getId())) return;
 
         Vector3i pos = event.getTargetBlock();
         if (pos == null) return;

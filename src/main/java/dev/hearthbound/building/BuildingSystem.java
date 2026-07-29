@@ -19,9 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Manages the building process: ghost preview, founding, resource-based construction.
  *
@@ -35,8 +32,8 @@ import java.util.logging.Logger;
  */
 public class BuildingSystem {
 
-    private static final Logger LOGGER = Logger.getLogger(BuildingSystem.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build");
     private static BuildingSystem instance;
 
     public static BuildingSystem get() { return instance; }
@@ -105,13 +102,13 @@ public class BuildingSystem {
                                      int anchorX, int anchorY, int anchorZ, int rotation, int variant) {
         List<BlockPlacer.BlockEntry> plan = loadBuildPlan(buildingType, anchorX, anchorY, anchorZ, rotation, variant);
         if (plan.isEmpty()) {
-            LOGGER.warning("No building plan for type: " + buildingType + " variant=" + variant);
+            LOG.warn("No building plan for type: " + buildingType + " variant=" + variant);
             return false;
         }
 
         UUID playerUuid = resolvePlayerUuid(store, playerRef);
         if (playerUuid == null) {
-            LOGGER.warning("[Ghost] showGhostPreview: player UUID is null, refusing to spawn preview");
+            LOG.warn("[Ghost] showGhostPreview: player UUID is null, refusing to spawn preview");
             return false;
         }
 
@@ -127,7 +124,7 @@ public class BuildingSystem {
 
         GhostPreview.sendBoundingBox(playerUuid, world, plan);
 
-        LOGGER.info("[Ghost] showGhostPreview: type=" + buildingType + " rotation=" + rotation
+        LOG.info("[Ghost] showGhostPreview: type=" + buildingType + " rotation=" + rotation
                 + " variant=" + variant + " plan=" + plan.size()
                 + " entities=" + session.refs.size()
                 + " anchor=(" + anchorX + "," + anchorY + "," + anchorZ + ")");
@@ -265,7 +262,7 @@ public class BuildingSystem {
         // Spawn elf near where the door will be
         spawnVillageElf(store, playerRef, world, anchorX, anchorY, anchorZ, rotation);
 
-        LOGGER.info("Village \"" + villageName + "\" founded at " +
+        LOG.info("Village \"" + villageName + "\" founded at " +
                 anchorX + "," + anchorY + "," + anchorZ + " rotation=" + rotation);
     }
 
@@ -307,7 +304,7 @@ public class BuildingSystem {
         village.setElfId(null);
         VillageManager.get().save(store, playerRef, village);
 
-        LOGGER.info("Village reset to pre-founded state");
+        LOG.info("Village reset to pre-founded state");
         return true;
     }
 
@@ -320,7 +317,7 @@ public class BuildingSystem {
             Store<EntityStore> worldStore = world.getEntityStore().getStore();
             VillageData village = VillageManager.get().getVillageData(worldStore, playerRef);
             if (village == null) {
-                LOGGER.warning("spawnVillageElf: VillageData is null");
+                LOG.warn("spawnVillageElf: VillageData is null");
                 return;
             }
 
@@ -337,7 +334,7 @@ public class BuildingSystem {
             };
             ElfSage.respawnAs(worldStore, playerRef, world,
                     ElfSage.ROLE_WANDERER, elfPos, new Vector3f(0, elfYaw, 0));
-            LOGGER.info("Village elf respawned at town hall stand: " + elfPos);
+            LOG.info("Village elf respawned at town hall stand: " + elfPos);
         });
     }
 
@@ -366,7 +363,7 @@ public class BuildingSystem {
         record.setRotation(rotation);
         village.setConstructionStarted(true);
         VillageManager.get().save(store, playerRef, village);
-        LOGGER.info("[Integrate] " + record.getType() + " matched at "
+        LOG.info("[Integrate] " + record.getType() + " matched at "
                 + (int)(match * 100) + "% — marking complete (prefab will be placed by onBuildingComplete)");
         // Don't call replaceWithPrefab here — onBuildingComplete does it. A double placement
         // re-rotates door state blocks and ends up with the wrong facing.
@@ -385,7 +382,7 @@ public class BuildingSystem {
                                        World world, BuildingRecord record, int rotation,
                                        UUID ownerUuid) {
         if (activeBuilder != null && !activeBuilder.isFinished()) {
-            LOGGER.warning("Another building is already in progress");
+            LOG.warn("Another building is already in progress");
             return;
         }
 
@@ -397,7 +394,7 @@ public class BuildingSystem {
                 record.getPosX(), record.getPosY(), record.getPosZ(), rotation, variant);
 
         if (plan.isEmpty()) {
-            LOGGER.warning("No building plan for type: " + record.getType() + " variant=" + variant);
+            LOG.warn("No building plan for type: " + record.getType() + " variant=" + variant);
             return;
         }
 
@@ -418,7 +415,7 @@ public class BuildingSystem {
                     BlockPlacer.silentRemoveBlock(world, entry.x(), entry.y(), entry.z());
                 }
             }
-            LOGGER.info("Mine terrain cleared: " + belowEmpty.size() + " cells below anchor");
+            LOG.info("Mine terrain cleared: " + belowEmpty.size() + " cells below anchor");
         }
 
         // Safe position: a couple blocks in front of the building door, unless the building
@@ -486,14 +483,14 @@ public class BuildingSystem {
                     });
                 });
                 activeBuilder.start();
-                LOGGER.info("Site cleared — construction started: " + record.getType()
+                LOG.info("Site cleared — construction started: " + record.getType()
                         + " (" + plan.size() + " blocks)");
             });
             activeClearer.start();
         };
         waitForBuilderThenStart(store, playerRef, world, builderBehavior, startClearing, 0);
 
-        LOGGER.info("Site clearing queued: " + record.getType() + " (" + plan.size() + " blocks to scan)");
+        LOG.info("Site clearing queued: " + record.getType() + " (" + plan.size() + " blocks to scan)");
     }
 
     private void waitForBuilderThenStart(Store<EntityStore> store, Ref<EntityStore> playerRef,
@@ -501,7 +498,7 @@ public class BuildingSystem {
                                          Runnable startClearing, int attempts) {
         if (builderBehavior == null || builderBehavior.getPosition() != null) {
             startClearing.run();
-            LOGGER.info("Builder ready — site clearing started");
+            LOG.info("Builder ready — site clearing started");
             return;
         }
         if (attempts >= 40) {
@@ -511,7 +508,7 @@ public class BuildingSystem {
                 VillageManager.get().save(store, playerRef, village);
             }
             activeRecord = null;
-            LOGGER.warning("Builder did not become live after chunk-load wait; construction cancelled");
+            LOG.warn("Builder did not become live after chunk-load wait; construction cancelled");
             return;
         }
         TickScheduler.runLater(world, 250L,
@@ -548,7 +545,7 @@ public class BuildingSystem {
             int placed = PathwayBuilder.connectAll(world, villageForPath);
             if (placed > 0) {
                 mgr.save(store, playerRef, villageForPath);
-                LOGGER.info("Pathway network rebuilt after " + record.getType()
+                LOG.info("Pathway network rebuilt after " + record.getType()
                         + ": " + placed + " new blocks placed");
             }
         }
@@ -559,16 +556,16 @@ public class BuildingSystem {
             if (village != null) {
                 java.util.UUID farmerUuid = mgr.assignFarmerProfession(store, playerRef, village, record);
                 if (farmerUuid != null) {
-                    LOGGER.info("Farm built — assigned farmer: " + farmerUuid);
+                    LOG.info("Farm built — assigned farmer: " + farmerUuid);
                 } else {
-                    LOGGER.info("Farm built — no eligible villager for farmer yet");
+                    LOG.info("Farm built — no eligible villager for farmer yet");
                 }
             }
         }
 
         activeBuilder = null;
         activeRecord = null;
-        LOGGER.info("Building complete: " + record.getType());
+        LOG.info("Building complete: " + record.getType());
     }
 
     /**
@@ -618,7 +615,7 @@ public class BuildingSystem {
             // puts that block exactly at the world anchor position (the founding stone).
             int[] anchorLocal = findPrefabAnchor(rotated, anchorBlockId, anchorPrefabY);
             if (anchorLocal == null) {
-                LOGGER.warning("replaceWithPrefab: anchor block not found in rotated prefab, skipping final swap");
+                LOG.warn("replaceWithPrefab: anchor block not found in rotated prefab, skipping final swap");
                 return;
             }
             rotated.setAnchorAtWorldPos(anchorLocal[0], anchorLocal[1], anchorLocal[2]);
@@ -628,7 +625,7 @@ public class BuildingSystem {
                             record.getPosX(), record.getPosY(), record.getPosZ());
             rotated.placeNoReturn(world, stonePos, store);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "replaceWithPrefab failed", e);
+            LOG.warn("replaceWithPrefab failed", e);
         }
     }
 
@@ -708,7 +705,7 @@ public class BuildingSystem {
             List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(
                     prefabName, anchorBlockId, anchorPrefabY, anchorX, anchorY, anchorZ, rotation, mineOrder);
             if (!plan.isEmpty()) return plan;
-            LOGGER.warning("Prefab '" + prefabName + "' empty, falling back to generator");
+            LOG.warn("Prefab '" + prefabName + "' empty, falling back to generator");
         }
         return BuildingGenerator.generate(type, anchorX, anchorY, anchorZ, rotation);
     }
@@ -808,11 +805,59 @@ public class BuildingSystem {
             return;
         }
 
-        LOGGER.info("[Resume] Resuming interrupted construction: " + inProgress.getType()
+        LOG.info("[Resume] Resuming interrupted construction: " + inProgress.getType()
                 + " rotation=" + inProgress.getRotation()
                 + " pos=(" + inProgress.getPosX() + "," + inProgress.getPosY() + "," + inProgress.getPosZ() + ")"
                 + " for player " + ownerUuid);
         startResourceBuilding(store, playerRef, world, inProgress, inProgress.getRotation(), ownerUuid);
+    }
+
+    // ========== Repair ==========
+
+    /**
+     * Computes the resources needed to restore a completed building to its prefab state.
+     * Only blocks that currently differ from the prefab are counted; free blocks are excluded.
+     * Returns an empty map when the building is fully intact.
+     */
+    public static java.util.Map<String, Integer> getRepairCost(BuildingRecord record, World world) {
+        int variant = record.getVariant();
+        String prefabName = BuildingType.getPrefabName(record.getType(), variant);
+        if (prefabName == null) return java.util.Map.of();
+
+        String anchorBlockId = BuildingType.getAnchorBlockId(record.getType());
+        int anchorPrefabY = BuildingType.getAnchorPrefabY(record.getType(), variant);
+        boolean mineOrder = BuildingType.MINE.equals(record.getType());
+        List<BlockPlacer.BlockEntry> plan = PrefabLoader.load(
+                prefabName, anchorBlockId, anchorPrefabY,
+                record.getPosX(), record.getPosY(), record.getPosZ(),
+                record.getRotation(), mineOrder);
+
+        if (plan.isEmpty()) return java.util.Map.of();
+        return BuildingScanner.getRepairCost(world, plan);
+    }
+
+    /**
+     * Repairs a completed building: spends the resources already deposited in the building's
+     * storage (caller must verify they cover the repair cost) then atomically re-places the
+     * prefab to restore any missing or wrong blocks.
+     */
+    public void startRepair(Store<EntityStore> store, Ref<EntityStore> playerRef,
+                             World world, BuildingRecord record) {
+        java.util.Map<String, Integer> cost = getRepairCost(record, world);
+
+        for (Map.Entry<String, Integer> entry : cost.entrySet()) {
+            record.removeResource(entry.getKey(), entry.getValue());
+        }
+
+        VillageData village = VillageManager.get().getVillageData(store, playerRef);
+        if (village != null) {
+            VillageManager.get().save(store, playerRef, village);
+        }
+
+        replaceWithPrefab(world, store, record, record.getRotation());
+        LOG.info("Repair complete: " + record.getType()
+                + " at (" + record.getPosX() + "," + record.getPosY() + "," + record.getPosZ() + ")"
+                + " cost=" + cost);
     }
 
     /** Reset all state (for /hb reset command). */

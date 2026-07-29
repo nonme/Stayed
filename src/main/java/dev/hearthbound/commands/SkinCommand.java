@@ -20,8 +20,6 @@ import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
 import java.util.UUID;
-import java.util.logging.Logger;
-
 /**
  * /hb skin [slot] [value] — Apply or test PlayerSkin on the elf NPC.
  * /hb skin — applies default elf sage look
@@ -30,8 +28,8 @@ import java.util.logging.Logger;
  */
 public class SkinCommand extends AbstractPlayerCommand {
 
-    private static final Logger LOGGER = Logger.getLogger(SkinCommand.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("cmd.skin");
     private final DefaultArg<String> slotArg;
     private final DefaultArg<String> valueArg;
 
@@ -95,7 +93,7 @@ public class SkinCommand extends AbstractPlayerCommand {
 
         } catch (Exception e) {
             ctx.sendMessage(Message.raw("Error: " + e.getMessage()));
-            LOGGER.warning("Skin command error: " + e.getMessage());
+            LOG.warn("Skin command error: " + e.getMessage());
         }
     }
 
@@ -156,7 +154,7 @@ public class SkinCommand extends AbstractPlayerCommand {
             if (skin.skinFeature != null) safeSkin.skinFeature = skin.skinFeature;
             if (skin.gloves != null) safeSkin.gloves = skin.gloves;
             if (skin.cape != null) safeSkin.cape = skin.cape;
-            LOGGER.info("Used random base skin with overlayed elf values");
+            LOG.info("Used random base skin with overlayed elf values");
         }
 
         Model model = cosmetics.createModel(safeSkin, 1.0f);
@@ -168,7 +166,7 @@ public class SkinCommand extends AbstractPlayerCommand {
         elfStore.putComponent(elfRef, PlayerSkinComponent.getComponentType(), new PlayerSkinComponent(safeSkin));
         elfStore.putComponent(elfRef, ModelComponent.getComponentType(), new ModelComponent(model));
 
-        LOGGER.info("Applied PlayerSkin to elf NPC");
+        LOG.info("Applied PlayerSkin to elf NPC");
     }
 
     public static PlayerSkin getCurrentSkin() {

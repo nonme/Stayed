@@ -11,16 +11,14 @@ import dev.hearthbound.village.BuildingRecord;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Places building blocks one by one, consuming matching resources from the building's
  * local storage map. Pauses when resources run out, resumes automatically once refilled.
  */
 public class ResourceBlockPlacer {
 
-    private static final Logger LOGGER = Logger.getLogger(ResourceBlockPlacer.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.placer");
     // Delay envelope between placements — jittered so the build doesn't look metronomic.
     private static final long BASE_DELAY_MIN_MS = 200;
     private static final long BASE_DELAY_MAX_MS = 400;
@@ -82,9 +80,9 @@ public class ResourceBlockPlacer {
         }
         currentIndex = computeResumeIndex();
         if (currentIndex > 0) {
-            LOGGER.info("ResourceBlockPlacer resuming from block " + currentIndex + "/" + blocks.size());
+            LOG.info("ResourceBlockPlacer resuming from block " + currentIndex + "/" + blocks.size());
         } else {
-            LOGGER.info("ResourceBlockPlacer started (" + blocks.size() + " blocks)");
+            LOG.info("ResourceBlockPlacer started (" + blocks.size() + " blocks)");
         }
         scheduleNextTick(randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
     }
@@ -216,7 +214,7 @@ public class ResourceBlockPlacer {
                     : randomInRange(BASE_DELAY_MIN_MS, BASE_DELAY_MAX_MS));
             scheduleNextTick(nextDelay);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "ResourceBlockPlacer tick failed at index " + currentIndex, e);
+            LOG.warn("ResourceBlockPlacer tick failed at index " + currentIndex, e);
             scheduleNextTick(PAUSED_DELAY_MS);
         }
     }
@@ -250,7 +248,7 @@ public class ResourceBlockPlacer {
             try {
                 BlockPlacer.placeBlock(world, blocks.get(i));
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "finishNow: placeBlock failed at index " + i, e);
+                LOG.warn("finishNow: placeBlock failed at index " + i, e);
             }
         }
         currentIndex = blocks.size();
@@ -259,7 +257,7 @@ public class ResourceBlockPlacer {
         if (onComplete != null) {
             onComplete.run();
         }
-        LOGGER.info("ResourceBlockPlacer: finishNow completed " + blocks.size() + " blocks");
+        LOG.info("ResourceBlockPlacer: finishNow completed " + blocks.size() + " blocks");
     }
 
     public void cancel() {
@@ -317,7 +315,7 @@ public class ResourceBlockPlacer {
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "Could not update elf held item", e);
+            LOG.debug("Could not update elf held item", e);
         }
     }
 
@@ -332,7 +330,7 @@ public class ResourceBlockPlacer {
                 }
             }
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "Could not clear elf held item", e);
+            LOG.debug("Could not clear elf held item", e);
         }
     }
 

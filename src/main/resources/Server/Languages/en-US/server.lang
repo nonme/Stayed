@@ -3,22 +3,27 @@ interactionHints.talk = Press [{key}] to talk
 interactionHints.manage_house = Press [{key}] to manage
 interactionHints.manage_farm = Press [{key}] to manage farm
 interactionHints.manage_warehouse = Press [{key}] to manage warehouse
-interactionHints.manage_lumbermill = Press [{key}] to manage sawmill
+interactionHints.manage_woodcutters = Press [{key}] to manage woodcutter's hut
+interactionHints.manage_sawmill = Press [{key}] to manage sawmill
 interactionHints.manage_mine = Press [{key}] to manage mine
 interactionHints.manage_guardhouse = Press [{key}] to manage guard house
 interactionHints.manage_forge = Press [{key}] to manage forge
+interactionHints.manage_tavern = Press [{key}] to manage tavern
 
 # === Hearthbound items ===
 items.Stayed_Founding_Stone.name = Founding Stone
-items.Stayed_Brazier.name = Hearth Brazier
-items.Stayed_Scarecrow.name = Farm Scarecrow
-items.Stayed_Counter.name = Warehouse Counter
+items.Stayed_House.name = Hearth Brazier
+items.Stayed_Farm.name = Farm Scarecrow
+items.Stayed_Warehouse.name = Warehouse Counter
 items.Stayed_Storage_Chest.name = Village Storage Chest
 items.Stayed_Ghost.name = Ghost Block
-items.Stayed_Lumbermill.name = Sawmill
-items.Stayed_Mine_Sign.name = Mine Sign
-items.Stayed_Target_Dummy.name = Training Dummy
+items.Stayed_Woodcutters_Hut.name = Woodcutter's Block
+items.Stayed_Sawmill.name = Sawmill Bench
+items.Stayed_Mine.name = Mine Sign
+items.Stayed_Guard_House.name = Training Dummy
 items.Stayed_Forge.name = Forge Anvil
+items.Stayed_Tavern.name = Tavern Cooking Bench
+items.Stayed_Founders_Almanac.name = Founder's Almanac
 
 # === Hearthbound NPCs ===
 npcRoles.Elf_Sage.name = Aelin

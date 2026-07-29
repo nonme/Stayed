@@ -20,16 +20,14 @@ import dev.hearthbound.village.BuildingType;
 import dev.hearthbound.village.VillageData;
 import dev.hearthbound.village.VillageManager;
 
-import java.util.logging.Logger;
-
 /**
  * Handles PlaceBlockEvent to detect Founding Stone placement.
  * Shows ghost preview of Town Hall with rotation matching block placement direction.
  */
 public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlockEvent> {
 
-    private static final Logger LOGGER = Logger.getLogger(BlockPlaceHandler.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("event.block");
     public BlockPlaceHandler() {
         super(PlaceBlockEvent.class);
     }
@@ -61,13 +59,13 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
 
         if (BuildingType.TOWN_HALL.equals(buildingType)) {
             if (village != null && village.isFounded()) {
-                LOGGER.info("Village already founded, ignoring Founding Stone placement");
+                LOG.info("Village already founded, ignoring Founding Stone placement");
                 return;
             }
         }
 
         if (BuildingSystem.get().hasActivePreview(store, playerRef)) {
-            LOGGER.info("Ghost preview already active, ignoring");
+            LOG.info("Ghost preview already active, ignoring");
             return;
         }
 
@@ -77,7 +75,7 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
         // block on a finished sawmill and put it back) must NOT trigger a new ghost preview —
         // the building still exists in VillageData, F-key handlers already match it by position.
         if (village != null && village.findBuildingAt(buildingType, pos.x, pos.y, pos.z) != null) {
-            LOGGER.info("Anchor re-placed on existing " + buildingType + " at "
+            LOG.info("Anchor re-placed on existing " + buildingType + " at "
                     + pos.x + "," + pos.y + "," + pos.z + " — skipping ghost preview");
             return;
         }
@@ -89,7 +87,7 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
             initialVariant = BuildingType.wrapHouseVariant(village.getSelectedHouseVariant());
         }
 
-        LOGGER.info(itemId + " placed at " + pos.x + ", " + pos.y + ", " + pos.z);
+        LOG.info(itemId + " placed at " + pos.x + ", " + pos.y + ", " + pos.z);
 
         EntityStore entityStore = (EntityStore) commandBuffer.getExternalData();
         World world = entityStore.getWorld();
@@ -103,16 +101,16 @@ public class BlockPlaceHandler extends EntityEventSystem<EntityStore, PlaceBlock
                 BlockAccessor accessor = world.getChunkIfLoaded(ChunkUtil.indexChunkFromBlock(pos.x, pos.z));
                 if (accessor != null) {
                     rotation = accessor.getRotationIndex(pos.x, pos.y, pos.z) & 0x3;
-                    LOGGER.info(itemId + " placed at " + pos + " rotation=" + rotation);
+                    LOG.info(itemId + " placed at " + pos + " rotation=" + rotation);
                 }
             } catch (Exception e) {
-                LOGGER.warning("Could not read block rotation: " + e.getMessage());
+                LOG.warn("Could not read block rotation: " + e.getMessage());
             }
 
             Store<EntityStore> liveStore = world.getEntityStore().getStore();
             BuildingSystem.get().showGhostPreview(liveStore, refForLater, world,
                     buildingTypeFinal, pos.x, pos.y, pos.z, rotation, variantFinal);
-            LOGGER.info("Ghost preview shown for " + buildingTypeFinal + " rotation=" + rotation
+            LOG.info("Ghost preview shown for " + buildingTypeFinal + " rotation=" + rotation
                     + " variant=" + variantFinal);
         });
     }

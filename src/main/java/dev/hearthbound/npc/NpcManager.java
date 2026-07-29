@@ -14,12 +14,10 @@ import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import it.unimi.dsi.fastutil.Pair;
 
 import java.util.UUID;
-import java.util.logging.Logger;
-
 public class NpcManager {
 
-    private static final Logger LOGGER = Logger.getLogger(NpcManager.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.manager");
     /**
      * Low-level NPC spawn helper.
      *
@@ -54,10 +52,10 @@ public class NpcManager {
                 pm.setModelReference(new Model.ModelReference(
                         ref.getModelAssetId(), 1.0f,
                         ref.getRandomAttachmentIds(), ref.isStaticModel()));
-                LOGGER.fine("Fixed PersistentModel scale=0 for NPC " + npcRef);
+                LOG.debug("Fixed PersistentModel scale=0 for NPC " + npcRef);
             }
         } catch (Exception e) {
-            LOGGER.warning("fixPersistentModelScale failed: " + e.getMessage());
+            LOG.warn("fixPersistentModelScale failed: " + e.getMessage());
         }
     }
 

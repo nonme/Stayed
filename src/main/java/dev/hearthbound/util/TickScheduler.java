@@ -6,16 +6,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Utility for scheduling periodic tasks that execute on the world thread.
  * Wraps ScheduledExecutorService + world.execute() for thread safety.
  */
 public class TickScheduler {
 
-    private static final Logger LOGGER = Logger.getLogger(TickScheduler.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("util.tick");
     private static final ScheduledExecutorService EXECUTOR =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "hearthbound-scheduler");
@@ -31,7 +29,7 @@ public class TickScheduler {
             try {
                 world.execute(task);
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Scheduled task failed", e);
+                LOG.warn("Scheduled task failed", e);
             }
         }, delayMs, TimeUnit.MILLISECONDS);
     }
@@ -48,11 +46,11 @@ public class TickScheduler {
             } catch (Exception e) {
                 if (e instanceof IllegalThreadStateException
                         || (e.getCause() instanceof IllegalThreadStateException)) {
-                    LOGGER.fine("World thread stopped, cancelling repeating task");
+                    LOG.debug("World thread stopped, cancelling repeating task");
                     if (holder[0] != null) holder[0].cancel(false);
                     return;
                 }
-                LOGGER.log(Level.WARNING, "Repeating task failed", e);
+                LOG.warn("Repeating task failed", e);
             }
         }, initialDelayMs, periodMs, TimeUnit.MILLISECONDS);
         return holder[0];

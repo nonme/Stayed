@@ -34,9 +34,6 @@ import com.hypixel.hytale.math.util.ChunkUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 /**
  * Controls NPC builder behavior during construction:
  * - Freeze in place (Frozen component)
@@ -47,8 +44,8 @@ import java.util.logging.Logger;
  */
 public class BuilderBehavior {
 
-    private static final Logger LOGGER = Logger.getLogger(BuilderBehavior.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("npc.builder");
     private final World world;
     private final UUID npcUuid;
     private final UUID ownerUuid;
@@ -83,13 +80,13 @@ public class BuilderBehavior {
             try {
                 AnimationUtils.stopAnimation(npcRef, AnimationSlot.Movement, store);
             } catch (Exception animEx) {
-                LOGGER.fine("Failed to stop walk animation on freeze: " + animEx.getMessage());
+                LOG.debug("Failed to stop walk animation on freeze: " + animEx.getMessage());
             }
 
             frozen = true;
-            LOGGER.info("Builder NPC frozen for construction");
+            LOG.info("Builder NPC frozen for construction");
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to freeze builder NPC", e);
+            LOG.warn("Failed to freeze builder NPC", e);
         }
     }
 
@@ -105,9 +102,9 @@ public class BuilderBehavior {
             }
             frozen = false;
             npcRef = null;
-            LOGGER.info("Builder NPC unfrozen after construction");
+            LOG.info("Builder NPC unfrozen after construction");
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to unfreeze builder NPC", e);
+            LOG.warn("Failed to unfreeze builder NPC", e);
         }
     }
 
@@ -177,7 +174,7 @@ public class BuilderBehavior {
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "Failed to rotate builder NPC toward block", e);
+            LOG.debug("Failed to rotate builder NPC toward block", e);
         }
     }
 
@@ -195,10 +192,10 @@ public class BuilderBehavior {
             if (elf != null) {
                 Store<EntityStore> store = npcRef.getStore();
                 elf.moveTo(npcRef, x, y, z, store);
-                LOGGER.info("Builder NPC moved to " + x + "," + y + "," + z);
+                LOG.info("Builder NPC moved to " + x + "," + y + "," + z);
             }
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "Failed to move builder NPC", e);
+            LOG.debug("Failed to move builder NPC", e);
         }
     }
 
@@ -257,7 +254,7 @@ public class BuilderBehavior {
             }
             hotbar.addItemStackToSlot((short) 0, new ItemStack(itemId, 1));
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "setHotbarSlot0 failed for " + itemId, e);
+            LOG.debug("setHotbarSlot0 failed for " + itemId, e);
         }
     }
 
@@ -324,7 +321,7 @@ public class BuilderBehavior {
                     try {
                         store.removeEntity(r, RemoveReason.REMOVE);
                     } catch (Exception e) {
-                        LOGGER.log(Level.FINE, "clearEntitiesOnBlock: removeEntity failed", e);
+                        LOG.debug("clearEntitiesOnBlock: removeEntity failed", e);
                     }
                 }
             }
@@ -384,7 +381,7 @@ public class BuilderBehavior {
             if (npcRef == null || !npcRef.isValid()) return;
             action.accept(npcRef);
         } catch (Exception e) {
-            LOGGER.log(Level.FINE, "BuilderBehavior action failed", e);
+            LOG.debug("BuilderBehavior action failed", e);
         }
     }
 }

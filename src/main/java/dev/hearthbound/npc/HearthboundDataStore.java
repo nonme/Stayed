@@ -16,8 +16,6 @@ import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Logger;
-
 import dev.hearthbound.util.TickScheduler;
 
 /**
@@ -38,7 +36,8 @@ import dev.hearthbound.util.TickScheduler;
  */
 public final class HearthboundDataStore {
 
-    private static final Logger LOGGER = Logger.getLogger(HearthboundDataStore.class.getName());
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("data");
     private static final Path DATA_FILE = Paths.get("mods", "HearthboundData", "data.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -96,6 +95,13 @@ public final class HearthboundDataStore {
                         : StayedRoleNames.extractBaseRoleName(r.role);
                 NpcRegistry.NpcRecord record = new NpcRegistry.NpcRecord(
                         npcId, entityUuid, baseRoleName, interaction, r.skinSeed, r.chunkIndex);
+                if (r.worldUuid != null && !r.worldUuid.isBlank()) {
+                    try {
+                        record.setWorld(UUID.fromString(r.worldUuid), r.worldName);
+                    } catch (Exception e) {
+                        LOG.warn("Invalid world UUID on NPC record " + npcId + ": " + r.worldUuid);
+                    }
+                }
 
                 if (r.hasPosition != null && r.hasPosition
                         && r.lastX != null && r.lastY != null && r.lastZ != null) {
@@ -113,7 +119,7 @@ public final class HearthboundDataStore {
 
                 registry.register(record);
             } catch (Exception e) {
-                LOGGER.warning("Skipping invalid persisted NPC record: " + r.uuid + " — " + e.getMessage());
+                LOG.warn("Skipping invalid persisted NPC record: " + r.uuid + " — " + e.getMessage());
             }
         }
 
@@ -122,21 +128,25 @@ public final class HearthboundDataStore {
             for (PersistedPendingRemoval r : data.pendingRemovals) {
                 if (r == null || r.uuid == null || r.uuid.isBlank()) continue;
                 try {
-                    registry.markForRemoval(UUID.fromString(r.uuid), r.chunkIndex);
+                    UUID worldUuid = null;
+                    if (r.worldUuid != null && !r.worldUuid.isBlank()) {
+                        worldUuid = UUID.fromString(r.worldUuid);
+                    }
+                    registry.markForRemoval(worldUuid, r.worldName, UUID.fromString(r.uuid), r.chunkIndex);
                     pendingLoaded++;
                 } catch (Exception e) {
-                    LOGGER.warning("Skipping invalid pending NPC removal: " + r.uuid + " — " + e.getMessage());
+                    LOG.warn("Skipping invalid pending NPC removal: " + r.uuid + " — " + e.getMessage());
                 }
             }
         }
 
-        LOGGER.info("HearthboundDataStore: loaded " + data.npcs.size() + " NPC record(s) from disk"
+        LOG.info("HearthboundDataStore: loaded " + data.npcs.size() + " NPC record(s) from disk"
                 + (migrated > 0 ? " (" + migrated + " migrated to npcId)" : "")
                 + (pendingLoaded > 0 ? ", pending removals=" + pendingLoaded : ""));
         if (migrated > 0) markDirty();
     }
 
-    public void save() {
+    public synchronized void save() {
         NpcRegistry registry = NpcRegistry.get();
 
         PersistedData data = new PersistedData();
@@ -146,6 +156,8 @@ public final class HearthboundDataStore {
             pr.uuid        = r.entityUuid != null ? r.entityUuid.toString() : "";
             pr.role        = r.roleName;
             pr.baseRoleName = r.baseRoleName();
+            pr.worldUuid   = r.worldUuid != null ? r.worldUuid.toString() : null;
+            pr.worldName   = r.worldName;
             pr.interaction = r.interaction.name();
             pr.skinSeed    = r.skinSeed;
             pr.chunkIndex  = r.chunkIndex;
@@ -167,40 +179,49 @@ public final class HearthboundDataStore {
             data.npcs.add(pr);
         }
 
-        for (java.util.Map.Entry<UUID, Long> e : registry.getPendingRemovals().entrySet()) {
+        for (NpcRegistry.PendingRemoval e : registry.getPendingRemovalEntries()) {
             PersistedPendingRemoval pending = new PersistedPendingRemoval();
-            pending.uuid = e.getKey().toString();
-            pending.chunkIndex = e.getValue();
+            pending.uuid = e.entityUuid.toString();
+            pending.worldUuid = e.worldUuid != null ? e.worldUuid.toString() : null;
+            pending.worldName = e.worldName;
+            pending.chunkIndex = e.chunkIndex;
             data.pendingRemovals.add(pending);
         }
 
         try {
             Files.createDirectories(DATA_FILE.getParent());
-            Path tmp = DATA_FILE.getParent().resolve("data.json.tmp");
+            Path tmp = tempFileForSave(DATA_FILE);
             try (BufferedWriter writer = Files.newBufferedWriter(tmp)) {
                 GSON.toJson(data, writer);
             }
             Files.move(tmp, DATA_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
-            LOGGER.fine("HearthboundDataStore: saved " + data.npcs.size() + " NPC(s)");
+            LOG.debug("HearthboundDataStore: saved " + data.npcs.size() + " NPC(s)");
         } catch (IOException e) {
-            LOGGER.warning("HearthboundDataStore: failed to save data: " + e.getMessage());
+            LOG.warn("HearthboundDataStore: failed to save data", e);
         }
+    }
+
+    static Path tempFileForSave(Path dataFile) {
+        Path parent = dataFile.getParent();
+        String fileName = dataFile.getFileName().toString();
+        return parent.resolve(fileName + "." + UUID.randomUUID() + ".tmp");
     }
 
     private PersistedData loadFromDisk() {
         if (!Files.exists(DATA_FILE)) {
-            LOGGER.info("HearthboundDataStore: no data file found, starting fresh");
+            LOG.info("HearthboundDataStore: no data file found, starting fresh");
             return new PersistedData();
         }
         try (FileReader reader = new FileReader(DATA_FILE.toFile())) {
             PersistedData data = GSON.fromJson(reader, PersistedData.class);
             if (data == null) return new PersistedData();
             if (data.npcs == null) data.npcs = new ArrayList<>();
+            if (data.pendingRemovals == null) data.pendingRemovals = new ArrayList<>();
             return data;
         } catch (Exception e) {
-            LOGGER.warning("HearthboundDataStore: failed to load data: " + e.getMessage());
+            LOG.warn("HearthboundDataStore: failed to load data: " + e.getMessage());
             return new PersistedData();
         }
     }
@@ -226,6 +247,8 @@ public final class HearthboundDataStore {
         String uuid;
         String role;
         String baseRoleName;
+        String worldUuid;
+        String worldName;
         String interaction;
         long   skinSeed;
         long   chunkIndex;
@@ -243,6 +266,8 @@ public final class HearthboundDataStore {
 
     private static final class PersistedPendingRemoval {
         String uuid;
+        String worldUuid;
+        String worldName;
         long chunkIndex;
     }
 }

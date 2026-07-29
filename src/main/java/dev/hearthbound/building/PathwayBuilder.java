@@ -9,8 +9,6 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
-import java.util.logging.Logger;
-
 import com.hypixel.hytale.protocol.BlockMaterial;
 import com.hypixel.hytale.server.core.universe.world.World;
 
@@ -29,8 +27,8 @@ import dev.hearthbound.village.VillagerSummary;
  */
 public final class PathwayBuilder {
 
-    private static final Logger LOGGER = Logger.getLogger(PathwayBuilder.class.getName());
-
+    private static final dev.hearthbound.util.log.Log LOG =
+            dev.hearthbound.util.log.Log.get("build.path");
     private static final String PATHWAY_BLOCK = "Soil_Pathway";
     private static final String PATHWAY_QUARTER_BLOCK = "Soil_Pathway_Quarter";
     private static final String PATHWAY_HALF_BLOCK = "Soil_Pathway_Half";
@@ -136,7 +134,7 @@ public final class PathwayBuilder {
         // imperfect path through small obstructions rather than leaving a
         // building stranded.
         int placed = routeEdges(world, village, nodes, edges, true);
-        LOGGER.info("PathwayBuilder.connectBase[" + strategy + "]: "
+        LOG.info("PathwayBuilder.connectBase[" + strategy + "]: "
                 + nodes.size() + " buildings, " + edges.size() + " edges, "
                 + placed + " blocks placed");
         return placed;
@@ -159,9 +157,8 @@ public final class PathwayBuilder {
         Set<Long> seenEdges = new HashSet<>();
         addCommuteEdges(village, nodes, edges, seenEdges);
         int afterCommute = edges.size();
-        List<int[]> warehouseEdges = new ArrayList<>();
-        addWarehouseHubEdges(nodes, warehouseEdges, seenEdges);
-        int afterWarehouse = afterCommute + warehouseEdges.size();
+        addWarehouseHubEdges(nodes, edges, seenEdges);
+        int afterWarehouse = edges.size();
 
         // Drop any edge whose endpoints are already linked by an existing Soil_Pathway
         // network in the world — otherwise we'd lay a parallel road 1-2 blocks beside
@@ -173,7 +170,7 @@ public final class PathwayBuilder {
             Node b = nodes.get(e[1]);
             if (isReachableViaPathway(world, a.x, a.y, a.z, b.x, b.z)) {
                 dropped++;
-                LOGGER.info("connectExtra: skip edge " + a.building.getType()
+                LOG.info("connectExtra: skip edge " + a.building.getType()
                         + " → " + b.building.getType() + " (already reachable via pathway)");
                 continue;
             }
@@ -185,10 +182,7 @@ public final class PathwayBuilder {
         // refuse to fall back through obstructions. Better no parallel road
         // than one that tunnels under the player's fences and trees.
         int placed = routeEdges(world, village, nodes, filteredEdges, false);
-        int[] warehouseResult = routeWarehouseHubEdges(world, village, nodes, warehouseEdges);
-        placed += warehouseResult[0];
-        dropped += warehouseResult[1];
-        LOGGER.info("PathwayBuilder.connectExtra: "
+        LOG.info("PathwayBuilder.connectExtra: "
                 + afterCommute + " commute edges, "
                 + (afterWarehouse - afterCommute) + " warehouse-hub edges, "
                 + dropped + " skipped (already connected), "
@@ -196,37 +190,11 @@ public final class PathwayBuilder {
         return placed;
     }
 
-    private static int[] routeWarehouseHubEdges(World world, VillageData village,
-                                                List<Node> nodes, List<int[]> edges) {
-        int placed = 0;
-        int dropped = 0;
-        for (int[] e : edges) {
-            Node a = nodes.get(e[0]);
-            Node b = nodes.get(e[1]);
-            Node warehouse = BuildingType.WAREHOUSE.equals(a.building.getType()) ? a : b;
-            Node work = warehouse == a ? b : a;
-            int[] logistics = warehouseLogisticsNode(world, warehouse.building);
-            if (logistics == null) continue;
-            if (isReachableViaPathway(world, work.x, work.y, work.z, logistics[0], logistics[2])) {
-                dropped++;
-                LOGGER.info("connectExtra: skip warehouse logistics edge "
-                        + work.building.getType() + " → warehouse back passage"
-                        + " (already reachable via pathway)");
-                continue;
-            }
-            placed += routeBetween(world, village,
-                    work.x, work.y, work.z,
-                    logistics[0], logistics[1], logistics[2],
-                    false);
-        }
-        return new int[]{placed, dropped};
-    }
-
     private static void logNodes(World world, List<Node> nodes) {
         for (int i = 0; i < nodes.size(); i++) {
             Node n = nodes.get(i);
             String surfaceId = readBlockId(world, n.x, n.y, n.z);
-            LOGGER.info("PathwayBuilder node[" + i + "] = " + n.building.getType()
+            LOG.info("PathwayBuilder node[" + i + "] = " + n.building.getType()
                     + " (" + n.x + "," + n.y + "," + n.z + ") surface=" + surfaceId);
         }
     }
@@ -298,7 +266,7 @@ public final class PathwayBuilder {
                 if (visited.add(key)) queue.add(new int[]{ x, y, z });
             }
         }
-        LOGGER.info("isReachableViaPathway: from=(" + fromX + "," + fromY + "," + fromZ
+        LOG.info("isReachableViaPathway: from=(" + fromX + "," + fromY + "," + fromZ
                 + ") to=(" + toX + "," + toZ + ")  seedTiles=" + queue.size());
         if (queue.isEmpty()) return false;
 
@@ -310,7 +278,7 @@ public final class PathwayBuilder {
             // Reached the target's neighborhood — same proximity rule as the seed box.
             if (Math.abs(cx - toX) <= PATHWAY_PROXIMITY_RADIUS
                     && Math.abs(cz - toZ) <= PATHWAY_PROXIMITY_RADIUS) {
-                LOGGER.info("isReachableViaPathway: HIT after " + explored
+                LOG.info("isReachableViaPathway: HIT after " + explored
                         + " nodes, at (" + cx + "," + cy + "," + cz + ")");
                 return true;
             }
@@ -347,7 +315,7 @@ public final class PathwayBuilder {
                 }
             }
         }
-        LOGGER.info("isReachableViaPathway: MISS after exhausting " + explored
+        LOG.info("isReachableViaPathway: MISS after exhausting " + explored
                 + " nodes (visited=" + visited.size() + ")");
         return false;
     }
@@ -477,7 +445,7 @@ public final class PathwayBuilder {
             }
         }
         village.clearPathwayBlocks();
-        LOGGER.info("PathwayBuilder.clearAll: restored " + restored + " of "
+        LOG.info("PathwayBuilder.clearAll: restored " + restored + " of "
                 + registered + " registered cells");
         return restored;
     }
@@ -519,14 +487,21 @@ public final class PathwayBuilder {
         //     Same 4-direction probe outward.
         //   - Mine, sawmill: open structures with no fixed egress. Use BFS from anchor.
         if (BuildingType.TOWN_HALL.equals(b.getType())) {
-            // Town hall has two doors in the prefab; BuildingLayout.findDoor non-deterministically
-            // picks one (often the side door). We want the front entrance, which is at native
-            // (0, 1, -2) relative to founding-stone anchor (-5, 1, 1) → relative offset (5, -3).
+            // v3 prefab: anchor (Founding Stone) at (0,2,2), front door at (0,2,-2), one step outside → dz=-5.
             int steps = BuildingLayout.get(b.getType(), b.getVariant()).rotationSteps(b.getRotation());
-            int[] doorLocal = BuildingLayout.rotateLocalOffset(5, 0, -3, steps);
+            int[] doorLocal = BuildingLayout.rotateLocalOffset(0, 0, -5, steps);
             int seedX = b.getPosX() + doorLocal[0];
             int seedZ = b.getPosZ() + doorLocal[2];
             return cardinalProbeEndpoint(world, b, seedX, seedZ, "townhall-front");
+        }
+        if (BuildingType.WAREHOUSE.equals(b.getType())) {
+            // v2 prefab: anchor (Stayed_Warehouse) at (1,2,2), entrance on -Z side.
+            // Passage centre at prefab (0,*,-2); wall face at z=-3. One step outside: dx=-1, dz=-6.
+            int steps = BuildingLayout.get(b.getType(), b.getVariant()).rotationSteps(b.getRotation());
+            int[] doorLocal = BuildingLayout.rotateLocalOffset(-1, 0, -6, steps);
+            int seedX = b.getPosX() + doorLocal[0];
+            int seedZ = b.getPosZ() + doorLocal[2];
+            return cardinalProbeEndpoint(world, b, seedX, seedZ, "warehouse-front");
         }
         BuildingLayout.Layout layout = BuildingLayout.get(b.getType(), b.getVariant());
         if (layout != null && layout.hasDoor()) {
@@ -538,15 +513,13 @@ public final class PathwayBuilder {
             return cardinalProbeEndpoint(world, b, seedX, seedZ, "layout-door");
         }
         if (BuildingType.FARM.equals(b.getType())) {
-            // The scarecrow's anchor block is the centered (filler=0) tile at native
-            // (0, 2, +4), not the leftmost column. The fence opening is at (0, *, -4),
-            // so gate-from-anchor in native = (0, -8). Verified empirically: at world
-            // anchor (-18,-181) rot=3 the gate lands at (-26,-181), which matches.
+            // v2 prefab: anchor (Stayed_Farm) at (-3,1,0). Entrance gap at x=+4, z=0 (Soil_Pathway).
+            // Seed directly on the pathway threshold tile: offset (7, 0, 0) from anchor.
             int steps = BuildingLayout.get(b.getType(), b.getVariant()).rotationSteps(b.getRotation());
-            int[] gateLocal = BuildingLayout.rotateLocalOffset(0, 0, -8, steps);
+            int[] gateLocal = BuildingLayout.rotateLocalOffset(7, 0, 0, steps);
             int seedX = b.getPosX() + gateLocal[0];
             int seedZ = b.getPosZ() + gateLocal[2];
-            LOGGER.info("doorNode farm steps=" + steps + " gateLocal=("
+            LOG.info("doorNode farm steps=" + steps + " gateLocal=("
                     + gateLocal[0] + "," + gateLocal[2] + ") seed=(" + seedX + "," + seedZ + ")");
             return cardinalProbeEndpoint(world, b, seedX, seedZ, "farm-gate");
         }
@@ -554,7 +527,7 @@ public final class PathwayBuilder {
         // Open structures (mine, sawmill).
         int[] found = bfsForGrassOrPathway(world, b.getPosX(), b.getPosZ(), b.getPosY());
         if (found != null) {
-            LOGGER.info("doorNode " + b.getType() + " anchor=(" + b.getPosX() + ","
+            LOG.info("doorNode " + b.getType() + " anchor=(" + b.getPosX() + ","
                     + b.getPosY() + "," + b.getPosZ() + ") rot=" + b.getRotation()
                     + " bfs-from-anchor → endpoint=(" + found[0] + "," + found[1]
                     + "," + found[2] + ")");
@@ -563,17 +536,6 @@ public final class PathwayBuilder {
         int y = surfaceYWide(world, b.getPosX(), b.getPosZ(), b.getPosY());
         if (y == Integer.MIN_VALUE) y = b.getPosY();
         return new int[]{ b.getPosX(), y, b.getPosZ() };
-    }
-
-    static int[] warehouseLogisticsSeed(BuildingRecord b) {
-        int[] local = BuildingLayout.rotateLocalOffset(-3, 0, -3, b.getRotation());
-        return new int[]{b.getPosX() + local[0], b.getPosY() + local[1], b.getPosZ() + local[2]};
-    }
-
-    private static int[] warehouseLogisticsNode(World world, BuildingRecord b) {
-        if (!BuildingType.WAREHOUSE.equals(b.getType())) return null;
-        int[] seed = warehouseLogisticsSeed(b);
-        return cardinalProbeEndpoint(world, b, seed[0], seed[2], "warehouse-back-passage");
     }
 
     /**
@@ -611,7 +573,7 @@ public final class PathwayBuilder {
             bestY = (seedY == Integer.MIN_VALUE) ? b.getPosY() : seedY;
         }
 
-        LOGGER.info("doorNode " + b.getType() + " anchor=(" + b.getPosX() + ","
+        LOG.info("doorNode " + b.getType() + " anchor=(" + b.getPosX() + ","
                 + b.getPosY() + "," + b.getPosZ() + ") rot=" + b.getRotation() + " "
                 + src + " seed=(" + seedX + "," + seedZ + ")"
                 + " → endpoint=(" + bestX + "," + bestY + "," + bestZ
@@ -708,11 +670,29 @@ public final class PathwayBuilder {
      * Soil, rock, sand, gravel — anything you'd expect to find as natural ground.
      * Explicitly excludes everything player-built (Wood_*, Stayed_*, Furniture_*, Cloth_*,
      * Deco_*, …) so the scan walks past house roofs and floors down to actual terrain.
+     *
+     * <p>Used by {@link #surfaceYWide} (door endpoint resolution) where cobblestone
+     * platforms at building entrances are valid landing spots.
      */
     private static boolean isNaturalGround(String id) {
         if (id == null || id.isEmpty()) return false;
         return id.startsWith("Soil_")
                 || id.startsWith("Rock_")
+                || id.startsWith("Sand_")
+                || id.startsWith("Snow_")
+                || id.startsWith("Ice_")
+                || id.startsWith("Ore_");
+    }
+
+    /**
+     * Like {@link #isNaturalGround} but excludes Rock_* blocks. Used by A*'s
+     * {@link #surfaceY} so that building foundations and slabs are not treated as
+     * walkable terrain surfaces — the scan falls through them to the Soil_* beneath,
+     * which {@link #hasHeadroom} then rejects because the foundation sits on top.
+     */
+    private static boolean isNaturalGroundForRouting(String id) {
+        if (id == null || id.isEmpty()) return false;
+        return id.startsWith("Soil_")
                 || id.startsWith("Sand_")
                 || id.startsWith("Snow_")
                 || id.startsWith("Ice_")
@@ -816,7 +796,7 @@ public final class PathwayBuilder {
             }
         }
         if (hubIndex < 0) {
-            LOGGER.warning("PathwayBuilder.hubAndSpoke: no town hall in node set; falling back to MST");
+            LOG.warn("PathwayBuilder.hubAndSpoke: no town hall in node set; falling back to MST");
             return minimumSpanningTree(nodes);
         }
         List<int[]> edges = new ArrayList<>();
@@ -901,7 +881,7 @@ public final class PathwayBuilder {
         int manhattan = Math.abs(x1 - x2) + Math.abs(z1 - z2);
         if (manhattan == 0) return 0;
         if (manhattan > MAX_PATH_LENGTH) {
-            LOGGER.info("routeBetween: SKIP — distance " + manhattan + " > " + MAX_PATH_LENGTH
+            LOG.info("routeBetween: SKIP — distance " + manhattan + " > " + MAX_PATH_LENGTH
                     + "  (" + x1 + "," + z1 + ") → (" + x2 + "," + z2 + ")");
             return 0;
         }
@@ -913,7 +893,7 @@ public final class PathwayBuilder {
                 // Caller (typically connectExtra) prefers no road to a road that
                 // tunnels under fences/trees. The same pair is reachable via the
                 // base network anyway, so dropping this edge is fine.
-                LOGGER.info("routeBetween: SKIP — A* couldn't avoid obstructions and fallback disabled  ("
+                LOG.info("routeBetween: SKIP — A* couldn't avoid obstructions and fallback disabled  ("
                         + x1 + "," + z1 + ") → (" + x2 + "," + z2 + ")  manhattan=" + manhattan);
                 return 0;
             }
@@ -923,11 +903,11 @@ public final class PathwayBuilder {
             path = aStar(world, x1, z1, y1, x2, z2, false);
             respectedObstructions = false;
             if (path == null) {
-                LOGGER.info("routeBetween: A* FAILED  (" + x1 + "," + y1 + "," + z1
+                LOG.info("routeBetween: A* FAILED  (" + x1 + "," + y1 + "," + z1
                         + ") → (" + x2 + "," + y2 + "," + z2 + ")  manhattan=" + manhattan);
                 return 0;
             }
-            LOGGER.info("routeBetween: A* fell back to obstruction-free pass  ("
+            LOG.info("routeBetween: A* fell back to obstruction-free pass  ("
                     + x1 + "," + z1 + ") → (" + x2 + "," + z2 + ")  pathLen=" + path.size());
         }
 
@@ -965,7 +945,7 @@ public final class PathwayBuilder {
                 nonGrassBreakdown.merge(originalBlockId, 1, Integer::sum);
             }
         }
-        LOGGER.info("routeBetween OK: (" + x1 + "," + z1 + ") → (" + x2 + "," + z2
+        LOG.info("routeBetween OK: (" + x1 + "," + z1 + ") → (" + x2 + "," + z2
                 + ") pathLen=" + path.size() + " placed=" + placed
                 + " grass=" + grassSeen + " nonGrass=" + nonGrassSeen
                 + (nonGrassSeen > 0 ? "  nonGrassTypes=" + nonGrassBreakdown : ""));
@@ -1354,7 +1334,7 @@ public final class PathwayBuilder {
             try {
                 var bt = world.getBlockType(x, y, z);
                 if (bt == null) continue;
-                if (!isNaturalGround(bt.getId())) continue;
+                if (!isNaturalGroundForRouting(bt.getId())) continue;
                 return y;
             } catch (Exception e) {
                 return Integer.MIN_VALUE;

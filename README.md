@@ -28,24 +28,34 @@ Villagers are not tools. They are survivors — refugees who lost their homes to
 
 **4. Rescue survivors.** After the Town Hall is built, talk to Aelin — *"We need settlers"*. Follow the quest marker to find a trapped villager, press F to invite them, then lead them back to the village.
 
-**5. Build more.** Talk to Aelin → *"I want to build something"*. Recommended order: House → Farm → Warehouse → Sawmill → Mine. Each building unlocks new gameplay:
+**5. Build more.** Two ways to get a building's anchor block: talk to Aelin → *"I want to build something"*, or open the **Founder's Almanac** (an item he gives you) and press "Get Anchor" in its building catalog. Recommended order: House → Farm → Warehouse → Woodcutter's Hut → Mine.
 
-- **House** — villager moves in, starts following a day schedule
-- **Farm / Sawmill / Mine** — assigns a worker, produces resources automatically into Warehouse chests
-- **Warehouse** — villagers take lunch and dinner breaks to eat here
+- **House** — a villager moves in and starts following a day schedule
+- **Farm** — a farmer tills, waters, harvests and replants the actual crops on the plot
+- **Woodcutter's Hut / Mine** — assign a worker who produces wood / stone and ore into the village warehouse
+- **Warehouse** — the village's storage; villagers come here for lunch and dinner
+- **Guard House** — a guard patrols the village perimeter along the roads
+- **Forge / Sawmill / Tavern** — can be built and staffed; smithing, wood crafting and cooked meals come in a later update
 
-**6. Watch your village live.** Press F on any villager to see their stats. Unhappy villagers (no house, no food) are less productive. Villagers greet each other, open doors, and wander around their workplaces.
+**6. Watch your village live.** Press F on any villager to see their stats, or open the Almanac to see who is unhoused or going hungry. Villagers walk the roads Aelin lays between buildings, open doors and gates on the way, and keep working (and getting hungry) even while you're away — the village catches up on what it missed when you log back in.
+
+**7. Repairs.** If a finished building gets damaged, press F on its anchor: the page lists exactly which blocks are missing, takes the materials and rebuilds it.
 
 ## Features
 
 - Anchor block → ghost preview → block-by-block construction with resource consumption
+- Ten buildings: Town Hall, House, Warehouse, Farm, Woodcutter's Hut, Mine, Sawmill, Forge, Guard House, Tavern
+- Full building rotation based on the direction the player faces when placing the anchor
+- Repairing a damaged building for the exact blocks it lost
 - Elf sage with custom appearance, idle behavior, and branching dialogue
-- Villager daily schedule: work, eat, rest — with door open/close animations
-- Random villager appearance from archetype pools (hair, skin tone, clothing)
-- Multi-building progression: Town Hall, Houses, Farm, Warehouse, Sawmill, Mine, Guard Tower
+- Founder's Almanac: village overview, settler complaints, building catalog
+- Villager daily schedule: work, eat, rest — walking the roads, opening doors and gates
+- A farmer who works the real crops on the plot; a guard who patrols the road network
+- Roads generated between buildings with A* and undone cleanly when a building goes
+- Village simulation that keeps running while chunks are unloaded, and catches up on the time you were away
+- Random villager appearance and names from curated archetype pools
 - Village HUD with live resource counts
-- Full building rotation based on player facing direction at placement
-- NPC persistence across server restarts
+- NPC identity that survives chunk unloads and server restarts
 
 ## Building from source
 
@@ -58,31 +68,45 @@ Requires Java 25 (OpenJDK 25.0.2 or JetBrains Runtime 25).
 
 On Windows use `gradlew.bat`.
 
+`settings.gradle.kts` resolves the server API with `useVersion("latest")`. If the
+published API is newer than the Hytale build you have installed, the compile
+fails with a pile of `cannot find symbol` errors on engine classes — pin the
+version to match your install.
+
 ## Project structure
 
 ```
 src/main/java/dev/hearthbound/
-  HearthboundPlugin.java      — plugin entry point
-  village/                    — data model (VillageData, VillagerData, BuildingRecord)
-  building/                   — construction pipeline (ghost → site clear → block-by-block)
-  npc/                        — NPC management, appearance, schedules, persistence
-  events/                     — event handlers (anchor placement, F-key, chunk load)
-  ui/                         — UI pages and HUD
-  quest/                      — rescue quest
-  commands/                   — /hb debug commands
+  HearthboundPlugin.java       — plugin entry point
+  village/                     — persistent data model (VillageData, VillagerData, BuildingRecord, BuildingType)
+  building/                    — construction pipeline (ghost → site clear → block-by-block → repair → roads)
+  npc/                         — NPC identity, persistence, schedules, appearance, work behaviors
+  events/                      — event handlers (anchor placement, F-key, chunk load, village tick, join)
+  ui/                          — UI pages, dialogs and HUD
+  quest/                       — rescue quest
+  util/                        — scheduler, item names, shared UI rows, logging layer (util/log)
+  commands/                    — /hb dev commands
+  test/                        — in-game integration test framework (/hb test)
 
 src/main/resources/
-  Common/UI/Custom/*.ui       — UI layout files
-  Server/Prefabs/*.prefab.json — building blueprints
-  Server/NPC/Roles/*.json     — NPC behavior trees
-  Server/Item/                — custom block and interaction definitions
+  Common/UI/Custom/*.ui        — UI layouts (Hytale UI DSL, not JSON)
+  Server/Prefabs/*.prefab.json — building blueprints from the Asset Editor
+  Server/NPC/Roles/*.json      — NPC behavior trees
+  Server/Item/                 — custom block, item and interaction definitions
+  Server/Objective/            — rescue quest objectives and markers
+  Server/Languages/en-US/      — all user-facing strings
 ```
+
+Contributor-facing notes (doc index, architecture walkthrough, persistence rules)
+live in [CLAUDE.md](CLAUDE.md); engine API patterns and gotchas in
+[MEMORY.md](MEMORY.md).
 
 ## What's coming
 
+- Sawmill — turn logs into planks, stairs and slabs
+- Forge — smithing tools, weapons and armour from ore
+- Tavern — cooked meals that lift the whole village's mood
 - Second rescue quest
-- Guard Tower with patrol behavior
-- Tavern — villagers gather to eat together
 - Brickyard — clay and brick production
 - Market — recruit villagers without questing
 - Building leveling (prefabs up to lvl 3 already exist)

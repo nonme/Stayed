@@ -1,38 +1,42 @@
-# Hearthbound — Dev Memory
+# Stayed — Dev Memory
 
-> Этот файл — технический контекст для LLM-ассистента. Читай перед началом работы.
-> Обновляй после каждой сессии.
-> Геймдизайн → SPEC.md | Ресёрч → RESEARCH.md
+> Этот файл — **долгоживущий технический контекст** для LLM-ассистента: стек,
+> проверенные API-паттерны, грабли. Читай перед началом работы.
+>
+> ⚠️ **Здесь НЕТ актуального состояния фич.** Что уже сделано, что в работе и
+> что менялось последним — смотри в истории коммитов: `git log --oneline`,
+> `git log -p <файл>`. Сообщения коммитов подробные и разбиты по подсистемам,
+> они и есть источник правды по прогрессу.
+>
+> Карта исходников → CLAUDE.md | Геймдизайн → SPEC.md | Ресёрч → RESEARCH.md
+> Референсные моды → ModsSamples/README.md, MOD_NOTES.md
 
 ---
 
 ## Что это
 
-Мод для Hytale — строительство мультирасовой деревни с NPC. Конкурс "New Worlds" на CurseForge, дедлайн **28 апреля 2026**, призовой фонд $100K. Категории: NPCs + Experiences.
+Мод для Hytale — строительство мультирасовой деревни с NPC-эльфом (Aelin) в
+роли архитектора и советника.
 
-Название мода: **Hearthbound** (временное, может измениться).
+Название мода: **Stayed** (Java-пакет остался `dev.hearthbound` — переименование
+пакета сломало бы BSON-ключи компонентов, см. раздел Backward compatibility в
+CLAUDE.md).
+
+Делался под конкурс "New Worlds" на CurseForge (дедлайн был 28 апреля 2026,
+призовой фонд $100K, категории NPCs + Experiences) — дата прошла, работа
+продолжается.
 
 ---
 
-## Текущий статус
+## Как узнать текущее состояние
 
-**Этап R (Ресёрч):** ✅ Завершён (сессии 1-2)
-**Этап 0 (PoC):** ✅ Завершён (сессия 3) — все 8 тестов пройдены
-**Этап 1 (Founding flow):** ✅ Завершён (сессии 4-6) — полный flow основания деревни
-**Этап 2 (Ресурсная стройка):** ✅ Завершён (сессии 7-8) — block-by-block строительство
-**Этап 2.5 (Внешность эльфа):** ✅ Завершён (сессия 9) — кастомный PlayerSkin
-
-### Что работает сейчас:
-1. Эльф спавнится у world spawn, F-key диалог, Watch на игрока (Range 3)
-2. Founding Stone → ghost preview (Filter_Air_Block) → F → TownHallPage
-3. До основания: выбор имени + "Основать" → ghost убирается, эльф у двери
-4. После основания: вкладка деревни + вкладка строительства с ресурсами
-5. Ctrl+F → нативный контейнер, "Внести ресурсы" переносит из инвентаря
-6. "Начать строительство" → эльф телепортируется, ждёт 600мс, freeze, строит block-by-block
-7. Эльф держит текущий блок в руке, смотрит на блок (пакетная ротация)
-8. Ресурсы потребляются из контейнера, пауза если нет ресурсов
-9. Стройка завершена → эльф unfreeze, возвращается к нормальному поведению
-10. Кастомная внешность эльфа: белые волосы, зелёные глаза, эльфийские уши, одежда Forest Guardian
+| Вопрос | Где ответ |
+|---|---|
+| Что уже работает / что сломано | `git log --oneline` + сообщения коммитов |
+| Какие есть здания, анкоры, UI-страницы | `village/BuildingType.java`, `Server/Item/Items/Stayed/`, `Common/UI/Custom/` |
+| Что за файл и зачем | CLAUDE.md → "Source structure" |
+| Известные баги | KNOWN_ISSUES.md |
+| Что почитать перед фиксом | ModsSamples/README.md |
 
 ---
 
@@ -53,41 +57,18 @@
 
 ## Структура проекта
 
+Пофайловая карта живёт в **CLAUDE.md → "Source structure"** — она обновляется
+вместе с кодом, здесь дубликат быстро устаревал. Верхний уровень:
+
 ```
-hytale-mod/
-├── SPEC.md                    # Геймдизайн документ
-├── RESEARCH.md                # Результаты ресёрча
-├── MEMORY.md                  # Этот файл — контекст для LLM
-├── BLOCKS.md                  # Все 2958 item ID из Assets.zip
-├── MOD_NOTES.md               # Анализ декомпилированных модов (читай для паттернов!)
-├── HytaleModding-site/        # Клонированная официальная вики по моддингу
-│   └── content/docs/en/official-documentation/
-│       ├── npc/               # NPC behavior (idle, combat, sleep, inter-NPC)
-│       └── custom-ui/         # UI элементы, layout, markup
-├── OTHER_MODS_EXAMPLES/       # Декомпилированные моды (подробнее в MOD_NOTES.md)
-│   ├── KyuubiSoftCore-decompiled/   # NPC rotation, Frozen, animation
-│   ├── Cubia_Companions_unzipped/   # NPC JSON Role patterns (Watch, Sequence, Flock)
-│   ├── JET-decompiled/              # UI: item grid, search, pagination
-│   ├── HyUI-decompiled/            # Все нативные UI элементы (справочник)
-│   ├── NPCQuests-decompiled/       # Inventory add/remove через ItemStackTransaction
-│   ├── WhereThisAt-decompiled/     # Block Container API, SimpleBlockInteraction
-│   ├── SimplyTrash-decompiled/     # Custom BlockState + TickableBlockState
-│   ├── BetterWardrobes/            # JSON container pattern
-│   └── AutoSorter-decompiled/      # Crouch detection, UseBlockEvent.Pre intercept
-└── convergence/               # Gradle проект мода
-    └── src/main/
-        ├── java/dev/hearthbound/
-        │   ├── HearthboundPlugin.java    # Точка входа
-        │   ├── building/                 # BuildingSystem, BuildingGenerator, ResourceBlockPlacer, BlockPlacer
-        │   ├── events/                   # BlockPlaceHandler, FoundingStoneHandler, PlayerJoinHandler
-        │   ├── npc/                      # ElfSage, NpcManager, BuilderBehavior
-        │   ├── ui/                       # TownHallPage, DialogEventData, VillageHud
-        │   ├── village/                  # VillageManager, VillageData, BuildingRecord, BuildingType
-        │   ├── util/                     # TickScheduler
-        │   └── commands/                 # HearthboundCommands, SkinCommand, CosmeticsCommand, ResetCommand
-        └── resources/
-            ├── Common/UI/Custom/         # .ui файлы (DSL формат!)
-            └── Server/NPC/Roles/         # NPC Role JSON файлы
+hytale-mod/                    # локальный рабочий каталог (без remote)
+├── *.md                       # SPEC, RESEARCH, BLOCKS, ITEMS, MOD_NOTES, CUSTOM_UI, ...
+├── HytaleModding-site/        # клон официальной вики по моддингу (в .gitignore)
+├── OTHER_MODS_EXAMPLES/       # ~15 декомпилированных модов (в .gitignore, см. MOD_NOTES.md)
+└── convergence/               # git-репозиторий мода → github.com/nonme/Stayed
+    ├── *.md                   # копии важных документов, чтобы репо был самодостаточным
+    ├── ModsSamples/           # HyCitizens / KyuubiSoftCore / FH_CompanionNPCs — читать перед фиксами
+    └── src/main/{java,resources}
 ```
 
 ---
@@ -192,6 +173,15 @@ store.putComponent(ref, ModelComponent.getComponentType(), new ModelComponent(mo
 // Стандартные: registerGlobal(EventClass.class, handler::method)
 // ECS: extends EntityEventSystem<EntityStore, EventType>
 // ВАЖНО: внутри EntityEventSystem.handle() нельзя store.putComponent() — defer через world.execute()
+
+// Логирование — свой слой, НЕ java.util.logging напрямую:
+private static final Log LOG = dev.hearthbound.util.log.Log.get("npc.dup"); // категория с иерархией
+LOG.info("...");                                  // простая строка
+LOG.with("uuid", uuid).with("role", r).debug(msg); // структурный контекст (уходит в NDJSON-архив)
+LOG.atMostEvery("gate:" + pos, 5_000).debug(msg);  // троттлинг ТОЛЬКО консоли, архив видит всё
+// Уровни по категориям: mods/HearthboundData/logging.json, рантайм — /hb log set|tail|mute|reload
+// Архив: mods/HearthboundData/logs/*.ndjson (ротация 5×5MB) + ring-буфер, /hb log dump → zip для багрепортов
+// WARN/ERROR всегда попадают в консоль и не склеиваются
 ```
 
 ---
@@ -199,56 +189,38 @@ store.putComponent(ref, ModelComponent.getComponentType(), new ModelComponent(mo
 ## Правила конкурса (важное)
 - AI-визуальные ассеты **ЗАПРЕЩЕНЫ** (текстуры, модели, иконки) = дисквалификация
 - AI-код **разрешён**
-- Дедлайн: 28 апреля 2026
-- Промежуточные розыгрыши: 31 марта, 14 апреля
 
 ---
 
-## Известные проблемы
-- `ServerVersion: "*"` в manifest.json вызывает WARN — нужно указать конкретную версию (`2026.02.19-1a311a592`)
+## Грабли окружения
 - JetBrains JDK не установлен → DCEVM hot-swap недоступен (не критично)
 - `compdef:153: _comps: assignment to invalid subscript range` — косметический баг zsh + SDKMAN, игнорировать
-- Ghost blocks (Filter_Air_Block) не ставятся в определённой зоне вокруг спавна — вероятно spawn protection движка Hytale. Не критично для геймплея (здания ставятся вдали от спавна).
+- `useVersion("latest")` в settings.gradle.kts тянет API с maven и может разрезолвиться
+  в версию новее установленной игры — тогда `make build` падает пачкой
+  `cannot find symbol` на классах движка (например `com.hypixel.hytale.math.vector.Vector3d`).
+  Это не регресс мода: проверяется компиляцией против локального
+  `~/.var/app/com.hypixel.HytaleLauncher/.../Server/HytaleServer.jar`.
+- `ServerVersion` в manifest.json запинен на конкретный билд движка — при обновлении
+  игры его нужно поднимать руками, иначе сервер ругается.
+
+Актуальные баги геймплея → **KNOWN_ISSUES.md** (этот файл их не дублирует).
 
 ---
 
-## Открытые вопросы
-- Финальное название мода
-- Нужен ли ServerVersion в manifest.json (сейчас "*")
+## История разработки
 
----
+Здесь её больше нет — она жила в формате "сессия N" и устаревала быстрее, чем
+обновлялась. Хронология работы полностью лежит в git:
 
-## История сессий
+```bash
+git log --oneline                 # что и когда делалось
+git log -p -- <файл>              # почему конкретная строка выглядит так
+git log --stat -1 <commit>        # объём изменения
+```
 
-### Сессии 1-2 (19 марта 2026) — Ресёрч
-- Полный ресёрч API, рас, механик → RESEARCH.md, SPEC.md
-- Настройка окружения, hello world плагин
-- 0 зависимостей, якорные блоки, NPC Role system
+Сообщения коммитов пишутся подробно и разбиты по подсистемам — по ним
+восстанавливается и мотивация, и порядок работ. Если нужно понять "что было
+сделано в прошлый раз" — это `git log`, а не этот файл.
 
-### Сессия 3 — PoC
-- Все 8 тестов пройдены: спавн NPC, блоки, диалог, HUD, persistence, speech bubbles
-
-### Сессии 4-6 — Этап 1 (Founding flow)
-- F-key диалог с эльфом, Founding Stone → ghost preview → TownHallPage
-- Основание деревни, спавн village elf, полный flow протестирован
-
-### Сессия 7 — Дизайн + декомпиляция модов
-- Контейнер Founding Stone, ротация зданий, UI перестройка
-- Декомпиляция: WhereThisAt, SimplyTrash, AutoSorter, BetterWardrobes → MOD_NOTES.md
-
-### Сессия 8 — Этап 2 (Ресурсная стройка + поведение NPC)
-- ResourceBlockPlacer: block-by-block из контейнера, пауза при нехватке
-- BuilderBehavior: Frozen + пакетная ротация к блоку + moveTo перед стройкой
-- Elf_Sage.json: Watch player (Range 3), Sequence idle (stand/wander), Wander params
-- Декомпиляция: KyuubiSoftCore (rotation, Frozen), Cubia_Companions (JSON patterns)
-- Клонирован HytaleModding-site (официальная вики)
-
-### Сессия 9 — Внешность эльфа (PlayerSkin API)
-- Исследование CosmeticsModule API: compound IDs (PartId.TextureKey), градиентные наборы
-- Декомпиляция `/hb cosmetics` → дамп всех косметик с ключами (devserver/cosmetics_dump.txt)
-- Role JSON: `"Appearance": "Player"` вместо `"Outlander"` — обязательно для PlayerSkin
-- Программный buildCompound(): registry lookup → gradient set → exact/partial match ключей
-- Фикс: cape IDs (типа `Cape_Forest_Guardian.NoNeck`) — bare ID в реестре, НЕ compound
-- Фикс: тон кожи — exact match числовых ключей ("01") вместо partial match
-- Результат: светлокожий эльф с белыми волосами, зелёными глазами, одежда Forest Guardian
-- `/hb skin` теперь делегирует в `ElfSage.createSageSkin()` для единого источника правды
+Что осталось здесь: стек, проверенные API-паттерны выше и грабли окружения.
+Их и обновляй — новую проверенную находку по API дописывай в шпаргалку.

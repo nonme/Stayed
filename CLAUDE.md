@@ -336,7 +336,7 @@ All pages are `InteractiveCustomUIPage` + a `.ui` layout file of the same name.
   `FarmScanCommand`, `CraftabilityCommand`, `LogCommand`.
 - Navigation/UI: `TpCommand`, `WarpCommand`, `HudCommand`, `DialogCommand`,
   `GiveAlmanacCommand`.
-- Tests: `TestCommand` (`/hb test run|pkg|list`).
+- Tests: `TestCommand` — `/hb test list|run|pkg|all|status|abort|logs|cleanup`.
 
 **`test/` — in-game integration test framework**
 
@@ -372,15 +372,18 @@ JSON crashes the client). One file per page: `TownHall`, `VillagerHouse`,
 per building — `Stayed_Founding_Stone`, `Stayed_House`, `Stayed_Farm`,
 `Stayed_Warehouse`, `Stayed_Woodcutters_Hut`, `Stayed_Sawmill`, `Stayed_Mine`,
 `Stayed_Guard_House`, `Stayed_Forge`, `Stayed_Tavern` — plus
-`Stayed_Storage_Chest` and the usable `Stayed_Founders_Almanac`. Anchors are
-containers (`State.container` + `Open_Container`) so the F-key handler can
-intercept the interaction and open our page instead.
+`Stayed_Storage_Chest` and the usable `Stayed_Founders_Almanac`. Every anchor
+declares `Flags.IsUsable` + `Interactions.Use = Open_Container`; the ECS handler
+cancels that event and opens our page instead. Only `Stayed_Storage_Chest`
+carries a real `State` block (open/close animation and sounds) and is an actual
+container.
 
 **`Server/Item/Interactions/` + `Server/Item/RootInteractions/`** — F-key /
 right-click interaction definitions and their bindings (`Stayed_OpenUI`,
 `Stayed_VillagerUI`, `Stayed_RescueUI`, `Stayed_OpenAlmanac`).
 
-**`Server/Item/Block/Hitboxes/`** — custom hitboxes for anchor blocks.
+**`Server/Item/Block/Hitboxes/`** — empty; leftover directory from an earlier
+attempt at custom anchor hitboxes.
 
 **`Server/NPC/Roles/*.json`** — behaviour trees. `Elf_Sage_{Wanderer,Villager,
 Builder}` for Aelin; `Villager_Human` plus one variant per activity
